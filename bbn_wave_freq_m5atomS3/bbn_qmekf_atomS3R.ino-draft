@@ -1,259 +1,507 @@
 /*
-  Minimal Q-MEKF yaw/pitch/roll demo, matching the old working code path
+  AtomS3R Tilt-Compensated Compass + IMU Calibration Wizard
 
-  for atomS3R from m5stack
-  
+  - Uses your AtomS3R_ImuCal.h (blob + runtime apply + axis mapping + clearM5UnifiedImuCalibration)
+  - Uses your AtomS3R_ImuCalWizard.h (UI + wizard capture/fit/save + Input tap logic)
+  - Uses your QuaternionMEKF (q-mekf) implementation (KalmanQMEKF.h) for fused roll/pitch/yaw
+  - Runs accel+gyro at ~240 Hz, mag is slower and gated by time+delta (stale-repeat rejection)
+  - Shows Heading (deg, 0..360), Roll/Pitch (deg) on screen and prints to Serial
+
+  Taps:
+    - 1 tap  : run wizard (save new blob)
+    - 3 taps : erase blob (and clear M5Unified calibration)
+
+  Notes:
+    - We feed calibrated accel (m/s^2) and gyro (rad/s) to MEKF.
+    - We feed *unit* magnetometer direction (calibrated, normalized) to MEKF.
+    - If mag isn’t “fresh”, we skip mag update (keeps yaw stable, avoids stale repeats).
 */
 
-#include <M5Unified.h>
 #include <Arduino.h>
+#include <M5Unified.h>
+#include <new>
 
-#include <stdint.h>
+#include "AtomS3R_ImuCal.h"
+#include "AtomS3R_ImuCalWizard.h"
 
-#ifndef EIGEN_STACK_ALLOCATION_LIMIT
-#define EIGEN_STACK_ALLOCATION_LIMIT 0
-#endif
-#include <ArduinoEigenDense.h>
+// Your q-mekf header that defines QuaternionMEKF
+#include "KalmanQMEKF.h"
 
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
+using namespace atoms3r_ical;
 
-constexpr float g_std = 9.80665f;  // m/s^2
+using Vector3f = Eigen::Matrix<float, 3, 1>;
 
-#include "M5_Calibr.h"
-#include "KalmanQMEKF.h"  
+// ---------- Sampling / gating tuning ----------
+static constexpr float    LOOP_HZ                = 240.0f;
+static constexpr uint32_t LOOP_PERIOD_US         = (uint32_t)(1000000.0f / LOOP_HZ);
 
-using M5_IMU = decltype(M5.Imu);
+// Mag ODR is slower; also many builds repeat stale values.
+// Gate by spacing + delta (wizard-style).
+static constexpr uint32_t MAG_SAMPLE_SPACING_MS  = 20;     // ~<=50 Hz mag updates
+static constexpr float    MAG_MIN_DELTA_uT       = 0.05f;  // reject repeats (0.02..0.10 typical)
 
+// Display / serial rates
+static constexpr uint32_t UI_REFRESH_MS          = 100;    // 10 Hz UI update
+static constexpr uint32_t SERIAL_REFRESH_MS      = 200;    // 5 Hz serial update
 
-// Global flags / state
-unsigned long now = 0UL, last_refresh = 0UL, start_time = 0UL, last_update = 0UL;
-unsigned long got_samples = 0;
+// ---------- Helpers ----------
+static inline float clampf_(float x, float lo, float hi) { return x < lo ? lo : (x > hi ? hi : x); }
 
-const char* imu_name = "unknown";
-bool produce_serial_data = true;
-float t = 0.0f;
-
-using Vector3f = Eigen::Matrix<float,3,1>;
-
-// Same noise params as old working code:
-static Vector3f sigma_a = {0.03f * g_std, 0.03f * g_std, 0.03f * g_std};
-static Vector3f sigma_g = {0.12f * M_PI / 180.0f,
-                           0.12f * M_PI / 180.0f,
-                           0.12f * M_PI / 180.0f};
-static Vector3f sigma_m = {0.005f, 0.005f, 0.005f};
-float Pq0 = 0.5f;
-float Pb0 = 1e-2f;
-float b0  = 1e-9f;
-
-QuaternionMEKF<float,true> mekf(sigma_a, sigma_g, sigma_m, Pq0, Pb0, b0);
-
-bool kalm_w_first = true;
-
-// Simple on-line mag calibration (hard-iron + soft-iron approx)
-static Eigen::Vector3f mag_min = Eigen::Vector3f( 1e9f, 1e9f, 1e9f);
-static Eigen::Vector3f mag_max = Eigen::Vector3f(-1e9f,-1e9f,-1e9f);
-static Eigen::Vector3f mag_bias = Eigen::Vector3f::Zero();
-static Eigen::Vector3f mag_scale = Eigen::Vector3f::Ones();
-static bool mag_cal_ready = false;
-static uint32_t mag_samples = 0;
-
-// Require a bit of motion before trusting min/max (tweak if needed)
-static constexpr uint32_t MAG_CAL_MIN_SAMPLES = 200;  // ~2s at 100Hz if mag updates often
-static constexpr float    MAG_H_NORM_MIN      = 1e-3f;
-
-// Main IMU processing
-void read_and_processIMU_data(uint32_t mask) {  
-  auto data = M5.Imu.getImuData();
-
-  float tempC = NAN;
-  M5.Imu.getTemp(&tempC);
-
-  drawCalibrGraph(rect_graph_area, data);
-  
-  now = micros();
-  got_samples++;
-
-  m5::imu_3d_t accel = data.accel;
-  m5::imu_3d_t gyro  = data.gyro;
-  m5::imu_3d_t mag   = data.mag;
-
-  float delta_t = (now - last_update) / 1000000.0f;  // sec
-  // clamp dt
-  if (delta_t < 0.001f) delta_t = 0.001f;
-  if (delta_t > 0.1f)   delta_t = 0.1f;
-  last_update = now;
-
-  // Map IMU to BODY NED frame
-  Eigen::Vector3f acc_meas_body(
-    accel.y * g_std,       
-    accel.x * g_std,       
-   -accel.z * g_std       
-  );
-  Eigen::Vector3f gyr_meas_body(
-    gyro.y * DEG_TO_RAD,
-    gyro.x * DEG_TO_RAD,
-   -gyro.z * DEG_TO_RAD
-  );
-  // Mag mapping if you later want it:
-  Eigen::Vector3f mag_body(
-    mag.y / 10.0f,
-    mag.x / 10.0f,
-   -mag.z / 10.0f 
-  );
-
-  // Only update mag calibration when we truly received a new mag sample
-  if ((mask & (uint32_t)M5_IMU::sensor_mask_mag) && !mag_cal_ready) {
-    mag_min = mag_min.cwiseMin(mag_body);
-    mag_max = mag_max.cwiseMax(mag_body);
-    mag_bias = 0.5f * (mag_min + mag_max);
-  
-    // soft-iron scale: equalize axis ranges (very common quick fix)
-    Eigen::Vector3f half_range = 0.5f * (mag_max - mag_min);
-    float avg = (half_range.x() + half_range.y() + half_range.z()) / 3.0f;
-    // avoid divide-by-zero if an axis hasn't moved yet
-    mag_scale = Eigen::Vector3f(
-      (half_range.x() > 1e-6f) ? (avg / half_range.x()) : 1.0f,
-      (half_range.y() > 1e-6f) ? (avg / half_range.y()) : 1.0f,
-      (half_range.z() > 1e-6f) ? (avg / half_range.z()) : 1.0f
-    );
-  
-    if (++mag_samples >= MAG_CAL_MIN_SAMPLES) mag_cal_ready = true;
-  }
-
-  // Apply bias+scale
-  Eigen::Vector3f mag_corr = mag_corr = (mag_body - mag_bias);   // no .cwiseProduct(mag_scale)
-  
-  // Compute full 3D unit mag vector ONCE (for init + update)
-  float mn = mag_corr.norm();
-  Eigen::Vector3f mag_u = Eigen::Vector3f::Zero();
-  if (mn > 1e-6f) mag_u = mag_corr / mn;
-  
-  if (kalm_w_first) {
-    if ((mask & (uint32_t)M5_IMU::sensor_mask_mag) && (mn > 1e-6f))
-      mekf.initialize_from_acc_mag(acc_meas_body, mag_u);
-    else
-      mekf.initialize_from_acc(acc_meas_body);
-    kalm_w_first = false;
-  }
-  
-  mekf.time_update(gyr_meas_body, delta_t);
-  mekf.measurement_update_acc_only(acc_meas_body);
-  
-  // Mag update ONLY when mag sensor actually produced a new sample AND mag is valid
-  const bool mag_new = (mask & (uint32_t)M5_IMU::sensor_mask_mag);
-  if (mag_new && mag_cal_ready && (mn > 1e-6f)) {
-    mekf.measurement_update_mag_only(mag_u);
-  }
-  
-  // Get quaternion from MEKF: Eigen coeffs are [x,y,z,w]
-  // In this implementation qref is BODY -> WORLD
-  auto qvec = mekf.quaternion();                  // Vector4: [x,y,z,w]
-  Eigen::Quaternionf q_bw(qvec(3), qvec(0), qvec(1), qvec(2));  // (w,x,y,z)
-  
-  // Use BODY -> WORLD rotation for yaw/pitch/roll
-  Eigen::Matrix3f R = q_bw.toRotationMatrix();
-  
-  // ZYX extraction (yaw, pitch, roll)
-  float yaw   = std::atan2(R(1,0), R(0,0));
-  float pitch = -std::asin(std::max(-1.0f, std::min(1.0f, R(2,0))));
-  float roll  = std::atan2(R(2,1), R(2,2));
-
-  float roll_deg  = roll  * RAD_TO_DEG;
-  float pitch_deg = pitch * RAD_TO_DEG;
-  float yaw_deg   = yaw   * RAD_TO_DEG;
-
-  // NMEA / Serial output
-  const int serial_report_period_micros = 125000;
-  if (now - last_refresh >= (produce_serial_data ? serial_report_period_micros : 1000000)) {
-    if (produce_serial_data) {
-      Serial.printf(",delta_t:%.6f", delta_t);
-      //Serial.printf(",accel.x:%.6f", accel.x);
-      //Serial.printf(",accel.y:%.6f", accel.y);
-      //Serial.printf(",accel.z:%.6f", accel.z);
-      Serial.printf(",roll_deg:%5.2f",  roll_deg);
-      Serial.printf(",pitch_deg:%5.2f", pitch_deg);
-      Serial.printf(",yaw_deg:%5.2f",   yaw_deg);
-      Serial.printf(",accel.x:%7.4f",  accel.x);
-      Serial.printf(",accel.y:%7.4f", accel.y);
-      Serial.printf(",accel.z:%7.4f",   accel.z);
-      Serial.printf(",gyro.x:%7.4f",  gyro.x);
-      Serial.printf(",gyro.y:%7.4f", gyro.y);
-      Serial.printf(",gyro.z:%7.4f",   gyro.z);
-      Serial.printf(",mag.x:%7.4f",  mag.x);
-      Serial.printf(",mag.y:%7.4f", mag.y);
-      Serial.printf(",mag.z:%7.4f",   mag.z);
-      Serial.println();
-    }
-    last_refresh = now;
-    got_samples = 0;
-  }
-  t = (now - start_time) / 1000000.0f;  // time since start sec
+static inline float wrap360_(float deg) {
+  while (deg < 0.0f)   deg += 360.0f;
+  while (deg >= 360.0f) deg -= 360.0f;
+  return deg;
 }
 
-// Main loop
-void repeatMe() {
-  bool pressed = M5.BtnA.wasPressed();
-  if (pressed) {
-    startCalibration();
-  } else {
-    auto mask = M5.Imu.update();
-    if (mask) {
-      read_and_processIMU_data(mask);
+// ---------- App ----------
+class CompassApp {
+public:
+  CompassApp() : wizard_(ui_, store_) {}
+
+  void begin() {
+    Serial.begin(115200);
+    delay(150);
+    Serial.println();
+    Serial.println("[BOOT] AtomS3R Compass + Cal Wizard");
+
+    auto cfg = M5.config();
+    M5.begin(cfg);
+
+    // Critical: clear M5Unified’s own cal/offsets so it can’t stack with ours.
+    clearM5UnifiedImuCalibration();
+
+    ui_.begin();
+
+    if (!M5.Imu.isEnabled()) {
+      Serial.println("[BOOT] IMU not found / not enabled");
+      ui_.fail("IMU", "Not found");
+      while (true) delay(100);
     }
+
+    reloadBlobAndRuntime_();
+
+    // If missing, immediately run wizard once (matches your requested flow)
+    if (!have_blob_) {
+      Serial.println("[BOOT] No saved calibration. Starting wizard...");
+      ImuCalBlobV1 saved{};
+      if (wizard_.runAndSave(saved)) {
+        Serial.println("[BOOT] Wizard saved calibration. Loaded:");
+        printBlobSummary(Serial, saved);
+        printBlobDetail(Serial, saved);
+        blob_ = saved;
+        have_blob_ = true;
+        runtime_.rebuildFromBlob(blob_);
+      } else {
+        Serial.println("[BOOT] Wizard did not save calibration. Running with raw values.");
+      }
+    } else {
+      Serial.println("[BOOT] Found saved calibration:");
+      printBlobSummary(Serial, blob_);
+      printBlobDetail(Serial, blob_);
+    }
+
+    resetMEKF_();
+
+    // UI
+    ui_.setReadRotation();
+    ui_.title("COMPASS");
+    ui_.line(have_blob_ ? "BLOB: YES" : "BLOB: NO");
+    ui_.line("Tap: calibrate");
+    ui_.line("Tap x3: erase");
+    ui_.line("");
+    ui_.line("Move slowly in");
+    ui_.line("figure-8 for");
+    ui_.line("best heading");
+
+    start_us_ = micros();
+    next_tick_us_ = micros();
+    last_update_us_ = micros();
   }
-  makeCalibrStep();
-}
 
-void setup(void) {
-  auto cfg = M5.config();
-  M5.begin(cfg);
-  Serial.begin(115200);
+  void tick() {
+    // Pace loop to ~240 Hz (avoid long blocking; wizard UI will override timing anyway)
+    const uint32_t now_us = micros();
+    int32_t wait_us = (int32_t)(next_tick_us_ - now_us);
+    if (wait_us > 0) {
+      // small sleep; do not oversleep too hard
+      if (wait_us > 200) delayMicroseconds(200);
+      else delayMicroseconds((uint32_t)wait_us);
+    }
+    next_tick_us_ += LOOP_PERIOD_US;
 
-  // QMEKF expects body frame with Z DOWN (NED convention)
-  // Old manual mapping implied: X=+Y, Y=+X, Z=-Z
-  //bool ok = M5.Imu.setAxisOrder(M5_IMU::axis_y_pos, M5_IMU::axis_x_pos, M5_IMU::axis_z_neg);
-  //Serial.printf("setAxisOrder (Y,X,-Z): %s\n", ok ? "OK" : "FAIL");
+    M5.update();
+    Input::update();
 
-  auto imu_type = M5.Imu.getType();
-  switch (imu_type) {
-    case m5::imu_none:        imu_name = "not found";   break;
-    case m5::imu_sh200q:      imu_name = "sh200q";      break;
-    case m5::imu_mpu6050:     imu_name = "mpu6050";     break;
-    case m5::imu_mpu6886:     imu_name = "mpu6886";     break;
-    case m5::imu_mpu9250:     imu_name = "mpu9250";     break;
-    case m5::imu_bmi270:      imu_name = "bmi270";      break;
-    default:                  imu_name = "unknown";     break;
-  };
-  disp.fillRect(0, 0, rect_text_area.w, rect_text_area.h, TFT_BLACK);
+    // Tap handling (same behavior as your cal app)
+    if (Input::tapPressed()) {
+      tap_count_++;
+      tap_deadline_ms_ = millis() + ImuCalWizardCfg::TAP_WINDOW_MS;
+      drawHomePending_();
+      Serial.printf("[TAP] count=%d\n", tap_count_);
+    }
 
-  if (imu_type == m5::imu_none) {
-    for (;;) {
-      delay(1);
+    if (tap_count_ > 0 && (int32_t)(millis() - tap_deadline_ms_) > 0) {
+      if (tap_count_ >= 3) handleErase_();
+      else                 handleRunWizard_();
+      tap_count_ = 0;
+      tap_deadline_ms_ = 0;
+      // After wizard/erase, re-show top lines; heading lines are updated in updateUI_()
+      drawHomeStatic_();
+    }
+
+    // Read IMU and update filter
+    ImuSample s;
+    if (readImuMapped(M5.Imu, s)) {
+      updateFilter_(s);
+      updateUI_();
+      streamSerial_();
     }
   }
 
-  initCalibrDisplay();
-
-  // Read calibration values from NVS.
-  if (!M5.Imu.loadOffsetFromNVS()) {
-    //startCalibration();
+private:
+  // --- Calibration plumbing ---
+  void reloadBlobAndRuntime_() {
+    have_blob_ = store_.load(blob_);
+    if (!have_blob_) {
+      memset(&blob_, 0, sizeof(blob_));
+    }
+    runtime_.rebuildFromBlob(blob_);
   }
-  M5.Imu.setCalibration(0, 0, 64); // keep mag auto calibrate
 
-  delay(2000);
-  start_time  = micros();
-  last_update = start_time;
+  void handleErase_() {
+    Serial.println("[HOME] triple tap => ERASE");
+
+    if (!ui_.eraseConfirm()) {
+      Serial.println("[HOME] erase cancelled");
+      return;
+    }
+
+    store_.erase();
+    clearM5UnifiedImuCalibration();
+
+    reloadBlobAndRuntime_();
+    resetMEKF_();
+
+    Serial.println("[HOME] erased blob + cleared M5Unified cal");
+  }
+
+  void handleRunWizard_() {
+    Serial.println("[HOME] single tap => RUN WIZARD");
+
+    ImuCalBlobV1 saved{};
+    bool ok = wizard_.runAndSave(saved);
+    if (!ok) {
+      ui_.notSavedNotice();
+      return;
+    }
+
+    Serial.println("[HOME] new calibration saved:");
+    printBlobSummary(Serial, saved);
+    printBlobDetail(Serial, saved);
+
+    blob_ = saved;
+    have_blob_ = true;
+    runtime_.rebuildFromBlob(blob_);
+
+    resetMEKF_();
+  }
+
+  // --- MEKF ---
+  void resetMEKF_() {
+    // Noise tuning for 240 Hz acc+gyro updates:
+    // - sigma_a: accel measurement noise (m/s^2). Larger = less trusting accel under motion.
+    // - sigma_g: gyro noise used in process Q.
+    // - sigma_m: mag measurement noise for *unit* mag vector updates (dimensionless).
+    //
+    // These are conservative “works on a boat / handheld” defaults.
+    const float g = ImuCalCfg::g_std;
+
+    Vector3f sigma_a; sigma_a << 0.06f * g, 0.06f * g, 0.06f * g;   // ~0.59 m/s^2
+    Vector3f sigma_g; sigma_g << 0.0030f, 0.0030f, 0.0030f;         // rad/s
+    Vector3f sigma_m; sigma_m << 0.020f, 0.020f, 0.020f;            // unit-vector noise
+
+    const float Pq0 = 0.5f;
+    const float Pb0 = 1e-2f;
+    const float b0  = 1e-9f;
+
+    if (mekf_) {
+      mekf_->~QuaternionMEKF<float, true>();
+      mekf_ = nullptr;
+    }
+    mekf_ = new (mekf_storage_) QuaternionMEKF<float, true>(sigma_a, sigma_g, sigma_m, Pq0, Pb0, b0);
+
+    mekf_inited_ = false;
+
+    last_mag_uT_.setZero();
+    last_mag_ms_ = 0;
+
+    Serial.println("[MEKF] reset");
+  }
+
+  void updateFilter_(const ImuSample& s) {
+    // Calibrate signals (or pass through if missing)
+    a_cal_ = runtime_.applyAccel(s.a, s.tempC);
+    w_cal_ = runtime_.applyGyro (s.w, s.tempC);
+    m_cal_ = runtime_.applyMag  (s.m);
+
+    // dt from micros; clamp sane
+    const uint32_t now_us = micros();
+    float dt = (now_us - last_update_us_) * 1e-6f;
+    last_update_us_ = now_us;
+
+    dt = clampf_(dt, 0.0010f, 0.0200f);
+
+    // Mag validity (magnitude)
+    const float mn = m_cal_.norm();
+    mag_ok_ = (mn > 5.0f && mn < 200.0f); // very broad in uT
+    mag_norm_uT_ = mn;
+
+    // Normalize mag for MEKF (unit direction)
+    Vector3f m_u = Vector3f::Zero();
+    if (mag_ok_ && mn > 1e-6f) m_u = m_cal_ / mn;
+
+    // Stale-repeat rejection + ODR gating
+    const uint32_t now_ms = millis();
+    bool mag_fresh = false;
+    if (mag_ok_) {
+      const uint32_t dtm = now_ms - last_mag_ms_;
+      const float dm = (m_cal_ - last_mag_uT_).norm();
+      if (dtm >= MAG_SAMPLE_SPACING_MS && dm >= MAG_MIN_DELTA_uT) {
+        mag_fresh = true;
+        last_mag_ms_ = now_ms;
+        last_mag_uT_ = m_cal_;
+      }
+    }
+    mag_fresh_ = mag_fresh;
+
+    // Initialize once: prefer acc+mag if mag looks OK
+    if (!mekf_inited_) {
+      if (mag_ok_) mekf_->initialize_from_acc_mag(a_cal_, m_u);
+      else         mekf_->initialize_from_acc(a_cal_);
+      mekf_inited_ = true;
+    }
+
+    // Core filter updates at ~240Hz
+    mekf_->time_update(w_cal_, dt);
+    mekf_->measurement_update_acc_only(a_cal_);
+
+    // Mag update at mag ODR (gated)
+    if (mag_ok_ && mag_fresh_) {
+      mekf_->measurement_update_mag_only(m_u);
+    }
+
+    // Extract Euler from BODY->WORLD quaternion (q_bw)
+    const auto qvec = mekf_->quaternion(); // [x,y,z,w]
+    Eigen::Quaternionf q_bw(qvec(3), qvec(0), qvec(1), qvec(2));
+    Eigen::Matrix3f R = q_bw.toRotationMatrix();
+
+    // ZYX extraction (yaw, pitch, roll)
+    float yaw   = atan2f(R(1, 0), R(0, 0));
+    float pitch = -asinf(clampf_(R(2, 0), -1.0f, 1.0f));
+    float roll  = atan2f(R(2, 1), R(2, 2));
+
+    roll_deg_  = roll  * RAD_TO_DEG;
+    pitch_deg_ = pitch * RAD_TO_DEG;
+    yaw_deg_   = yaw   * RAD_TO_DEG;
+
+    heading_deg_ = wrap360_(yaw_deg_);
+  }
+
+  // --- UI ---
+  void drawHomeStatic_() {
+    ui_.setReadRotation();
+    ui_.title("COMPASS");
+    M5.Display.printf("BLOB: %s\n", have_blob_ ? "YES" : "NO");
+    M5.Display.printf("A:%d G:%d M:%d\n",
+                      (int)runtime_.acc.ok, (int)runtime_.gyr.ok, (int)runtime_.mag.ok);
+    ui_.line("Tap: calibrate");
+    ui_.line("Tap x3: erase");
+    ui_.line("");
+  }
+
+  void drawHomePending_() {
+    ui_.setReadRotation();
+    ui_.title("COMPASS");
+    M5.Display.printf("Tap count: %d\n", tap_count_);
+    ui_.line("");
+    ui_.line("Wait...");
+    ui_.line("1 tap=CAL");
+    ui_.line("3 taps=ERASE");
+
+    int32_t remain = (int32_t)(tap_deadline_ms_ - millis());
+    remain = remain < 0 ? 0 : remain;
+    float t01 = 1.0f - (float)remain / (float)ImuCalWizardCfg::TAP_WINDOW_MS;
+    ui_.bar01(t01);
+  }
+
+  void updateUI_() {
+    const uint32_t now_ms = millis();
+    if (now_ms - last_ui_ms_ < UI_REFRESH_MS) return;
+    last_ui_ms_ = now_ms;
+
+    ui_.setReadRotation();
+    ui_.title("COMPASS");
+
+    M5.Display.printf("HDG: %6.1f deg\n", (double)heading_deg_);
+    M5.Display.printf("ROL: %6.1f deg\n", (double)roll_deg_);
+    M5.Display.printf("PIT: %6.1f deg\n", (double)pitch_deg_);
+
+    M5.Display.printf("MAG: %s  %s\n",
+                      mag_ok_ ? "OK " : "BAD",
+                      mag_fresh_ ? "NEW" : "OLD");
+
+    M5.Display.printf("|m|: %6.1f uT\n", (double)mag_norm_uT_);
+    M5.Display.printf("|aR|:%5.2f |aC|:%5.2f\n",
+                      (double)s_last_a_norm_raw_, (double)a_cal_.norm());
+
+    ui_.line("");
+    M5.Display.printf("A:%d G:%d M:%d  B:%s\n",
+                      (int)runtime_.acc.ok, (int)runtime_.gyr.ok, (int)runtime_.mag.ok,
+                      have_blob_ ? "YES" : "NO");
+  }
+
+  // --- Serial ---
+  void streamSerial_() {
+    const uint32_t now_ms = millis();
+    if (now_ms - last_serial_ms_ < SERIAL_REFRESH_MS) return;
+    last_serial_ms_ = now_ms;
+
+    const float t = (micros() - start_us_) * 1e-6f;
+
+    Serial.printf("t=%.2f ", (double)t);
+    Serial.printf("HDG:%6.1f ", (double)heading_deg_);
+    Serial.printf("ROLL:%6.1f PITCH:%6.1f ", (double)roll_deg_, (double)pitch_deg_);
+    Serial.printf("mag:%s/%s |m|=%.1f ",
+                  mag_ok_ ? "OK" : "BAD",
+                  mag_fresh_ ? "NEW" : "OLD",
+                  (double)mag_norm_uT_);
+    Serial.printf("|a_raw|=%.4f |a_cal|=%.4f ",
+                  (double)s_last_a_norm_raw_, (double)a_cal_.norm());
+    Serial.printf("wC:%+.4f,%+.4f,%+.4f ",
+                  (double)w_cal_.x(), (double)w_cal_.y(), (double)w_cal_.z());
+    Serial.println();
+  }
+
+private:
+  // Plumbing
+  M5Ui ui_{};
+  ImuCalStoreNvs store_{};
+  ImuCalWizard wizard_;
+
+  bool have_blob_ = false;
+  ImuCalBlobV1 blob_{};
+  RuntimeCals runtime_{};
+
+  // Tap state
+  int tap_count_ = 0;
+  uint32_t tap_deadline_ms_ = 0;
+
+  // Timing
+  uint32_t start_us_ = 0;
+  uint32_t next_tick_us_ = 0;
+  uint32_t last_update_us_ = 0;
+  uint32_t last_ui_ms_ = 0;
+  uint32_t last_serial_ms_ = 0;
+
+  // MEKF (placement-new because it has const members; assignment is not viable)
+  alignas(QuaternionMEKF<float, true>) uint8_t mekf_storage_[sizeof(QuaternionMEKF<float, true>)];
+  QuaternionMEKF<float, true>* mekf_ = nullptr;
+  bool mekf_inited_ = false;
+
+  // Latest calibrated values
+  Vector3f a_cal_ = Vector3f::Zero();
+  Vector3f w_cal_ = Vector3f::Zero();
+  Vector3f m_cal_ = Vector3f::Zero();
+  float s_last_a_norm_raw_ = 0.0f;
+
+  // Attitude / heading
+  float roll_deg_ = 0.0f;
+  float pitch_deg_ = 0.0f;
+  float yaw_deg_ = 0.0f;
+  float heading_deg_ = 0.0f;
+
+  // Mag gating
+  bool mag_ok_ = false;
+  bool mag_fresh_ = false;
+  float mag_norm_uT_ = 0.0f;
+  Vector3f last_mag_uT_ = Vector3f::Zero();
+  uint32_t last_mag_ms_ = 0;
+
+  // Last raw accel norm for UI
+  void cacheRawNorm_(const ImuSample& s) { s_last_a_norm_raw_ = s.a.norm(); }
+
+  // Override updateFilter_ to also cache raw norm
+  void updateFilter_(ImuSample const& s_in, int /*dummy*/) {}
+
+  void updateFilter_(const ImuSample& s_in) {
+    cacheRawNorm_(s_in);
+    // (rest is above) — to avoid duplicating, keep actual implementation here:
+    const ImuSample& s = s_in;
+
+    a_cal_ = runtime_.applyAccel(s.a, s.tempC);
+    w_cal_ = runtime_.applyGyro (s.w, s.tempC);
+    m_cal_ = runtime_.applyMag  (s.m);
+
+    const uint32_t now_us = micros();
+    float dt = (now_us - last_update_us_) * 1e-6f;
+    last_update_us_ = now_us;
+    dt = clampf_(dt, 0.0010f, 0.0200f);
+
+    const float mn = m_cal_.norm();
+    mag_ok_ = (mn > 5.0f && mn < 200.0f);
+    mag_norm_uT_ = mn;
+
+    Vector3f m_u = Vector3f::Zero();
+    if (mag_ok_ && mn > 1e-6f) m_u = m_cal_ / mn;
+
+    const uint32_t now_ms = millis();
+    bool mag_fresh = false;
+    if (mag_ok_) {
+      const uint32_t dtm = now_ms - last_mag_ms_;
+      const float dm = (m_cal_ - last_mag_uT_).norm();
+      if (dtm >= MAG_SAMPLE_SPACING_MS && dm >= MAG_MIN_DELTA_uT) {
+        mag_fresh = true;
+        last_mag_ms_ = now_ms;
+        last_mag_uT_ = m_cal_;
+      }
+    }
+    mag_fresh_ = mag_fresh;
+
+    if (!mekf_inited_) {
+      if (mag_ok_) mekf_->initialize_from_acc_mag(a_cal_, m_u);
+      else         mekf_->initialize_from_acc(a_cal_);
+      mekf_inited_ = true;
+    }
+
+    mekf_->time_update(w_cal_, dt);
+    mekf_->measurement_update_acc_only(a_cal_);
+
+    if (mag_ok_ && mag_fresh_) {
+      mekf_->measurement_update_mag_only(m_u);
+    }
+
+    const auto qvec = mekf_->quaternion(); // [x,y,z,w]
+    Eigen::Quaternionf q_bw(qvec(3), qvec(0), qvec(1), qvec(2));
+    Eigen::Matrix3f R = q_bw.toRotationMatrix();
+
+    float yaw   = atan2f(R(1, 0), R(0, 0));
+    float pitch = -asinf(clampf_(R(2, 0), -1.0f, 1.0f));
+    float roll  = atan2f(R(2, 1), R(2, 2));
+
+    roll_deg_  = roll  * RAD_TO_DEG;
+    pitch_deg_ = pitch * RAD_TO_DEG;
+    yaw_deg_   = yaw   * RAD_TO_DEG;
+
+    heading_deg_ = wrap360_(yaw_deg_);
+  }
+};
+
+static CompassApp g_app;
+
+void setup() {
+  g_app.begin();
 }
 
-void loop(void) {
-  unsigned long start = micros();
-  M5.update();
-  repeatMe();
-  long duration = micros() - start + 1;
-  long delay_micros = 10000 - duration;  // ~100 Hz
-  if (delay_micros > 0) {
-    delayMicroseconds(delay_micros);
-  }
+void loop() {
+  g_app.tick();
 }
