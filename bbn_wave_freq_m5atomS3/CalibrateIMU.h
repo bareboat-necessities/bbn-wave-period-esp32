@@ -685,7 +685,7 @@ struct AccelCalibrator {
   T max_gyro_for_static = T(0.35);  // rad/s
   T accel_mag_tol = T(1.0);         // m/s^2, accept if | |a| - g | < tol
 
-  // --- NEW knobs: prevent axis rotation ---
+  // prevent axis rotation
   enum class AccelSMode : uint8_t { PolarSPD = 0, DiagonalOnly = 1 };
 
   // Recommended default for compass/attitude: DiagonalOnly
@@ -792,7 +792,7 @@ struct AccelCalibrator {
       temps[nb]   = tmean;
       nb++;
 
-      // --- NEW: convert fit matrix to axis-safe S ---
+      // convert fit matrix to axis-safe S
       // 1) Strip rotation using polar SPD factor
       Eigen::Matrix<T,3,3> S_spd;
       if (!polar_spd_factor_3x3<T>(fitk.A, S_spd)) {
