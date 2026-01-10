@@ -67,7 +67,7 @@
 #include <freertos/task.h>
 
 #include "AtomS3R_ImuCal.h"   // blob/store/read/mapping/clearM5UnifiedImuCalibration()
-#include "CalibrateIMU_alt.h" // imu_cal::* + FitFail
+#include "CalibrateIMU.h"     // imu_cal::* + FitFail
 
 namespace atoms3r_ical {
 
