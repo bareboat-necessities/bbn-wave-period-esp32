@@ -1,13 +1,14 @@
 #pragma once
+
 /*
+  Copyright 2026, Mikhail Grushinskiy
+  
   AtomS3R IMU calibration wizard UI (Accel + Gyro + Mag) using imu_cal::* calibrators.
 
   Depends on:
     - AtomS3R_ImuCal.h (blob/store/runtime + mapping/read + clearM5UnifiedImuCalibration())
 
-  ---------------------------------------------------------------------------
-  Typical usage (boot flow)
-  ---------------------------------------------------------------------------
+  Typical usage (boot flow):
 
     #include <M5Unified.h>
     #include "AtomS3R_ImuCal.h"
@@ -70,9 +71,7 @@
 
 namespace atoms3r_ical {
 
-// -------------------------
 // Wizard configuration
-// -------------------------
 struct ImuCalWizardCfg {
   // If text rotated wrong initially, change this to 1 or 3.
   static constexpr uint8_t ROT_READ = 0;
@@ -120,9 +119,7 @@ struct ImuCalWizardCfg {
   static constexpr uint32_t MENU_TAP_WINDOW_MS  = 650;
 };
 
-// -------------------------
 // Small helpers
-// -------------------------
 static inline int32_t i32_max_(int32_t a, int32_t b) { return (a > b) ? a : b; }
 
 static inline uint8_t rot_add_(uint8_t base, int delta) {
@@ -186,9 +183,7 @@ static inline float unit_dir_cov_det_(const Vector3f* x, int n) {
   return detC;
 }
 
-// -------------------------
 // Input: BtnA ONLY + keep-awake
-// -------------------------
 class Input {
 public:
   static void update() {
@@ -210,9 +205,7 @@ private:
   static inline uint32_t last_keep_awake_ms_ = 0;
 };
 
-// -------------------------
 // UI helpers
-// -------------------------
 class M5Ui {
 public:
   void begin() {
@@ -315,7 +308,7 @@ public:
 
   enum class MagFailAction : uint8_t { RETRY_MAG=0, REDO_ALL=1, ABORT=2 };
 
-  // NO TIMEOUT (user explicitly asked for no timeout)
+  // NO TIMEOUT 
   MagFailAction magFailMenu(const char* why1, const char* why2=nullptr) {
     setReadRotation();
     title("MAG FAIL");
@@ -376,9 +369,7 @@ private:
   uint8_t rot_ = ImuCalWizardCfg::ROT_READ;
 };
 
-// -------------------------
 // Wizard
-// -------------------------
 struct Pose {
   const char* short_name;
   const char* instruction;
@@ -659,9 +650,7 @@ private:
     return true;
   }
 
-  // -------------------------
   // Capture steps
-  // -------------------------
   bool readSample_(ImuSample& s) {
     // Uses the mapping/read function from AtomS3R_ImuCal.h
     return readImuMapped(M5.Imu, s);
