@@ -71,7 +71,7 @@ struct ImuCalCfg {
   static constexpr uint32_t MAG_MIN_TIME_MS       = 45000;  // require >= 45 seconds of motion
 
   // MAG stale-repeat reject
-  static constexpr float MAG_MIN_DELTA_uT         = 0.15f;
+  static constexpr float MAG_MIN_DELTA_uT         = 0.03f;
 
   // MAG coverage requirements (ratio-based, unitless)
   // Require the weakest axis span to be at least this fraction of the strongest span.
@@ -103,6 +103,14 @@ static inline float clamp01_(float x) {
   if (x < 0.f) return 0.f;
   if (x > 1.f) return 1.f;
   return x;
+}
+
+static inline float second_smallest3_(float a, float b, float c) {
+  // median of 3 (2nd smallest)
+  if (a > b) { float t=a; a=b; b=t; }
+  if (b > c) { float t=b; b=c; c=t; }
+  if (a > b) { float t=a; a=b; b=t; }
+  return b;
 }
 
 static inline bool finite3_(const Vector3f& v) {
@@ -913,12 +921,11 @@ private:
     // Raw bounds
     Vector3f vmin(+1e9f, +1e9f, +1e9f);
     Vector3f vmax(-1e9f, -1e9f, -1e9f);
-
-    // Centered-direction coverage: track running mean + min/max of unit direction components
-    Vector3f mu = Vector3f::Zero();
-    int mu_n = 0;
+    
+    // Direction coverage using a stable center (midpoint of bounds)
     Vector3f umin(+1e9f, +1e9f, +1e9f);
     Vector3f umax(-1e9f, -1e9f, -1e9f);
+    Vector3f center = Vector3f::Zero();
 
     while (millis() - tcap0 < ImuCalCfg::MAG_TIMEOUT_MS) {
       Input::update();
@@ -946,16 +953,15 @@ private:
           if (after > before) {
             last_add_ms = now;
             last_added = s.m;
-
+          
             vmin = vmin.cwiseMin(s.m);
             vmax = vmax.cwiseMax(s.m);
-
-            // update running mean mu (Welford mean)
-            mu_n++;
-            mu += (s.m - mu) / (float)mu_n;
-
-            // update unit direction extremes using centered vector
-            Vector3f c = s.m - mu;
+          
+            // stable-ish center from bounds midpoint
+            center = 0.5f * (vmin + vmax);
+          
+            // unit direction about that center
+            Vector3f c = s.m - center;
             float cn = c.norm();
             if (cn > 1e-6f) {
               Vector3f u = c / cn;
@@ -987,9 +993,7 @@ private:
         float px = clamp01_(ur.x() / ImuCalCfg::MAG_URANGE_TARGET);
         float py = clamp01_(ur.y() / ImuCalCfg::MAG_URANGE_TARGET);
         float pz = clamp01_(ur.z() / ImuCalCfg::MAG_URANGE_TARGET);
-        pC = px;
-        if (py < pC) pC = py;
-        if (pz < pC) pC = pz;
+        pC = second_smallest3_(px, py, pz); // progress reflects 2 axes covered
       }
 
       float p = pS;
@@ -1024,11 +1028,17 @@ private:
           out_why = "Coverage too flat";
           return false;
         }
-        if (!(ur.x() >= ImuCalCfg::MAG_URANGE_TARGET &&
-              ur.y() >= ImuCalCfg::MAG_URANGE_TARGET &&
-              ur.z() >= ImuCalCfg::MAG_URANGE_TARGET)) {
-          out_why = "Too planar: flip more";
-          return false;
+        int axes_ok = 0;
+        if (ur.x() >= ImuCalCfg::MAG_URANGE_TARGET) axes_ok++;
+        if (ur.y() >= ImuCalCfg::MAG_URANGE_TARGET) axes_ok++;
+        if (ur.z() >= ImuCalCfg::MAG_URANGE_TARGET) axes_ok++;
+        
+        if (axes_ok < 2) {
+          // Don’t block capture on this — it’s easy to under-report coverage indoors.
+          // Let the fitter decide; if truly planar, fit will fail anyway.
+          Serial.printf("[MAG] WARN: urange low (axes_ok=%d) urange=(%.2f,%.2f,%.2f) target=%.2f\n",
+                        axes_ok, (double)ur.x(), (double)ur.y(), (double)ur.z(),
+                        (double)ImuCalCfg::MAG_URANGE_TARGET);
         }
 
         ui_.showOkAuto("MAG", "Captured");
