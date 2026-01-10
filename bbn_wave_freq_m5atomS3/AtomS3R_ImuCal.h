@@ -37,7 +37,7 @@
         while (true) delay(100);
       }
 
-      // 2) Load YOUR calibration from NVS
+      // 2) Load our calibration from NVS
       bool have = store.load(blob);
 
       if (have) {
@@ -52,7 +52,7 @@
         Serial.println("[BOOT] No saved AtomS3R calibration.");
         Serial.println("[BOOT] Starting calibration UI...");
 
-        // 5) Start YOUR calibration UI / wizard
+        // 5) Start calibration UI / wizard
         // run_my_calibration_ui_and_save_blob(store);
 
         // After wizard saves:
@@ -68,7 +68,7 @@
       const auto w_cal = cals.applyGyro (s.w, s.tempC);
       const auto m_cal = cals.applyMag  (s.m);
 
-      // Use a_cal / w_cal / m_cal everywhere in your application
+      // Use a_cal / w_cal / m_cal everywhere in the application
       // ...
     }
 
@@ -88,8 +88,8 @@
 #endif
 #include <ArduinoEigenDense.h>
 
-// Requires your existing calibration types (imu_cal::AccelCalibration, etc.)
-#include "CalibrateIMU_alt.h"
+// Requires existing calibration types (imu_cal::AccelCalibration, etc.)
+#include "CalibrateIMU.h"
 
 namespace atoms3r_ical {
 
