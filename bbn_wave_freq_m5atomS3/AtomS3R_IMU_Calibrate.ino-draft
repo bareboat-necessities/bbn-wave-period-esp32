@@ -1,4 +1,7 @@
 /*
+
+  Copyright 2026, Mikhail Grushinskiy
+
   AtomS3R IMU calibration wizard (Accel + Gyro + Mag) using imu_cal::* calibrators.
 
   In this version:
