@@ -72,7 +72,7 @@ struct ImuCalCfg {
   // MAG timing / downsample:
   // Only accept a mag sample at most every N ms => spreads buffer over time.
   static constexpr uint32_t MAG_SAMPLE_SPACING_MS = 60;     // ~16.7 Hz accepted max
-  static constexpr uint32_t MAG_MIN_TIME_MS       = 20000;  // require at least 20 seconds of motion
+  static constexpr uint32_t MAG_MIN_TIME_MS       = 40000;  // require at least 40 seconds of motion
 
   // MAG dataset span requirements (uT) — prevents planar “flat” data that causes NONPOSITIVE.
   static constexpr float MAG_MIN_SPAN_MIN_AXIS_uT   = 12.0f;  // weakest axis must span at least this much
@@ -904,7 +904,7 @@ private:
   bool captureMag_(const char*& out_why) {
     out_why = nullptr;
 
-    ui_.waitTap("MAG", "Rotate 20+ sec", "Tap to start");
+    ui_.waitTap("MAG", "Rotate 40+ sec", "Tap to start");
 
     int start_n  = magCal_.buf.n;
     int target_n = start_n + ImuCalCfg::MAG_NEED;
