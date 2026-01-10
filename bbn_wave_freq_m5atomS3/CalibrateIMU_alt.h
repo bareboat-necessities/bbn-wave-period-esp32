@@ -405,19 +405,21 @@ static EllipsoidSphereFit<T> ellipsoid_to_sphere_robust(
     b = -lu.solve(q);
     if (!isfinite3(b)) return FitFail::NON_FINITE_INPUT;
     
-    // s = 1 + b^T Q b - c  (must be > 0)
-    // Compute in double to avoid float cancellation / tiny-negative s.
     const double btQb =
         b.template cast<double>().dot(
             Q.template cast<double>() * b.template cast<double>());
     const double sD = 1.0 + btQb - (double)c;
     
-    // If s is tiny/negative, model is invalid (or numerically unstable)
-    if (!std::isfinite(sD) || sD <= 1e-12) return FitFail::MODEL_S_NONPOSITIVE;
+    // Accept either sign; only reject near-zero (degenerate scaling / numerical collapse)
+    if (!std::isfinite(sD) || fabs(sD) <= 1e-12) return FitFail::MODEL_S_NONPOSITIVE;
     
+    // IMPORTANT: use signed s so that if Q is negative definite and s is negative,
+    // M = Q/s is still positive definite.
     const T s = (T)sD;
-    // M = Q / s, symmetrize
+    
+    // M = Q / s (SIGNED), then symmetrize
     Eigen::Matrix<T,3,3> M = Q / s;
+    M = T(0.5) * (M + M.transpose());
 
     // project to SPD to avoid borderline LLT failures
     if (!project_spd_3x3<T>(M, T(1e-5), T(1e-7))) return FitFail::MODEL_SPD_PROJECT_FAIL;
