@@ -14,6 +14,14 @@
     This version stores the wizard as a member of the app (static storage) to avoid stack overflow.
   - Keeps display awake + brightness refreshed during wizard loops to prevent dim/sleep.
 
+  MAG fixes in this version:
+  - If MAG capture/fit fails, you can retry MAG ONLY (keeps accel+gyro results).
+  - Failure screen shows the fit reason string (e.g., MODEL_S_NONPOSITIVE).
+  - Menu:
+      Tap once  = Retry MAG
+      Tap twice = Redo ALL (accel+gyro+mag)
+      Wait      = Abort / return home
+
   Units:
     accel: m/s^2
     gyro:  rad/s
@@ -50,9 +58,7 @@ struct ImuCalCfg {
   static constexpr float g_std   = 9.80665f;
   static constexpr float DEG2RAD = 3.14159265358979323846f / 180.0f;
 
-  // IMPORTANT:
-  // Set ROT_READ so that text is readable when you hold the device in your preferred "reading" orientation.
-  // You said: "Up is USB down" -> choose ROT_READ so that USB-down orientation reads normally.
+  // You said: "Up is USB down" -> choose ROT_READ so that USB-down reads normally.
   static constexpr uint8_t ROT_READ = 0;
 
   // Keep-awake: refresh brightness & wake display periodically while inside long loops (wizard blocks loop()).
@@ -88,6 +94,10 @@ struct ImuCalCfg {
   // Audio & screen
   static constexpr uint8_t  BEEP_VOLUME         = 180; // 0..255
   static constexpr uint8_t  LCD_BRIGHTNESS      = 200; // 0..255
+
+  // Retry menu tap window (inside wizard)
+  static constexpr uint32_t RETRY_MENU_TIMEOUT_MS = 4500;
+  static constexpr uint32_t RETRY_TAP_WINDOW_MS   = 650;  // group taps
 };
 
 // ----------------------------
@@ -330,7 +340,6 @@ public:
     if ((uint32_t)(now - last_keep_awake_ms_) > ImuCalCfg::KEEP_AWAKE_EVERY_MS) {
       last_keep_awake_ms_ = now;
       M5.Display.setBrightness(ImuCalCfg::LCD_BRIGHTNESS);
-      // LovyanGFX: wakeup() exists on M5GFX
       M5.Display.wakeup();
     }
 
@@ -363,7 +372,6 @@ public:
   void setReadRotation() { setRotation(ImuCalCfg::ROT_READ); }
 
   void clear() {
-    // IMPORTANT: do NOT force ROT_READ here (that broke per-pose rotation)
     M5.Display.fillScreen(TFT_BLACK);
     M5.Display.setCursor(0,0);
   }
@@ -416,7 +424,7 @@ public:
     uint32_t t0 = millis();
     while (millis() - t0 < ImuCalCfg::OK_PAUSE_MS) {
       Input::update();
-      if (Input::tapPressed()) break; // tap can skip pause
+      if (Input::tapPressed()) break;
       delay(10);
     }
   }
@@ -450,7 +458,51 @@ public:
     return false;
   }
 
+  // ---------- MAG retry menu ----------
+  enum class MagFailAction : uint8_t { RETRY_MAG=0, REDO_ALL=1, ABORT=2 };
+
+  MagFailAction magFailMenu(const char* why1, const char* why2=nullptr) {
+    setReadRotation();
+    title("MAG FAIL");
+    if (why1) line(why1);
+    if (why2) line(why2);
+    line("");
+    line("Tap: retry MAG");
+    line("Tap x2: redo ALL");
+    line("Wait: abort");
+    Beeper::bad();
+
+    const uint8_t taps = waitTapCount_(ImuCalCfg::RETRY_MENU_TIMEOUT_MS, ImuCalCfg::RETRY_TAP_WINDOW_MS);
+
+    if (taps >= 2) return MagFailAction::REDO_ALL;
+    if (taps == 1) return MagFailAction::RETRY_MAG;
+    return MagFailAction::ABORT;
+  }
+
 private:
+  // returns number of taps grouped by `window_ms`, or 0 if none (timeout)
+  static uint8_t waitTapCount_(uint32_t total_timeout_ms, uint32_t window_ms) {
+    uint8_t count = 0;
+    uint32_t deadline = 0;
+    uint32_t start = millis();
+
+    while ((uint32_t)(millis() - start) < total_timeout_ms) {
+      Input::update();
+
+      if (Input::tapPressed()) {
+        count++;
+        deadline = millis() + window_ms;
+      }
+
+      if (count > 0 && (int32_t)(millis() - deadline) > 0) {
+        break; // tap group finished
+      }
+
+      delay(10);
+    }
+    return count;
+  }
+
   uint8_t rot_ = ImuCalCfg::ROT_READ;
 };
 
@@ -458,9 +510,9 @@ private:
 // Wizard (stored as member => not on stack)
 // ----------------------------
 struct Pose {
-  const char* short_name;     // fits on screen
-  const char* instruction;    // short
-  uint8_t rot_capture;        // screen rotation to make text readable in that physical pose
+  const char* short_name;
+  const char* instruction;
+  uint8_t rot_capture;
 };
 
 class ImuCalWizard {
@@ -471,87 +523,123 @@ public:
   bool run() {
     Serial.println("[WIZ] start");
 
-    // Disable M5 built-in offsets influence
-    M5.Imu.setCalibration(0,0,0);
-    M5.Imu.clearOffsetData();
+    // We allow "redo all" without returning to home
+    while (true) {
+      // Disable M5 built-in offsets influence
+      M5.Imu.setCalibration(0,0,0);
+      M5.Imu.clearOffsetData();
 
-    accelCal_.clear();
-    gyroCal_.clear();
-    magCal_.clear();
+      // clear calibrators
+      accelCal_.clear();
+      gyroCal_.clear();
+      magCal_.clear();
 
-    ui_.waitTap("IMU CAL", "Tap to begin");
+      // clear outputs (fresh run)
+      acc_out_ = imu_cal::AccelCalibration<float>{};
+      gyr_out_ = imu_cal::GyroCalibration<float>{};
+      mag_out_ = imu_cal::MagCalibration<float>{};
 
-    // Pose rotations are relative to ROT_READ (USB-down readable, per your note).
-    // If LEFT/RIGHT end up swapped, swap the +/-1 deltas below.
-    const uint8_t R = ImuCalCfg::ROT_READ;
+      ui_.waitTap("IMU CAL", "Tap to begin");
 
-    const Pose poses[6] = {
-      {"1/6 SCREEN UP",    "Screen faces up",      R},
-      {"2/6 SCREEN DOWN",  "Screen faces table",   R},                 // display not visible; keep read rot
-      {"3/6 USB UP",       "USB points up",        rot_add_(R, 2)},    // 180 from USB-down
-      {"4/6 USB DOWN",     "USB points down",      R},
-      {"5/6 LEFT DOWN",    "Left edge down",       rot_add_(R, 1)},    // 90
-      {"6/6 RIGHT DOWN",   "Right edge down",      rot_add_(R, -1)},   // -90
-    };
+      const uint8_t R = ImuCalCfg::ROT_READ;
+      const Pose poses[6] = {
+        {"1/6 SCREEN UP",    "Screen faces up",      R},
+        {"2/6 SCREEN DOWN",  "Screen faces table",   R},                 // display not visible
+        {"3/6 USB UP",       "USB points up",        rot_add_(R, 2)},    // 180 from USB-down
+        {"4/6 USB DOWN",     "USB points down",      R},
+        {"5/6 LEFT DOWN",    "Left edge down",       rot_add_(R, 1)},    // +90
+        {"6/6 RIGHT DOWN",   "Right edge down",      rot_add_(R, -1)},   // -90
+      };
 
-    for (int i = 0; i < 6; ++i) {
-      if (!captureAccelPose_(poses[i])) return false;
+      for (int i = 0; i < 6; ++i) {
+        if (!captureAccelPose_(poses[i])) return false;
+      }
+
+      Serial.printf("[ACC] accepted=%d\n", accelCal_.buf.n);
+      if (accelCal_.buf.n < ImuCalCfg::ACCEL_MIN_TO_FIT) {
+        ui_.fail("ACCEL", "Too few accepted");
+        return false;
+      }
+
+      if (!runFitTask_(FitKind::ACCEL, "ACCEL", /*show_fail=*/true)) return false;
+
+      if (!captureGyro_()) return false;
+
+      if (gyroCal_.buf.n < ImuCalCfg::GYRO_MIN_TO_FIT) {
+        ui_.fail("GYRO", "Too few accepted");
+        return false;
+      }
+
+      if (!runFitTask_(FitKind::GYRO, "GYRO", /*show_fail=*/true)) return false;
+
+      // -------- MAG stage with retry loop (keeps accel+gyro results) --------
+      while (true) {
+        magCal_.clear();
+
+        const char* cap_why = nullptr;
+        if (!captureMag_(cap_why)) {
+          // cap_why is short, show it
+          auto act = ui_.magFailMenu(cap_why ? cap_why : "Capture failed");
+          if (act == M5Ui::MagFailAction::RETRY_MAG) continue;
+          if (act == M5Ui::MagFailAction::REDO_ALL) break; // restart full wizard
+          return false; // abort
+        }
+
+        if (magCal_.buf.n < ImuCalCfg::MAG_MIN_TO_FIT) {
+          auto act = ui_.magFailMenu("Too few accepted", "Rotate bigger loops");
+          if (act == M5Ui::MagFailAction::RETRY_MAG) continue;
+          if (act == M5Ui::MagFailAction::REDO_ALL) break;
+          return false;
+        }
+
+        if (!runFitTask_(FitKind::MAG, "MAG", /*show_fail=*/false)) {
+          // show exact reason (e.g., MODEL_S_NONPOSITIVE)
+          const char* why = imu_cal::fitFailStr(fit_.reason);
+          auto act = ui_.magFailMenu(why ? why : "Fit failed", "Retry MAG?");
+          if (act == M5Ui::MagFailAction::RETRY_MAG) continue;
+          if (act == M5Ui::MagFailAction::REDO_ALL) break;
+          return false;
+        }
+
+        // MAG succeeded
+        break;
+      }
+
+      // If user chose "redo all" from MAG menu, restart the outer loop
+      if (!mag_out_.ok) {
+        Serial.println("[MAG] user chose redo all");
+        continue;
+      }
+
+      // Save
+      ImuCalBlobV1 blob{};
+      fillBlob_(blob);
+
+      ui_.setReadRotation();
+      ui_.title("SAVE");
+      ui_.line("Writing...");
+      bool wrote = store_.save(blob);
+
+      ImuCalBlobV1 rb{};
+      bool okrb = store_.load(rb);
+
+      Serial.printf("[SAVE] wrote=%d readback=%d\n", (int)wrote, (int)okrb);
+
+      if (!wrote || !okrb) {
+        ui_.fail("SAVE", "Write/readback fail");
+        return false;
+      }
+
+      ui_.title("DONE");
+      M5.Display.printf("A:%d G:%d M:%d\n", (int)rb.accel_ok, (int)rb.gyro_ok, (int)rb.mag_ok);
+      ui_.line("Saved OK");
+      ui_.line("");
+      ui_.line("Tap BtnA");
+      Beeper::ok();
+      while (true) { Input::update(); if (Input::tapPressed()) break; delay(10); }
+
+      return true;
     }
-
-    Serial.printf("[ACC] accepted=%d\n", accelCal_.buf.n);
-    if (accelCal_.buf.n < ImuCalCfg::ACCEL_MIN_TO_FIT) {
-      ui_.fail("ACCEL", "Too few accepted");
-      return false;
-    }
-
-    if (!runFitTask_(FitKind::ACCEL, "ACCEL")) return false;
-
-    if (!captureGyro_()) return false;
-
-    if (gyroCal_.buf.n < ImuCalCfg::GYRO_MIN_TO_FIT) {
-      ui_.fail("GYRO", "Too few accepted");
-      return false;
-    }
-
-    if (!runFitTask_(FitKind::GYRO, "GYRO")) return false;
-
-    if (!captureMag_()) return false;
-
-    if (magCal_.buf.n < ImuCalCfg::MAG_MIN_TO_FIT) {
-      ui_.fail("MAG", "Too few accepted");
-      return false;
-    }
-
-    if (!runFitTask_(FitKind::MAG, "MAG")) return false;
-
-    // Save
-    ImuCalBlobV1 blob{};
-    fillBlob_(blob);
-
-    ui_.setReadRotation();
-    ui_.title("SAVE");
-    ui_.line("Writing...");
-    bool wrote = store_.save(blob);
-
-    ImuCalBlobV1 rb{};
-    bool okrb = store_.load(rb);
-
-    Serial.printf("[SAVE] wrote=%d readback=%d\n", (int)wrote, (int)okrb);
-
-    if (!wrote || !okrb) {
-      ui_.fail("SAVE", "Write/readback fail");
-      return false;
-    }
-
-    ui_.title("DONE");
-    M5.Display.printf("A:%d G:%d M:%d\n", (int)rb.accel_ok, (int)rb.gyro_ok, (int)rb.mag_ok);
-    ui_.line("Saved OK");
-    ui_.line("");
-    ui_.line("Tap BtnA");
-    Beeper::ok();
-    while (true) { Input::update(); if (Input::tapPressed()) break; delay(10); }
-
-    return true;
   }
 
 private:
@@ -566,8 +654,8 @@ private:
     imu_cal::FitFail reason = imu_cal::FitFail::BAD_ARG;
     FitKind kind = FitKind::ACCEL;
 
-    ImuCalWizard* wiz = nullptr;   // owner (valid because FitCtx is member storage)
-    TaskHandle_t  task = nullptr;  // created task handle (for timeout kill)
+    ImuCalWizard* wiz = nullptr;
+    TaskHandle_t  task = nullptr;
   } fit_{};
 
   static void fitTaskAccel_(void* p) {
@@ -615,8 +703,7 @@ private:
     vTaskDelete(nullptr);
   }
 
-  bool runFitTask_(FitKind kind, const char* what) {
-    // init ctx
+  bool runFitTask_(FitKind kind, const char* what, bool show_fail) {
     fit_.done = false;
     fit_.ok = false;
     fit_.reason = imu_cal::FitFail::BAD_ARG;
@@ -648,7 +735,7 @@ private:
     );
 
     if (rc != pdPASS || fit_.task == nullptr) {
-      ui_.fail("FIT", "Task create failed");
+      if (show_fail) ui_.fail("FIT", "Task create failed");
       return false;
     }
 
@@ -659,10 +746,9 @@ private:
       Input::update();
 
       if (millis() - t0 > ImuCalCfg::FIT_TIMEOUT_MS) {
-        // best-effort kill
         vTaskDelete(fit_.task);
         fit_.task = nullptr;
-        ui_.fail("FIT", "Timeout");
+        if (show_fail) ui_.fail("FIT", "Timeout");
         return false;
       }
 
@@ -672,7 +758,7 @@ private:
     }
 
     if (!fit_.ok) {
-      ui_.fail(what, imu_cal::fitFailStr(fit_.reason));
+      if (show_fail) ui_.fail(what, imu_cal::fitFailStr(fit_.reason));
       return false;
     }
 
@@ -684,10 +770,8 @@ private:
   // Capture steps
   // ----------------------------
   bool captureAccelPose_(const Pose& p) {
-    // Tap prompt in read orientation
     ui_.waitTap("ACCEL", p.short_name, "Tap then place");
 
-    // After tap, rotate UI to match the pose so text is readable while you’re holding it in that pose.
     ui_.setRotation(p.rot_capture);
     ui_.title("ACCEL");
     ui_.line(p.short_name);
@@ -703,7 +787,6 @@ private:
       delay(30);
     }
 
-    // Capture
     int start_n  = accelCal_.buf.n;
     int target_n = start_n + ImuCalCfg::ACCEL_NEED_PER_POSE;
 
@@ -808,7 +891,11 @@ private:
     return false;
   }
 
-  bool captureMag_() {
+  // MAG capture now RETURNS a reason instead of calling ui_.fail(),
+  // so the caller can offer "Retry MAG" without losing accel+gyro.
+  bool captureMag_(const char*& out_why) {
+    out_why = nullptr;
+
     ui_.waitTap("MAG", "Rotate slowly", "Tap to start");
 
     int start_n  = magCal_.buf.n;
@@ -838,7 +925,7 @@ private:
 
       if (millis() - last_change > ImuCalCfg::STUCK_MS) {
         Serial.printf("[MAG] stuck got=%d\n", n - start_n);
-        ui_.fail("MAG", "No mag samples");
+        out_why = "No mag samples";
         return false;
       }
 
@@ -852,7 +939,7 @@ private:
       delay(5);
     }
 
-    ui_.fail("MAG", "Timeout");
+    out_why = "Timeout";
     return false;
   }
 
