@@ -556,93 +556,98 @@ public:
 
 private:
   // ----------------------------
-  // FIT task (big stack, no heap alloc, with reason)
+  // FIT task (big stack, member ctx, with reason)
   // ----------------------------
   enum class FitKind : uint8_t { ACCEL=0, GYRO=1, MAG=2 };
 
   struct FitCtx {
     volatile bool done = false;
-    volatile bool ok = false;
+    volatile bool ok   = false;
     imu_cal::FitFail reason = imu_cal::FitFail::BAD_ARG;
     FitKind kind = FitKind::ACCEL;
-    TaskHandle_t handle = nullptr;
-  } fit_{};
 
-  static void fitTaskTrampoline_(void* p) {
-    FitCtx* ctx = (FitCtx*)p;
-    ImuCalWizard* self = (ImuCalWizard*)ctx->handle; // not used; keep ABI? (we won't do this)
-    (void)self;
-    vTaskDelete(nullptr);
-  }
+    ImuCalWizard* wiz = nullptr;   // owner (valid because FitCtx is member storage)
+    TaskHandle_t  task = nullptr;  // created task handle (for timeout kill)
+  } fit_{};
 
   static void fitTaskAccel_(void* p) {
     FitCtx* ctx = (FitCtx*)p;
-    ImuCalWizard* self = (ImuCalWizard*)ctx->handle; // reinterpret stored pointer
+    ImuCalWizard* self = ctx->wiz;
+
     ctx->reason = imu_cal::FitFail::BAD_ARG;
     bool ok = self->accelCal_.fit(self->acc_out_, 3, 0.15f, &ctx->reason);
-    ok = ok && self->acc_out_.ok;
-    ctx->ok = ok;
+
+    Serial.printf("[ACC] fit=%d ok=%d reason=%s\n",
+                  (int)ok, (int)self->acc_out_.ok, imu_cal::fitFailStr(ctx->reason));
+
+    ctx->ok = ok && self->acc_out_.ok;
     ctx->done = true;
     vTaskDelete(nullptr);
   }
 
   static void fitTaskGyro_(void* p) {
     FitCtx* ctx = (FitCtx*)p;
-    ImuCalWizard* self = (ImuCalWizard*)ctx->handle;
+    ImuCalWizard* self = ctx->wiz;
+
     ctx->reason = imu_cal::FitFail::BAD_ARG;
     bool ok = self->gyroCal_.fit(self->gyr_out_, &ctx->reason);
-    ok = ok && self->gyr_out_.ok;
-    ctx->ok = ok;
+
+    Serial.printf("[GYR] fit=%d ok=%d reason=%s\n",
+                  (int)ok, (int)self->gyr_out_.ok, imu_cal::fitFailStr(ctx->reason));
+
+    ctx->ok = ok && self->gyr_out_.ok;
     ctx->done = true;
     vTaskDelete(nullptr);
   }
 
   static void fitTaskMag_(void* p) {
     FitCtx* ctx = (FitCtx*)p;
-    ImuCalWizard* self = (ImuCalWizard*)ctx->handle;
+    ImuCalWizard* self = ctx->wiz;
+
     ctx->reason = imu_cal::FitFail::BAD_ARG;
     bool ok = self->magCal_.fit(self->mag_out_, 3, 0.15f, &ctx->reason);
-    ok = ok && self->mag_out_.ok;
-    ctx->ok = ok;
+
+    Serial.printf("[MAG] fit=%d ok=%d reason=%s\n",
+                  (int)ok, (int)self->mag_out_.ok, imu_cal::fitFailStr(ctx->reason));
+
+    ctx->ok = ok && self->mag_out_.ok;
     ctx->done = true;
     vTaskDelete(nullptr);
   }
 
   bool runFitTask_(FitKind kind, const char* what) {
+    // init ctx
     fit_.done = false;
     fit_.ok = false;
     fit_.reason = imu_cal::FitFail::BAD_ARG;
     fit_.kind = kind;
+    fit_.wiz = this;
+    fit_.task = nullptr;
 
     ui_.setReadRotation();
     ui_.title("FIT");
     ui_.line(what);
     ui_.line("Working...");
 
-    // Hack: store `this` in the handle field so the task can access it without extra struct fields.
-    // TaskHandle_t is pointer-sized on ESP32, so this is safe in practice.
-    fit_.handle = (TaskHandle_t)this;
-
     TaskFunction_t fn = nullptr;
     switch (kind) {
       case FitKind::ACCEL: fn = &ImuCalWizard::fitTaskAccel_; break;
       case FitKind::GYRO:  fn = &ImuCalWizard::fitTaskGyro_;  break;
       case FitKind::MAG:   fn = &ImuCalWizard::fitTaskMag_;   break;
-      default: fn = &ImuCalWizard::fitTaskGyro_; break;
+      default:             fn = &ImuCalWizard::fitTaskGyro_;  break;
     }
 
-    TaskHandle_t task_handle = nullptr;
     BaseType_t rc = xTaskCreatePinnedToCore(
       fn,
       what,
       (uint32_t)ImuCalCfg::FIT_STACK_WORDS,
       &fit_,
       1,
-      &task_handle,
+      &fit_.task,
       1
     );
 
-    if (rc != pdPASS) {
+    if (rc != pdPASS || fit_.task == nullptr) {
       ui_.fail("FIT", "Task create failed");
       return false;
     }
@@ -652,21 +657,22 @@ private:
 
     while (!fit_.done) {
       Input::update();
+
       if (millis() - t0 > ImuCalCfg::FIT_TIMEOUT_MS) {
-        // Best-effort kill. (We do not free fit_ because it’s member storage.)
-        vTaskDelete(task_handle);
+        // best-effort kill
+        vTaskDelete(fit_.task);
+        fit_.task = nullptr;
         ui_.fail("FIT", "Timeout");
         return false;
       }
+
       ph += 0.09f;
       ui_.bar01(0.5f + 0.5f * sinf(ph));
       delay(30);
     }
 
     if (!fit_.ok) {
-      // Show reason if available
-      const char* why = imu_cal::fitFailStr(fit_.reason);
-      ui_.fail(what, why);
+      ui_.fail(what, imu_cal::fitFailStr(fit_.reason));
       return false;
     }
 
@@ -883,7 +889,7 @@ private:
 
 public:
   // Stored inside wizard => not on stack
-  imu_cal::AccelCalibrator<float, 400, 8> accelCal_{};
+  imu_cal::AccelCalibrator<float, 400, 1> accelCal_{};
   imu_cal::GyroCalibrator<float,  400, 8> gyroCal_{};
   imu_cal::MagCalibrator<float,   400>    magCal_{};
 
