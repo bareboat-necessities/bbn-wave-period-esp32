@@ -1,5 +1,7 @@
 /*
-  AtomS3R IMU Calibration App (fresh sketch)
+  Copyright 2026, Mikhail Grushinskiy
+
+  AtomS3R IMU Calibration App
   - Uses AtomS3R_ImuCal.h for blob/store/runtime mapping + clearM5UnifiedImuCalibration()
   - Uses AtomS3R_ImuCalWizard.h for UI + wizard capture/fit/save
 
@@ -19,9 +21,7 @@
 
 using namespace atoms3r_ical;
 
-// -------------------------
 // App (home screen + taps)
-// -------------------------
 class ImuCalApp {
 public:
   ImuCalApp() : wizard_(ui_, store_) {}
