@@ -2,15 +2,27 @@
   AtomS3R IMU calibration wizard (Accel + Gyro + Mag) using imu_cal::* calibrators.
 
   MAG fixes in this version:
-  - MAG capture is time-based + downsampled, so it lasts long enough (not "done in 3 seconds").
-  - Requires minimum capture time AND sufficient axis span before allowing fit.
-  - "Model S NonPositive" is treated as a coverage issue: offers clear retry instructions.
-  - MAG retry menu has NO timeout (cannot silently exit to home).
+  1) MAG scaling FIX:
+     - Removed the "/10" scaling on magnetometer. On many M5Unified builds mag is already in uT.
+       Dividing by 10 collapses the dataset and triggers "Coverage too flat" + Model_S_NONPOSITIVE.
 
-  Units:
+  2) Scale-invariant coverage check:
+     - Replaced absolute uT span thresholds with relative thresholds vs estimated field magnitude,
+       so it works even if the mag units differ (uT vs 0.1uT etc).
+
+  3) NONPOSITIVE fallback:
+     - If MAG fit fails with Model_S_NONPOSITIVE, we fall back to offset-only calibration (hard-iron):
+         A = I, b = center from min/max box, field_uT estimated.
+       This still produces useful mag calibration and lets the wizard complete/save.
+
+  4) Retry behavior:
+     - MAG retry menu has NO timeout; cannot silently exit.
+     - Retry MAG without redoing ACC/GYRO unless you choose redo-all.
+
+  Units expected by downstream:
     accel: m/s^2
     gyro:  rad/s
-    mag:   uT
+    mag:   uT  (after this fix, your Serial "m:" magnitude should be ~25..65 typically)
 */
 
 #include <Arduino.h>
@@ -61,7 +73,7 @@ struct ImuCalCfg {
   static constexpr int ACCEL_NEED_PER_POSE      = 60;
   static constexpr int GYRO_NEED               = 220;
 
-  // MAG: we intentionally target near-buffer-full, but we SLOW acceptance so this takes ~20–30s.
+  // MAG: target near buffer-full, but we slow acceptance so it lasts long enough
   static constexpr int MAG_NEED                = 360;   // <= 400
 
   // Minimums before fitting
@@ -70,15 +82,16 @@ struct ImuCalCfg {
   static constexpr int MAG_MIN_TO_FIT           = 220;
 
   // MAG timing / downsample:
-  // Only accept a mag sample at most every N ms => spreads buffer over time.
   static constexpr uint32_t MAG_SAMPLE_SPACING_MS = 60;     // ~16.7 Hz accepted max
-  static constexpr uint32_t MAG_MIN_TIME_MS       = 40000;  // require at least 40 seconds of motion
+  static constexpr uint32_t MAG_MIN_TIME_MS       = 40000;  // require at least 40 seconds
 
-  // MAG dataset span requirements (uT) — prevents planar “flat” data that causes NONPOSITIVE.
-  static constexpr float MAG_MIN_SPAN_MIN_AXIS_uT   = 12.0f;  // weakest axis must span at least this much
-  static constexpr float MAG_MIN_SPAN_MID_AXIS_uT   = 22.0f;
-  static constexpr float MAG_MIN_SPAN_MAX_AXIS_uT   = 30.0f;
+  // MAG coverage requirements (scale-invariant, relative to estimated field magnitude)
+  // These prevent near-planar / weak excitation data that makes S non-positive.
+  static constexpr float MAG_MIN_SPAN_MIN_AXIS_RATIO = 0.20f;
+  static constexpr float MAG_MIN_SPAN_MID_AXIS_RATIO = 0.35f;
+  static constexpr float MAG_MIN_SPAN_MAX_AXIS_RATIO = 0.50f;
 
+  // Fit task sizing (stack depth is in WORDS, not bytes)
   static constexpr uint32_t FIT_STACK_WORDS     = 16384;
   static constexpr uint32_t FIT_TIMEOUT_MS      = 30000;
 
@@ -108,11 +121,14 @@ static inline float clamp01_(float x) {
   return x;
 }
 
+static inline float fmax3_(float a, float b, float c) { return fmaxf(a, fmaxf(b,c)); }
+static inline float fmin3_(float a, float b, float c) { return fminf(a, fminf(b,c)); }
+
 // ----------------------------
 // Axis mapping (MATCH YOUR EXISTING PIPELINE)
 // acc_body = ( ay, ax, -az ) * g
 // gyr_body = ( gy, gx, -gz ) * deg2rad
-// mag_body = ( my, mx, -mz ) * (1/10)
+// mag_body = ( my, mx, -mz )  [uT]
 // ----------------------------
 static inline Vector3f map_acc_to_body_ned_(const m5::imu_3d_t& a_g) {
   return Vector3f(a_g.y * ImuCalCfg::g_std,
@@ -124,10 +140,12 @@ static inline Vector3f map_gyr_to_body_ned_(const m5::imu_3d_t& w_deg_s) {
                   w_deg_s.x * ImuCalCfg::DEG2RAD,
                  -w_deg_s.z * ImuCalCfg::DEG2RAD);
 }
+
+// *** FIX #1: remove "/10" scaling. Many M5Unified configs already output uT. ***
 static inline Vector3f map_mag_to_body_uT_(const m5::imu_3d_t& m_raw) {
-  return Vector3f(m_raw.y / 10.0f,
-                  m_raw.x / 10.0f,
-                 -m_raw.z / 10.0f);
+  return Vector3f(m_raw.y,
+                  m_raw.x,
+                 -m_raw.z);
 }
 
 // ----------------------------
@@ -582,6 +600,7 @@ public:
       // -------- MAG stage with retry loop --------
       while (true) {
         magCal_.clear();
+        resetMagSpan_();
 
         const char* cap_why = nullptr;
         if (!captureMag_(cap_why)) {
@@ -603,9 +622,19 @@ public:
         if (!runFitTask_(FitKind::MAG, "MAG", false)) {
           const char* why = imu_cal::fitFailStr(fit_.reason);
 
+          // *** FIX #3: if NONPOSITIVE, auto-fallback to offset-only ***
+          if (why && (strstr(why, "NONPOSITIVE") || strstr(why, "NON POSITIVE") ||
+                      strstr(why, "MODEL_S") || strstr(why, "MODEL S"))) {
+            if (applyMagOffsetOnlyFallback_()) {
+              ui_.showOkAuto("MAG", "Offset-only fallback");
+              break; // treat MAG as success
+            }
+          }
+
           const char* hint = "Try bigger 3D motion";
-          if (why && (strstr(why, "NONPOSITIVE") || strstr(why, "NON POSITIVE") || strstr(why, "MODEL_S"))) {
-            hint = "Coverage too flat: spin in ALL axes";
+          if (why && (strstr(why, "NONPOSITIVE") || strstr(why, "NON POSITIVE") ||
+                      strstr(why, "MODEL_S") || strstr(why, "MODEL S"))) {
+            hint = "Distortion/coverage; move away from metal";
           }
 
           auto act = ui_.magFailMenu(why ? why : "Fit failed", hint);
@@ -652,6 +681,46 @@ public:
       Serial.println("[WIZ] done");
       return true;
     }
+  }
+
+private:
+  // ----------------------------
+  // MAG span tracking for coverage + fallback
+  // ----------------------------
+  void resetMagSpan_() {
+    mag_vmin_ = Vector3f(+1e9f, +1e9f, +1e9f);
+    mag_vmax_ = Vector3f(-1e9f, -1e9f, -1e9f);
+    mag_span_valid_ = false;
+    mag_field_est_ = 0.0f;
+  }
+
+  void updateMagSpan_(const Vector3f& m) {
+    mag_vmin_ = mag_vmin_.cwiseMin(m);
+    mag_vmax_ = mag_vmax_.cwiseMax(m);
+    mag_span_valid_ = true;
+
+    Vector3f center = 0.5f * (mag_vmax_ + mag_vmin_);
+    float field_est = 0.5f * ((mag_vmax_ - center).norm() + (mag_vmin_ - center).norm());
+    mag_field_est_ = field_est;
+  }
+
+  bool applyMagOffsetOnlyFallback_() {
+    if (!mag_span_valid_) return false;
+
+    Vector3f center = 0.5f * (mag_vmax_ + mag_vmin_);
+    float field_est = mag_field_est_;
+    if (!(field_est > 1.0f)) field_est = 50.0f; // safe default
+
+    mag_out_.A = Matrix3f::Identity();
+    mag_out_.b = center;
+    mag_out_.field_uT = field_est;
+    mag_out_.rms = 0.0f;
+    mag_out_.ok = true;
+
+    Serial.printf("[MAG] fallback offset-only: b=(%.2f,%.2f,%.2f) field=%.1f\n",
+                  (double)center.x(), (double)center.y(), (double)center.z(),
+                  (double)field_est);
+    return true;
   }
 
 private:
@@ -900,7 +969,7 @@ private:
     return false;
   }
 
-  // ---- MAG capture with downsample + min time + span checks ----
+  // ---- MAG capture with downsample + min time + RELATIVE span checks ----
   bool captureMag_(const char*& out_why) {
     out_why = nullptr;
 
@@ -913,16 +982,13 @@ private:
     ui_.title("MAG");
     ui_.line("Rotate now");
     ui_.line("Big 3D loops");
-    ui_.line("20+ seconds");
+    ui_.line("40+ sec");
 
     uint32_t tcap0 = millis();
     uint32_t last_change = millis();
     int last_n = magCal_.buf.n;
 
     uint32_t last_add_ms = 0;
-
-    Vector3f vmin(+1e9f, +1e9f, +1e9f);
-    Vector3f vmax(-1e9f, -1e9f, -1e9f);
 
     while (millis() - tcap0 < ImuCalCfg::MAG_TIMEOUT_MS) {
       Input::update();
@@ -939,8 +1005,7 @@ private:
 
           if (after > before) {
             last_add_ms = now;
-            vmin = vmin.cwiseMin(s.m);
-            vmax = vmax.cwiseMax(s.m);
+            updateMagSpan_(s.m);
           }
         }
       }
@@ -962,22 +1027,31 @@ private:
       ui_.bar01(p);
 
       if (n >= target_n && elapsed >= ImuCalCfg::MAG_MIN_TIME_MS) {
-        Vector3f span = vmax - vmin;
+        if (!mag_span_valid_) {
+          out_why = "No mag span";
+          return false;
+        }
 
+        Vector3f span = mag_vmax_ - mag_vmin_;
         float a = span.x(), b = span.y(), c = span.z();
-        // sort spans: min, mid, max (simple)
-        float smin = a, smid = b, smax = c;
-        if (smin > smid) { float t=smin; smin=smid; smid=t; }
-        if (smid > smax) { float t=smid; smid=smax; smax=t; }
-        if (smin > smid) { float t=smin; smin=smid; smid=t; }
 
-        Serial.printf("[MAG] n=%d elapsed=%lu span=(%.1f,%.1f,%.1f)\n",
+        // sort spans -> smin, smid, smax
+        float smin = fmin3_(a,b,c);
+        float smax = fmax3_(a,b,c);
+        float smid = (a + b + c) - (smin + smax);
+
+        float field_est = mag_field_est_;
+        if (!(field_est > 1.0f)) field_est = 1.0f;
+
+        Serial.printf("[MAG] n=%d elapsed=%lu span=(%.1f,%.1f,%.1f) field_est=%.1f\n",
                       n - start_n, (unsigned long)elapsed,
-                      (double)span.x(), (double)span.y(), (double)span.z());
+                      (double)span.x(), (double)span.y(), (double)span.z(),
+                      (double)field_est);
 
-        if (smin < ImuCalCfg::MAG_MIN_SPAN_MIN_AXIS_uT ||
-            smid < ImuCalCfg::MAG_MIN_SPAN_MID_AXIS_uT ||
-            smax < ImuCalCfg::MAG_MIN_SPAN_MAX_AXIS_uT) {
+        // *** FIX #2: scale-invariant coverage gate ***
+        if (smin < ImuCalCfg::MAG_MIN_SPAN_MIN_AXIS_RATIO * field_est ||
+            smid < ImuCalCfg::MAG_MIN_SPAN_MID_AXIS_RATIO * field_est ||
+            smax < ImuCalCfg::MAG_MIN_SPAN_MAX_AXIS_RATIO * field_est) {
           out_why = "Coverage too flat";
           return false;
         }
@@ -1023,6 +1097,12 @@ private:
   M5Ui& ui_;
   M5ImuSource& imu_;
   ImuCalStoreNvs& store_;
+
+  // MAG span tracking (for gate + fallback)
+  Vector3f mag_vmin_{+1e9f, +1e9f, +1e9f};
+  Vector3f mag_vmax_{-1e9f, -1e9f, -1e9f};
+  bool     mag_span_valid_ = false;
+  float    mag_field_est_  = 0.0f;
 
 public:
   // Stored inside wizard => not on stack
