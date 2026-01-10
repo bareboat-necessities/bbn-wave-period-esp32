@@ -1,8 +1,8 @@
 /*
   AtomS3R Tilt-Compensated Compass + IMU Calibration Wizard
 
-  - Uses your AtomS3R_ImuCal.h (blob + runtime apply + axis mapping + clearM5UnifiedImuCalibration)
-  - Uses your AtomS3R_ImuCalWizard.h (UI + wizard capture/fit/save + Input tap logic)
+  - Uses AtomS3R_ImuCal.h (blob + runtime apply + axis mapping + clearM5UnifiedImuCalibration)
+  - Uses AtomS3R_ImuCalWizard.h (UI + wizard capture/fit/save + Input tap logic)
   - Uses your QuaternionMEKF (q-mekf) implementation (KalmanQMEKF.h) for fused roll/pitch/yaw
   - Runs accel+gyro at ~240 Hz, mag is slower and gated by time+delta (stale-repeat rejection)
   - Shows Heading (deg, 0..360), Roll/Pitch (deg) on screen and prints to Serial
@@ -12,9 +12,8 @@
     - 3 taps : erase blob (and clear M5Unified calibration)
 
   Notes:
-    - We feed calibrated accel (m/s^2) and gyro (rad/s) to MEKF.
-    - We feed *unit* magnetometer direction (calibrated, normalized) to MEKF.
-    - If mag isn’t “fresh”, we skip mag update (keeps yaw stable, avoids stale repeats).
+    - Feed calibrated accel (m/s^2) and gyro (rad/s) to MEKF.
+    - Feed *unit* magnetometer direction (calibrated, normalized) to MEKF.
 */
 
 #include <Arduino.h>
@@ -28,27 +27,26 @@
 #include "KalmanQMEKF.h"
 
 using namespace atoms3r_ical;
-
 using Vector3f = Eigen::Matrix<float, 3, 1>;
 
 // ---------- Sampling / gating tuning ----------
-static constexpr float    LOOP_HZ                = 240.0f;
-static constexpr uint32_t LOOP_PERIOD_US         = (uint32_t)(1000000.0f / LOOP_HZ);
+static constexpr float    LOOP_HZ        = 240.0f;
+static constexpr uint32_t LOOP_PERIOD_US = (uint32_t)(1000000.0f / LOOP_HZ);
 
 // Mag ODR is slower; also many builds repeat stale values.
-// Gate by spacing + delta (wizard-style).
-static constexpr uint32_t MAG_SAMPLE_SPACING_MS  = 20;     // ~<=50 Hz mag updates
-static constexpr float    MAG_MIN_DELTA_uT       = 0.05f;  // reject repeats (0.02..0.10 typical)
+// Gate by spacing + delta (stale-repeat rejection).
+static constexpr uint32_t MAG_SAMPLE_SPACING_MS = 20;     // ~<=50 Hz mag updates
+static constexpr float    MAG_MIN_DELTA_uT      = 0.05f;  // reject repeats (0.02..0.10 typical)
 
 // Display / serial rates
-static constexpr uint32_t UI_REFRESH_MS          = 100;    // 10 Hz UI update
-static constexpr uint32_t SERIAL_REFRESH_MS      = 200;    // 5 Hz serial update
+static constexpr uint32_t UI_REFRESH_MS     = 100;  // 10 Hz UI update
+static constexpr uint32_t SERIAL_REFRESH_MS = 200;  // 5 Hz serial update
 
 // ---------- Helpers ----------
 static inline float clampf_(float x, float lo, float hi) { return x < lo ? lo : (x > hi ? hi : x); }
 
 static inline float wrap360_(float deg) {
-  while (deg < 0.0f)   deg += 360.0f;
+  while (deg < 0.0f) deg += 360.0f;
   while (deg >= 360.0f) deg -= 360.0f;
   return deg;
 }
@@ -101,17 +99,7 @@ public:
     }
 
     resetMEKF_();
-
-    // UI
-    ui_.setReadRotation();
-    ui_.title("COMPASS");
-    ui_.line(have_blob_ ? "BLOB: YES" : "BLOB: NO");
-    ui_.line("Tap: calibrate");
-    ui_.line("Tap x3: erase");
-    ui_.line("");
-    ui_.line("Move slowly in");
-    ui_.line("figure-8 for");
-    ui_.line("best heading");
+    drawHomeStatic_();
 
     start_us_ = micros();
     next_tick_us_ = micros();
@@ -119,11 +107,10 @@ public:
   }
 
   void tick() {
-    // Pace loop to ~240 Hz (avoid long blocking; wizard UI will override timing anyway)
+    // Pace loop to ~240 Hz (light pacing; wizard UI will override timing when active)
     const uint32_t now_us = micros();
     int32_t wait_us = (int32_t)(next_tick_us_ - now_us);
     if (wait_us > 0) {
-      // small sleep; do not oversleep too hard
       if (wait_us > 200) delayMicroseconds(200);
       else delayMicroseconds((uint32_t)wait_us);
     }
@@ -145,7 +132,6 @@ public:
       else                 handleRunWizard_();
       tap_count_ = 0;
       tap_deadline_ms_ = 0;
-      // After wizard/erase, re-show top lines; heading lines are updated in updateUI_()
       drawHomeStatic_();
     }
 
@@ -208,17 +194,12 @@ private:
 
   // --- MEKF ---
   void resetMEKF_() {
-    // Noise tuning for 240 Hz acc+gyro updates:
-    // - sigma_a: accel measurement noise (m/s^2). Larger = less trusting accel under motion.
-    // - sigma_g: gyro noise used in process Q.
-    // - sigma_m: mag measurement noise for *unit* mag vector updates (dimensionless).
-    //
-    // These are conservative “works on a boat / handheld” defaults.
+    // Noise tuning for 240 Hz acc+gyro updates (conservative handheld/boat defaults):
     const float g = ImuCalCfg::g_std;
 
-    Vector3f sigma_a; sigma_a << 0.06f * g, 0.06f * g, 0.06f * g;   // ~0.59 m/s^2
-    Vector3f sigma_g; sigma_g << 0.0030f, 0.0030f, 0.0030f;         // rad/s
-    Vector3f sigma_m; sigma_m << 0.020f, 0.020f, 0.020f;            // unit-vector noise
+    Vector3f sigma_a; sigma_a << 0.06f * g, 0.06f * g, 0.06f * g; // m/s^2
+    Vector3f sigma_g; sigma_g << 0.0030f, 0.0030f, 0.0030f;       // rad/s
+    Vector3f sigma_m; sigma_m << 0.020f, 0.020f, 0.020f;          // unit-vector noise
 
     const float Pq0 = 0.5f;
     const float Pb0 = 1e-2f;
@@ -229,7 +210,6 @@ private:
       mekf_ = nullptr;
     }
     mekf_ = new (mekf_storage_) QuaternionMEKF<float, true>(sigma_a, sigma_g, sigma_m, Pq0, Pb0, b0);
-
     mekf_inited_ = false;
 
     last_mag_uT_.setZero();
@@ -239,6 +219,9 @@ private:
   }
 
   void updateFilter_(const ImuSample& s) {
+    // Cache raw mapped norms for debug
+    a_raw_norm_ = s.a.norm();
+
     // Calibrate signals (or pass through if missing)
     a_cal_ = runtime_.applyAccel(s.a, s.tempC);
     w_cal_ = runtime_.applyGyro (s.w, s.tempC);
@@ -248,12 +231,11 @@ private:
     const uint32_t now_us = micros();
     float dt = (now_us - last_update_us_) * 1e-6f;
     last_update_us_ = now_us;
-
     dt = clampf_(dt, 0.0010f, 0.0200f);
 
-    // Mag validity (magnitude)
+    // Mag validity (magnitude sanity)
     const float mn = m_cal_.norm();
-    mag_ok_ = (mn > 5.0f && mn < 200.0f); // very broad in uT
+    mag_ok_ = (mn > 5.0f && mn < 200.0f); // broad uT bounds
     mag_norm_uT_ = mn;
 
     // Normalize mag for MEKF (unit direction)
@@ -346,13 +328,13 @@ private:
     M5.Display.printf("ROL: %6.1f deg\n", (double)roll_deg_);
     M5.Display.printf("PIT: %6.1f deg\n", (double)pitch_deg_);
 
-    M5.Display.printf("MAG: %s  %s\n",
+    M5.Display.printf("MAG: %s %s\n",
                       mag_ok_ ? "OK " : "BAD",
                       mag_fresh_ ? "NEW" : "OLD");
 
     M5.Display.printf("|m|: %6.1f uT\n", (double)mag_norm_uT_);
     M5.Display.printf("|aR|:%5.2f |aC|:%5.2f\n",
-                      (double)s_last_a_norm_raw_, (double)a_cal_.norm());
+                      (double)a_raw_norm_, (double)a_cal_.norm());
 
     ui_.line("");
     M5.Display.printf("A:%d G:%d M:%d  B:%s\n",
@@ -376,7 +358,7 @@ private:
                   mag_fresh_ ? "NEW" : "OLD",
                   (double)mag_norm_uT_);
     Serial.printf("|a_raw|=%.4f |a_cal|=%.4f ",
-                  (double)s_last_a_norm_raw_, (double)a_cal_.norm());
+                  (double)a_raw_norm_, (double)a_cal_.norm());
     Serial.printf("wC:%+.4f,%+.4f,%+.4f ",
                   (double)w_cal_.x(), (double)w_cal_.y(), (double)w_cal_.z());
     Serial.println();
@@ -403,7 +385,7 @@ private:
   uint32_t last_ui_ms_ = 0;
   uint32_t last_serial_ms_ = 0;
 
-  // MEKF (placement-new because it has const members; assignment is not viable)
+  // MEKF (placement-new)
   alignas(QuaternionMEKF<float, true>) uint8_t mekf_storage_[sizeof(QuaternionMEKF<float, true>)];
   QuaternionMEKF<float, true>* mekf_ = nullptr;
   bool mekf_inited_ = false;
@@ -412,7 +394,7 @@ private:
   Vector3f a_cal_ = Vector3f::Zero();
   Vector3f w_cal_ = Vector3f::Zero();
   Vector3f m_cal_ = Vector3f::Zero();
-  float s_last_a_norm_raw_ = 0.0f;
+  float a_raw_norm_ = 0.0f;
 
   // Attitude / heading
   float roll_deg_ = 0.0f;
@@ -426,82 +408,9 @@ private:
   float mag_norm_uT_ = 0.0f;
   Vector3f last_mag_uT_ = Vector3f::Zero();
   uint32_t last_mag_ms_ = 0;
-
-  // Last raw accel norm for UI
-  void cacheRawNorm_(const ImuSample& s) { s_last_a_norm_raw_ = s.a.norm(); }
-
-  // Override updateFilter_ to also cache raw norm
-  void updateFilter_(ImuSample const& s_in, int /*dummy*/) {}
-
-  void updateFilter_(const ImuSample& s_in) {
-    cacheRawNorm_(s_in);
-    // (rest is above) — to avoid duplicating, keep actual implementation here:
-    const ImuSample& s = s_in;
-
-    a_cal_ = runtime_.applyAccel(s.a, s.tempC);
-    w_cal_ = runtime_.applyGyro (s.w, s.tempC);
-    m_cal_ = runtime_.applyMag  (s.m);
-
-    const uint32_t now_us = micros();
-    float dt = (now_us - last_update_us_) * 1e-6f;
-    last_update_us_ = now_us;
-    dt = clampf_(dt, 0.0010f, 0.0200f);
-
-    const float mn = m_cal_.norm();
-    mag_ok_ = (mn > 5.0f && mn < 200.0f);
-    mag_norm_uT_ = mn;
-
-    Vector3f m_u = Vector3f::Zero();
-    if (mag_ok_ && mn > 1e-6f) m_u = m_cal_ / mn;
-
-    const uint32_t now_ms = millis();
-    bool mag_fresh = false;
-    if (mag_ok_) {
-      const uint32_t dtm = now_ms - last_mag_ms_;
-      const float dm = (m_cal_ - last_mag_uT_).norm();
-      if (dtm >= MAG_SAMPLE_SPACING_MS && dm >= MAG_MIN_DELTA_uT) {
-        mag_fresh = true;
-        last_mag_ms_ = now_ms;
-        last_mag_uT_ = m_cal_;
-      }
-    }
-    mag_fresh_ = mag_fresh;
-
-    if (!mekf_inited_) {
-      if (mag_ok_) mekf_->initialize_from_acc_mag(a_cal_, m_u);
-      else         mekf_->initialize_from_acc(a_cal_);
-      mekf_inited_ = true;
-    }
-
-    mekf_->time_update(w_cal_, dt);
-    mekf_->measurement_update_acc_only(a_cal_);
-
-    if (mag_ok_ && mag_fresh_) {
-      mekf_->measurement_update_mag_only(m_u);
-    }
-
-    const auto qvec = mekf_->quaternion(); // [x,y,z,w]
-    Eigen::Quaternionf q_bw(qvec(3), qvec(0), qvec(1), qvec(2));
-    Eigen::Matrix3f R = q_bw.toRotationMatrix();
-
-    float yaw   = atan2f(R(1, 0), R(0, 0));
-    float pitch = -asinf(clampf_(R(2, 0), -1.0f, 1.0f));
-    float roll  = atan2f(R(2, 1), R(2, 2));
-
-    roll_deg_  = roll  * RAD_TO_DEG;
-    pitch_deg_ = pitch * RAD_TO_DEG;
-    yaw_deg_   = yaw   * RAD_TO_DEG;
-
-    heading_deg_ = wrap360_(yaw_deg_);
-  }
 };
 
 static CompassApp g_app;
 
-void setup() {
-  g_app.begin();
-}
-
-void loop() {
-  g_app.tick();
-}
+void setup() { g_app.begin(); }
+void loop()  { g_app.tick(); }
