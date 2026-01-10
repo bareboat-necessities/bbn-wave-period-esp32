@@ -1,18 +1,14 @@
 /*
   AtomS3R IMU calibration wizard (Accel + Gyro + Mag) using imu_cal::* calibrators.
 
-  MAG fixes in this version:
-  - MAG capture does NOT depend on sensor_mask_mag (some M5Unified builds never set it).
+  In this version:
   - MAG acceptance is time-based + downsampled + rejects stale repeats, so it lasts long enough.
   - Requires minimum capture time AND 3D coverage before allowing fit.
-  - If fit fails with MODEL_S_NONPOSITIVE, auto-tries a few fit parameter combos.
-  - MAG retry menu has NO timeout (cannot silently exit to home).
-  - If wizard fails/aborts, app shows NOT SAVED (so you don’t get “back to home with zeros” silently).
 
   Units:
     accel: m/s^2
     gyro:  rad/s
-    mag:   uT  (whatever M5Unified returns, we keep your mapping; coverage tests are ratio-based)
+    mag:   uT
 
   NOTE:
   - Keep away from metal during MAG (boat rails, desk legs, speakers, USB cables, etc).
@@ -41,16 +37,13 @@ using Vector3f = Eigen::Matrix<float,3,1>;
 using Matrix3f = Eigen::Matrix<float,3,3>;
 using M5_IMU   = decltype(M5.Imu);
 
-// ----------------------------
 // Config
-// ----------------------------
 struct ImuCalCfg {
   static constexpr float g_std   = 9.80665f;
   static constexpr float DEG2RAD = 3.14159265358979323846f / 180.0f;
 
   // If text is rotated wrong initially, change this to 1 or 3.
   static constexpr uint8_t ROT_READ = 0;
-
   static constexpr uint32_t KEEP_AWAKE_EVERY_MS = 200;
 
   // Step pacing
@@ -59,7 +52,6 @@ struct ImuCalCfg {
   static constexpr uint32_t ACCEL_TIMEOUT_MS    = 90000;
   static constexpr uint32_t GYRO_TIMEOUT_MS     = 70000;
   static constexpr uint32_t MAG_TIMEOUT_MS      = 220000;   // give more room
-
   static constexpr uint32_t STUCK_MS            = 12000;
 
   // Sample goals (Mag buffer capacity is 400 below)
@@ -78,7 +70,7 @@ struct ImuCalCfg {
   static constexpr uint32_t MAG_SAMPLE_SPACING_MS = 80;     // accepted max ~12.5 Hz
   static constexpr uint32_t MAG_MIN_TIME_MS       = 32000;  // require >= 32 seconds of motion
 
-  // MAG stale-repeat reject (units are your mapped uT scale)
+  // MAG stale-repeat reject
   static constexpr float MAG_MIN_DELTA_uT         = 0.15f;
 
   // MAG coverage requirements (ratio-based, unitless)
@@ -93,15 +85,11 @@ struct ImuCalCfg {
   static constexpr uint32_t FIT_TIMEOUT_MS      = 30000;
 
   static constexpr uint32_t TAP_WINDOW_MS       = 700;
-
   static constexpr uint8_t  LCD_BRIGHTNESS      = 200;
-
   static constexpr uint32_t MENU_TAP_WINDOW_MS  = 650;
 };
 
-// ----------------------------
 // Helpers
-// ----------------------------
 static inline int32_t i32_max_(int32_t a, int32_t b) { return (a > b) ? a : b; }
 
 static inline uint8_t rot_add_(uint8_t base, int delta) {
@@ -121,12 +109,10 @@ static inline bool finite3_(const Vector3f& v) {
   return isfinite(v.x()) && isfinite(v.y()) && isfinite(v.z());
 }
 
-// ----------------------------
-// Axis mapping (MATCH YOUR EXISTING PIPELINE)
+// Axis mapping
 // acc_body = ( ay, ax, -az ) * g
 // gyr_body = ( gy, gx, -gz ) * deg2rad
-// mag_body = ( my, mx, -mz ) * (1/10)   (kept as you asked)
-// ----------------------------
+// mag_body = ( my, mx, -mz ) * (1/10)
 static inline Vector3f map_acc_to_body_ned_(const m5::imu_3d_t& a_g) {
   return Vector3f(a_g.y * ImuCalCfg::g_std,
                   a_g.x * ImuCalCfg::g_std,
@@ -143,9 +129,7 @@ static inline Vector3f map_mag_to_body_uT_(const m5::imu_3d_t& m_raw) {
                  -m_raw.z / 10.0f);
 }
 
-// ----------------------------
 // NVS blob
-// ----------------------------
 struct ImuCalBlobV1 {
   static constexpr uint32_t IMU_CAL_MAGIC   = 0x434C554D; // 'MULC'
   static constexpr uint16_t IMU_CAL_VERSION = 1;
@@ -251,9 +235,7 @@ public:
   }
 };
 
-// ----------------------------
 // Runtime cals
-// ----------------------------
 struct RuntimeCals {
   imu_cal::AccelCalibration<float> acc{};
   imu_cal::GyroCalibration<float>  gyr{};
@@ -288,9 +270,7 @@ struct RuntimeCals {
   Vector3f applyMag  (const Vector3f& m_raw) const { return mag.ok ? mag.apply(m_raw) : m_raw; }
 };
 
-// ----------------------------
 // IMU source
-// ----------------------------
 struct ImuSample {
   Vector3f a;
   Vector3f w;
@@ -321,9 +301,7 @@ public:
   }
 };
 
-// ----------------------------
 // Input: BtnA ONLY + keep-awake
-// ----------------------------
 class Input {
 public:
   static void update() {
@@ -345,9 +323,7 @@ private:
   static inline uint32_t last_keep_awake_ms_ = 0;
 };
 
-// ----------------------------
 // UI
-// ----------------------------
 class M5Ui {
 public:
   void begin() {
@@ -512,9 +488,7 @@ private:
   uint8_t rot_ = ImuCalCfg::ROT_READ;
 };
 
-// ----------------------------
 // Wizard
-// ----------------------------
 struct Pose {
   const char* short_name;
   const char* instruction;
@@ -573,7 +547,7 @@ public:
       }
       if (!runFitTask_(FitKind::GYRO, "GYRO", true)) return false;
 
-      // -------- MAG stage with retry loop --------
+      // MAG stage with retry loop
       while (true) {
         magCal_.clear();
 
@@ -648,9 +622,7 @@ public:
   }
 
 private:
-  // ----------------------------
   // FIT task
-  // ----------------------------
   enum class FitKind : uint8_t { ACCEL=0, GYRO=1, MAG=2 };
 
   struct FitCtx {
@@ -793,9 +765,7 @@ private:
     return true;
   }
 
-  // ----------------------------
   // Capture steps
-  // ----------------------------
   bool captureAccelPose_(const Pose& p) {
     ui_.waitTap("ACCEL", p.short_name, "Tap then place");
 
@@ -918,7 +888,7 @@ private:
     return false;
   }
 
-  // ---- MAG capture: downsample + min time + reject stale repeats + 3D coverage tests ----
+  // MAG capture: downsample + min time + reject stale repeats + 3D coverage tests
   bool captureMag_(const char*& out_why) {
     out_why = nullptr;
 
@@ -1114,9 +1084,7 @@ public:
   imu_cal::MagCalibration<float>   mag_out_{};
 };
 
-// ----------------------------
 // App
-// ----------------------------
 class ImuCalApp {
 public:
   ImuCalApp()
