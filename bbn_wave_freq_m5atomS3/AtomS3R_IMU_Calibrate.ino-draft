@@ -68,7 +68,7 @@ struct ImuCalCfg {
 
   // MAG timing / downsample:
   static constexpr uint32_t MAG_SAMPLE_SPACING_MS = 80;     // accepted max ~12.5 Hz
-  static constexpr uint32_t MAG_MIN_TIME_MS       = 32000;  // require >= 32 seconds of motion
+  static constexpr uint32_t MAG_MIN_TIME_MS       = 45000;  // require >= 45 seconds of motion
 
   // MAG stale-repeat reject
   static constexpr float MAG_MIN_DELTA_uT         = 0.15f;
@@ -79,7 +79,7 @@ struct ImuCalCfg {
   static constexpr float MAG_SPAN_MID_FRAC        = 0.55f;
 
   // Also require centered direction range per axis (0..2). 1.2 means roughly reaching ±0.6.
-  static constexpr float MAG_URANGE_TARGET        = 1.20f;
+  static constexpr float MAG_URANGE_TARGET        = 1.05f;
 
   static constexpr uint32_t FIT_STACK_WORDS     = 16384;
   static constexpr uint32_t FIT_TIMEOUT_MS      = 30000;
@@ -892,7 +892,7 @@ private:
   bool captureMag_(const char*& out_why) {
     out_why = nullptr;
 
-    ui_.waitTap("MAG", "Rotate ~35 sec", "Tap to start");
+    ui_.waitTap("MAG", "Rotate ~45 sec", "Tap to start");
 
     int start_n  = magCal_.buf.n;
     int target_n = start_n + ImuCalCfg::MAG_NEED;
