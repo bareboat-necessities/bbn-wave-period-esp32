@@ -555,14 +555,13 @@ private:
     ImuCalWizard* self = ctx->wiz;
 
     // Try a few combinations (helps with MODEL_S_NONPOSITIVE sometimes)
-    struct Try { int mode; float reg; };
+    struct Try { int iters; float trim; float ridge; };
     const Try tries[] = {
-      {3, 0.15f},
-      {3, 0.08f},
-      {2, 0.15f},
-      {2, 0.08f},
-      {1, 0.15f},
-      {1, 0.08f},
+      {3, 0.15f, 1e-6f},
+      {3, 0.15f, 3e-6f},
+      {3, 0.15f, 1e-5f},
+      {3, 0.08f, 1e-6f},
+      {2, 0.15f, 1e-6f},
     };
 
     imu_cal::FitFail last_reason = imu_cal::FitFail::BAD_ARG;
@@ -570,8 +569,8 @@ private:
 
     for (size_t i = 0; i < sizeof(tries)/sizeof(tries[0]); ++i) {
       imu_cal::FitFail r = imu_cal::FitFail::BAD_ARG;
-      bool ok = self->magCal_.fit(self->mag_out_, tries[i].mode, tries[i].reg, &r);
-
+      bool ok = self->magCal_.fit(self->mag_out_, tries[i].iters, tries[i].trim, tries[i].ridge, &r);
+      
       Serial.printf("[MAG] try mode=%d reg=%.3f -> fit=%d out.ok=%d reason=%s\n",
                     tries[i].mode, (double)tries[i].reg,
                     (int)ok, (int)self->mag_out_.ok, imu_cal::fitFailStr(r));
