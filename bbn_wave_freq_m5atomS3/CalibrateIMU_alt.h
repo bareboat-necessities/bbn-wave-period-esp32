@@ -770,6 +770,7 @@ struct MagCalibrator {
   static_assert(N <= IMU_CAL_MAX_SAMPLES, "N exceeds IMU_CAL_MAX_SAMPLES (400)");
   using Vec3 = Eigen::Matrix<T,3,1>;
   SampleBuffer3<T, N> buf;
+  mutable Vec3 xs_[IMU_CAL_MAX_SAMPLES]; // scaled samples workspace
 
   // sanity gates
   T min_norm_uT = T(5);
@@ -787,48 +788,77 @@ struct MagCalibrator {
     return buf.push(m_raw_uT, T(0));
   }
 
-  bool fit(MagCalibration<T>& out, int robust_iters = 3, T trim_frac = T(0.15), FitFail* reason_out = nullptr) const {
+  bool fit(MagCalibration<T>& out,
+           int robust_iters = 3,
+           T trim_frac = T(0.15),
+           FitFail* reason_out = nullptr) const
+  {
     last_fail_ = FitFail::OK;
     out.ok = false;
-
-    if (buf.n < 80) { last_fail_ = FitFail::TOO_FEW_SAMPLES; if (reason_out) *reason_out = last_fail_; return false; }
-
-    // Degeneracy check radius estimate in µT space: median ||m - mean(m)||
+  
+    if (buf.n < 80) {
+      last_fail_ = FitFail::TOO_FEW_SAMPLES;
+      if (reason_out) *reason_out = last_fail_;
+      return false;
+    }
+  
+    // Mean (for B_est)
     Vec3 mu = Vec3::Zero();
     for (int i = 0; i < buf.n; ++i) mu += buf.v[i];
     mu *= (T(1) / (T)buf.n);
-
+  
+    // Robust radius estimate in raw uT space
     T rad_mu[IMU_CAL_MAX_SAMPLES];
     for (int i = 0; i < buf.n; ++i) rad_mu[i] = (buf.v[i] - mu).norm();
     T B_est = median_of_array(rad_mu, buf.n);
-
+    if (!(B_est > T(1e-6))) {
+      last_fail_ = FitFail::DEGENERATE_COVERAGE;
+      if (reason_out) *reason_out = last_fail_;
+      return false;
+    }
+  
+    // SCALE SAMPLES: x' = x / B_est (brings values ~O(1))
+    for (int i = 0; i < buf.n; ++i) xs_[i] = buf.v[i] / B_est;
+  
+    // Fit in scaled space (expected radius ~1)
     auto fit0 = ellipsoid_to_sphere_robust<T>(
-      buf.v, buf.n, T(1),
+      xs_, buf.n, T(1),
       robust_iters, trim_frac,
       T(1e-6),
-      B_est);
-
-    if (!fit0.ok) { last_fail_ = fit0.reason; if (reason_out) *reason_out = last_fail_; return false; }
-
-    // Estimate field magnitude from median radius in raw µT space
+      T(1)   // expected_radius_for_checks in scaled space
+    );
+  
+    if (!fit0.ok) {
+      last_fail_ = fit0.reason;
+      if (reason_out) *reason_out = last_fail_;
+      return false;
+    }
+  
+    // Unscale to uT space:
+    // We want A_uT such that A_uT*(x_uT - b_uT) = fit0.A*(x_uT/B_est - fit0.b)
+    // => b_uT = fit0.b * B_est, A_uT = fit0.A / B_est
+    const Vec3 b_uT = fit0.b * B_est;
+    const Eigen::Matrix<T,3,3> A_unit_uTinv = fit0.A / B_est;
+  
+    // Estimate field magnitude from median radius in raw uT space
     T radii[IMU_CAL_MAX_SAMPLES];
     int m = 0;
-    for (int i = 0; i < buf.n; ++i) radii[m++] = (buf.v[i] - fit0.b).norm();
+    for (int i = 0; i < buf.n; ++i) radii[m++] = (buf.v[i] - b_uT).norm();
     T B_med = median_of_array(radii, m);
-
+  
     // Typical Earth field is ~25-65 uT; allow broad
     if (B_med < T(12) || B_med > T(120)) {
       last_fail_ = FitFail::MAG_FIELD_OUT_OF_RANGE;
       if (reason_out) *reason_out = last_fail_;
       return false;
     }
-
+  
     out.ok = true;
-    out.b = fit0.b;
-    out.A = fit0.A * B_med;     // map to µT-like magnitude
+    out.b = b_uT;
+    out.A = A_unit_uTinv * B_med;  // calibrated output ~uT magnitude
     out.field_uT = B_med;
     out.rms = fit0.rms * B_med;
-
+  
     last_fail_ = FitFail::OK;
     if (reason_out) *reason_out = FitFail::OK;
     return true;
