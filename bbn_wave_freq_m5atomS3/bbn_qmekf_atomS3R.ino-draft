@@ -36,7 +36,7 @@ static constexpr uint32_t LOOP_PERIOD_US = (uint32_t)(1000000.0f / LOOP_HZ);
 // Mag ODR is slower; also many builds repeat stale values.
 // Gate by spacing + delta (stale-repeat rejection).
 static constexpr uint32_t MAG_SAMPLE_SPACING_MS = 12;     // ~<=80 Hz mag updates
-static constexpr float    MAG_MIN_DELTA_uT      = 0.01f;  // reject repeats (0.02..0.10 typical)
+static constexpr float    MAG_MIN_DELTA_uT      = 0.02f;  // reject repeats (0.02..0.10 typical)
 
 // Display / serial rates
 static constexpr uint32_t UI_REFRESH_MS     = 100;  // 10 Hz UI update
