@@ -912,10 +912,12 @@ if (rmin < ImuCalWizardCfg::MAG_SPAN_MIN_FRAC ||
   return false;
 }
 
-// 2) Centered direction range gate (0..2 per axis)
-if (!(ur.x() >= ImuCalWizardCfg::MAG_URANGE_TARGET &&
-      ur.y() >= ImuCalWizardCfg::MAG_URANGE_TARGET &&
-      ur.z() >= ImuCalWizardCfg::MAG_URANGE_TARGET)) {
+// 2) Centered direction range gate: require at least 2 axes to meet target
+int ok_axes = 0;
+ok_axes += (ur.x() >= ImuCalWizardCfg::MAG_URANGE_TARGET) ? 1 : 0;
+ok_axes += (ur.y() >= ImuCalWizardCfg::MAG_URANGE_TARGET) ? 1 : 0;
+ok_axes += (ur.z() >= ImuCalWizardCfg::MAG_URANGE_TARGET) ? 1 : 0;
+if (ok_axes < 2) {
   out_why = "Direction range too small";
   return false;
 }
