@@ -897,42 +897,41 @@ private:
         float rmin = (smax > 1e-6f) ? (smin / smax) : 0.f;
         float rmid = (smax > 1e-6f) ? (smid / smax) : 0.f;
 
- Serial.printf("[MAG] n=%d elapsed=%.1fs span=(%.3f,%.3f,%.3f) ratios=(%.2f,%.2f) urange=(%.2f,%.2f,%.2f)\n",
-              n - start_n, (double)(elapsed / 1000.0f),
-              (double)span.x(), (double)span.y(), (double)span.z(),
-              (double)rmin, (double)rmid,
-              (double)ur.x(), (double)ur.y(), (double)ur.z());
-
-// FINAL GATES HERE
-
-// 1) Span ratio gate
-if (rmin < ImuCalWizardCfg::MAG_SPAN_MIN_FRAC ||
-    rmid < ImuCalWizardCfg::MAG_SPAN_MID_FRAC) {
-  out_why = "Span ratios too low";
-  return false;
-}
-
-// 2) Centered direction range gate: require at least 2 axes to meet target
-int ok_axes = 0;
-ok_axes += (ur.x() >= ImuCalWizardCfg::MAG_URANGE_TARGET) ? 1 : 0;
-ok_axes += (ur.y() >= ImuCalWizardCfg::MAG_URANGE_TARGET) ? 1 : 0;
-ok_axes += (ur.z() >= ImuCalWizardCfg::MAG_URANGE_TARGET) ? 1 : 0;
-if (ok_axes < 2) {
-  out_why = "Direction range too small";
-  return false;
-}
-
-// Coverage tests:
-if (smax < 1e-3f) { out_why = "MAG not changing"; return false; }
-
-// Planarity test: det(C) small => planar motion
-const float detC = unit_dir_cov_det_(magCal_.buf.v, n);
-Serial.printf("[MAG] detC=%.6f\n", (double)detC);
-
-if (detC < 2.0e-4f) {
-  out_why = "Coverage too flat";
-  return false;
-}
+        Serial.printf("[MAG] n=%d elapsed=%.1fs span=(%.3f,%.3f,%.3f) ratios=(%.2f,%.2f) urange=(%.2f,%.2f,%.2f)\n",
+                      n - start_n, (double)(elapsed / 1000.0f),
+                      (double)span.x(), (double)span.y(), (double)span.z(),
+                      (double)rmin, (double)rmid,
+                      (double)ur.x(), (double)ur.y(), (double)ur.z());
+        
+        // FINAL GATES HERE
+        // 1) Span ratio gate
+        if (rmin < ImuCalWizardCfg::MAG_SPAN_MIN_FRAC ||
+            rmid < ImuCalWizardCfg::MAG_SPAN_MID_FRAC) {
+          out_why = "Span ratios too low";
+          return false;
+        }
+        
+        // 2) Centered direction range gate: require at least 2 axes to meet target
+        int ok_axes = 0;
+        ok_axes += (ur.x() >= ImuCalWizardCfg::MAG_URANGE_TARGET) ? 1 : 0;
+        ok_axes += (ur.y() >= ImuCalWizardCfg::MAG_URANGE_TARGET) ? 1 : 0;
+        ok_axes += (ur.z() >= ImuCalWizardCfg::MAG_URANGE_TARGET) ? 1 : 0;
+        if (ok_axes < 2) {
+          out_why = "Direction range too small";
+          return false;
+        }
+        
+        // Coverage tests:
+        if (smax < 1e-3f) { out_why = "MAG not changing"; return false; }
+        
+        // Planarity test: det(C) small => planar motion
+        const float detC = unit_dir_cov_det_(magCal_.buf.v, n);
+        Serial.printf("[MAG] detC=%.6f\n", (double)detC);
+        
+        if (detC < 2.0e-4f) {
+          out_why = "Coverage too flat";
+          return false;
+        }
         
         ui_.showOkAuto("MAG", "Captured");
         return true;
