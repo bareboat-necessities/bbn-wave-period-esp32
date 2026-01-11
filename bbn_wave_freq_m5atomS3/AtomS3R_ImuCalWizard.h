@@ -571,10 +571,10 @@ private:
       imu_cal::FitFail r = imu_cal::FitFail::BAD_ARG;
       bool ok = self->magCal_.fit(self->mag_out_, tries[i].iters, tries[i].trim, tries[i].ridge, &r);
       
-      Serial.printf("[MAG] try mode=%d reg=%.3f -> fit=%d out.ok=%d reason=%s\n",
-                    tries[i].mode, (double)tries[i].reg,
-                    (int)ok, (int)self->mag_out_.ok, imu_cal::fitFailStr(r));
-
+      Serial.printf("[MAG] try iters=%d trim=%.3f ridge=%.1e -> fit=%d out.ok=%d reason=%s\n",
+                   tries[i].iters, (double)tries[i].trim, (double)tries[i].ridge,
+                   (int)ok, (int)self->mag_out_.ok, imu_cal::fitFailStr(r));
+      
       last_reason = r;
       if (ok && self->mag_out_.ok) { any_ok = true; break; }
     }
