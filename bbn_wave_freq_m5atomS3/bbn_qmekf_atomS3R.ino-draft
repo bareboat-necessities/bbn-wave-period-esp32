@@ -68,6 +68,8 @@ public:
     // Critical: clear M5Unified’s own cal/offsets so it can’t stack with ours.
     clearM5UnifiedImuCalibration();
 
+    delay(250);
+
     ui_.begin();
 
     if (!M5.Imu.isEnabled()) {
