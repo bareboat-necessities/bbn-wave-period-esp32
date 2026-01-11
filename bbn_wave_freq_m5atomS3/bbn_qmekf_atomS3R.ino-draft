@@ -29,7 +29,7 @@
 using namespace atoms3r_ical;
 using Vector3f = Eigen::Matrix<float, 3, 1>;
 
-// ---------- Sampling / gating tuning ----------
+// Sampling / gating tuning
 static constexpr float    LOOP_HZ        = 240.0f;
 static constexpr uint32_t LOOP_PERIOD_US = (uint32_t)(1000000.0f / LOOP_HZ);
 
@@ -42,7 +42,7 @@ static constexpr float    MAG_MIN_DELTA_uT      = 0.05f;  // reject repeats (0.0
 static constexpr uint32_t UI_REFRESH_MS     = 100;  // 10 Hz UI update
 static constexpr uint32_t SERIAL_REFRESH_MS = 200;  // 5 Hz serial update
 
-// ---------- Helpers ----------
+// Helpers
 static inline float clampf_(float x, float lo, float hi) { return x < lo ? lo : (x > hi ? hi : x); }
 
 static inline float wrap360_(float deg) {
@@ -51,7 +51,7 @@ static inline float wrap360_(float deg) {
   return deg;
 }
 
-// ---------- App ----------
+// App
 class CompassApp {
 public:
   CompassApp() : wizard_(ui_, store_) {}
@@ -145,7 +145,7 @@ public:
   }
 
 private:
-  // --- Calibration plumbing ---
+  // Calibration plumbing
   void reloadBlobAndRuntime_() {
     have_blob_ = store_.load(blob_);
     if (!have_blob_) {
@@ -192,7 +192,7 @@ private:
     resetMEKF_();
   }
 
-  // --- MEKF ---
+  // MEKF
   void resetMEKF_() {
     // Noise tuning for 240 Hz acc+gyro updates (conservative handheld/boat defaults):
     const float g = ImuCalCfg::g_std;
@@ -221,27 +221,27 @@ private:
   void updateFilter_(const ImuSample& s) {
     // Cache raw mapped norms for debug
     a_raw_norm_ = s.a.norm();
-
+  
     // Calibrate signals (or pass through if missing)
     a_cal_ = runtime_.applyAccel(s.a, s.tempC);
     w_cal_ = runtime_.applyGyro (s.w, s.tempC);
     m_cal_ = runtime_.applyMag  (s.m);
-
+  
     // dt from micros; clamp sane
     const uint32_t now_us = micros();
     float dt = (now_us - last_update_us_) * 1e-6f;
     last_update_us_ = now_us;
     dt = clampf_(dt, 0.0010f, 0.0200f);
-
+  
     // Mag validity (magnitude sanity)
     const float mn = m_cal_.norm();
     mag_ok_ = (mn > 5.0f && mn < 200.0f); // broad uT bounds
     mag_norm_uT_ = mn;
-
+  
     // Normalize mag for MEKF (unit direction)
     Vector3f m_u = Vector3f::Zero();
     if (mag_ok_ && mn > 1e-6f) m_u = m_cal_ / mn;
-
+  
     // Stale-repeat rejection + ODR gating
     const uint32_t now_ms = millis();
     bool mag_fresh = false;
@@ -255,32 +255,61 @@ private:
       }
     }
     mag_fresh_ = mag_fresh;
-
+  
     // Initialize once: prefer acc+mag if mag looks OK
     if (!mekf_inited_) {
-      if (mag_ok_) mekf_->initialize_from_acc_mag(a_cal_, m_u);
-      else         mekf_->initialize_from_acc(a_cal_);
+      // IMPORTANT: initialize should use accel *direction* too
+      Vector3f a_init = a_cal_;
+      const float an0 = a_init.norm();
+      if (an0 > 1e-6f) a_init *= (ImuCalCfg::g_std / an0);
+  
+      if (mag_ok_) mekf_->initialize_from_acc_mag(a_init, m_u);
+      else         mekf_->initialize_from_acc(a_init);
+  
       mekf_inited_ = true;
     }
-
+  
     // Core filter updates at ~240Hz
     mekf_->time_update(w_cal_, dt);
-    mekf_->measurement_update_acc_only(a_cal_);
-
+  
+    // IMPORTANT: attitude update should use accel *direction*.
+    // Your accel calibration S can scale |a| away from g, which biases tilt.
+    Vector3f a_att = a_cal_;
+    const float an = a_att.norm();
+    if (an > 1e-6f) a_att *= (ImuCalCfg::g_std / an);
+    mekf_->measurement_update_acc_only(a_att);
+  
     // Mag update at mag ODR (gated)
     if (mag_ok_ && mag_fresh_) {
       mekf_->measurement_update_mag_only(m_u);
     }
+  
+    const auto qv = mekf_->quaternion();
 
-    // Extract Euler from BODY->WORLD quaternion (q_bw)
-    const auto qvec = mekf_->quaternion(); // [x,y,z,w]
-    Eigen::Quaternionf q_bw(qvec(3), qvec(0), qvec(1), qvec(2));
-    Eigen::Matrix3f R = q_bw.toRotationMatrix();
+    float x = qv(0);
+    float y = qv(1);
+    float z = qv(2);
+    float w = qv(3);
 
-    // ZYX extraction (yaw, pitch, roll)
-    float yaw   = atan2f(R(1, 0), R(0, 0));
-    float pitch = -asinf(clampf_(R(2, 0), -1.0f, 1.0f));
-    float roll  = atan2f(R(2, 1), R(2, 2));
+    // Normalize defensively
+    const float nn = x*x + y*y + z*z + w*w;
+    if (nn > 1e-12f) {
+      const float invn = 1.0f / sqrtf(nn);
+      x *= invn; y *= invn; z *= invn; w *= invn;
+    }
+
+    // ZYX yaw-pitch-roll
+    const float siny_cosp = 2.0f * (w*z + x*y);
+    const float cosy_cosp = 1.0f - 2.0f * (y*y + z*z);
+    const float yaw = atan2f(siny_cosp, cosy_cosp);
+
+    float sinp = 2.0f * (w*y - z*x);
+    sinp = clampf_(sinp, -1.0f, 1.0f);
+    const float pitch = asinf(sinp);
+
+    const float sinr_cosp = 2.0f * (w*x + y*z);
+    const float cosr_cosp = 1.0f - 2.0f * (x*x + y*y);
+    const float roll = atan2f(sinr_cosp, cosr_cosp);
 
     roll_deg_  = roll  * RAD_TO_DEG;
     pitch_deg_ = pitch * RAD_TO_DEG;
@@ -289,7 +318,7 @@ private:
     heading_deg_ = wrap360_(yaw_deg_);
   }
 
-  // --- UI ---
+  // UI
   void drawHomeStatic_() {
     ui_.setReadRotation();
     ui_.title("COMPASS");
@@ -342,7 +371,7 @@ private:
                       have_blob_ ? "YES" : "NO");
   }
 
-  // --- Serial ---
+  // Serial
   void streamSerial_() {
     const uint32_t now_ms = millis();
     if (now_ms - last_serial_ms_ < SERIAL_REFRESH_MS) return;
