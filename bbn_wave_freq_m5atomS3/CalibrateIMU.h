@@ -241,8 +241,7 @@ static inline T robust_mad(T* residuals, int n) {
   return mad;
 }
 
-// --- NEW: helpers to prevent accel axis rotation ---
-
+// helpers to prevent accel axis rotation
 // Off-diagonal RMS for a 3x3 matrix (6 off-diagonal entries)
 template <typename T>
 static inline T offdiag_rms_3x3(const Eigen::Matrix<T,3,3>& M) {
@@ -631,20 +630,12 @@ static TempBias3<T> fit_temp_bias3(const Eigen::Matrix<T,3,1>(&b)[N], const T(&t
   return out;
 }
 
-// -------------------- Accel post-fit gravity renormalization --------------------
+// Accel post-fit gravity renormalization
 //
 // Goal: after fitting S and bias(T), ensure mean || S*(a_raw - bias(T)) || == g
 // on the *accepted* accel samples.
-// This fixes the exact symptom you're seeing: |aC| ~ 9.60 while g ~ 9.806.
-//
-// Assumptions about your accel buffer (adjust names if needed):
-//   - buf.n           : number of accepted samples
-//   - buf.a[i]        : raw accel sample (Vector3)
-//   - buf.tempC[i]    : temperature for that sample (float)
-// If your names differ, change the 2 marked lines below.
 //
 // This scales S by a scalar only (preserves axis ratios + off-diagonal structure).
-
 template <typename T>
 static inline Eigen::Matrix<T,3,1> bias_at_temp_(
     const imu_cal::BiasTemp<T>& bt, T tempC)
@@ -675,10 +666,9 @@ static inline bool post_scale_accel_S_to_match_g_(
   int cnt = 0;
 
   for (int i = 0; i < n; ++i) {
-    // ---- ADJUST THESE TWO LINES if your buffer uses different member names ----
+    // --- ADJUST THESE TWO LINES if your buffer uses different member names
     const Eigen::Matrix<T,3,1> a_raw = buf.a[i];
     const T tempC = (T)buf.tempC[i];
-    // -------------------------------------------------------------------------
 
     if (!std::isfinite(a_raw.x()) || !std::isfinite(a_raw.y()) || !std::isfinite(a_raw.z())) continue;
     if (!std::isfinite((double)tempC)) continue;
@@ -715,10 +705,10 @@ static inline bool post_scale_accel_S_to_match_g_(
     T sse = (T)0;
     int m = 0;
     for (int i = 0; i < n; ++i) {
-      // ---- same two lines to match your buffer layout ----
+      // --- same two lines to match your buffer layout
       const Eigen::Matrix<T,3,1> a_raw = buf.a[i];
       const T tempC = (T)buf.tempC[i];
-      // ---------------------------------------------------
+
       if (!std::isfinite(a_raw.x()) || !std::isfinite(a_raw.y()) || !std::isfinite(a_raw.z())) continue;
       if (!std::isfinite((double)tempC)) continue;
 
@@ -944,7 +934,7 @@ struct AccelCalibrator {
 
       if (score < best_score) {
         best_score = score;
-        bestS = S_use;           // <<<<< axis-safe S stored here
+        bestS = S_use;           // axis-safe S stored here
         best_rms = fitk.rms;
         best_center = fitk.b;
       }
