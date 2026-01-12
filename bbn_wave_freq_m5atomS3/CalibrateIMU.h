@@ -986,10 +986,17 @@ struct AccelCalibrator {
                                                        T(0.90), T(1.10),
                                                        T(0.85), T(1.15));
     if (!did_scale) {
-      (void)post_scale_accel_S_to_match_g_<T>(this->buf, out,
-                                              T(0.75), T(1.25),
-                                              T(0.85), T(1.15));
+      did_scale = post_scale_accel_S_to_match_g_<T>(this->buf, out,
+                                                    T(0.75), T(1.25),
+                                                    T(0.85), T(1.15));
     } 
+
+    if (!did_scale) {
+      // At least surface it. Either fail fit, or record a warning code.
+      last_fail_ = FitFail::ACCEL_S_UNPHYSICAL; 
+      if (reason_out) *reason_out = last_fail_;
+      return false;
+    }
     
     last_fail_ = FitFail::OK;
     if (reason_out) *reason_out = FitFail::OK;
