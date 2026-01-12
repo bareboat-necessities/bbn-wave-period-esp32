@@ -225,7 +225,7 @@ void loop() {
 
     float mag_uT = sqrtf(d.mag.x*d.mag.x + d.mag.y*d.mag.y + d.mag.z*d.mag.z);
 
-    ui.draw(heading, /*magOk=*/true, /*magStrength_uT=*/mag_uT, /*tiltWarn=*/false);
+    ui.draw(heading, true, mag_uT, false);
   }
 
   delay(16); // ~60 fps cap
