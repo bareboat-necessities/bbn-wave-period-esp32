@@ -631,6 +631,112 @@ static TempBias3<T> fit_temp_bias3(const Eigen::Matrix<T,3,1>(&b)[N], const T(&t
   return out;
 }
 
+// -------------------- Accel post-fit gravity renormalization --------------------
+//
+// Goal: after fitting S and bias(T), ensure mean || S*(a_raw - bias(T)) || == g
+// on the *accepted* accel samples.
+// This fixes the exact symptom you're seeing: |aC| ~ 9.60 while g ~ 9.806.
+//
+// Assumptions about your accel buffer (adjust names if needed):
+//   - buf.n           : number of accepted samples
+//   - buf.a[i]        : raw accel sample (Vector3)
+//   - buf.tempC[i]    : temperature for that sample (float)
+// If your names differ, change the 2 marked lines below.
+//
+// This scales S by a scalar only (preserves axis ratios + off-diagonal structure).
+
+template <typename T>
+static inline Eigen::Matrix<T,3,1> bias_at_temp_(
+    const imu_cal::BiasTemp<T>& bt, T tempC)
+{
+  // bias(T) = b0 + k*(T - T0)
+  return bt.b0 + bt.k * (tempC - bt.T0);
+}
+
+template <typename T, typename AccelBufT>
+static inline bool post_scale_accel_S_to_match_g_(
+    const AccelBufT& buf,
+    imu_cal::AccelCalibration<T>& out,
+    T norm_gate_lo = (T)0.50,   // accept norms in [0.5g, 1.5g] before scaling
+    T norm_gate_hi = (T)1.50,
+    T scale_clamp_lo = (T)0.85, // safety clamp on the scale factor
+    T scale_clamp_hi = (T)1.15)
+{
+  if (!out.ok) return false;
+  if (!(out.g > (T)0)) return false;
+  const int n = (int)buf.n;
+  if (n < 20) return false;
+
+  const T g = out.g;
+  const T lo = norm_gate_lo * g;
+  const T hi = norm_gate_hi * g;
+
+  T sum = (T)0;
+  int cnt = 0;
+
+  for (int i = 0; i < n; ++i) {
+    // ---- ADJUST THESE TWO LINES if your buffer uses different member names ----
+    const Eigen::Matrix<T,3,1> a_raw = buf.a[i];
+    const T tempC = (T)buf.tempC[i];
+    // -------------------------------------------------------------------------
+
+    if (!std::isfinite(a_raw.x()) || !std::isfinite(a_raw.y()) || !std::isfinite(a_raw.z())) continue;
+    if (!std::isfinite((double)tempC)) continue;
+
+    const Eigen::Matrix<T,3,1> b = bias_at_temp_(out.biasT, tempC);
+    const Eigen::Matrix<T,3,1> a_cal = out.S * (a_raw - b);
+    const T an = a_cal.norm();
+    if (!std::isfinite((double)an)) continue;
+
+    // reject obvious motion/outliers
+    if (an < lo || an > hi) continue;
+
+    sum += an;
+    ++cnt;
+  }
+
+  if (cnt < 20) return false;
+
+  const T mean_norm = sum / (T)cnt;
+  if (!(mean_norm > (T)0) || !std::isfinite((double)mean_norm)) return false;
+
+  T scale = g / mean_norm;
+  if (!std::isfinite((double)scale)) return false;
+
+  // clamp safety (prevents blowing up on bad datasets)
+  if (scale < scale_clamp_lo) scale = scale_clamp_lo;
+  if (scale > scale_clamp_hi) scale = scale_clamp_hi;
+
+  out.S *= scale;
+
+  // Optional: update out.rms_mag if you expose it (your print shows rms_mag exists)
+  // rms_mag = RMS of (||a_cal|| - g) over the same gated sample set
+  if constexpr (requires { out.rms_mag; }) {
+    T sse = (T)0;
+    int m = 0;
+    for (int i = 0; i < n; ++i) {
+      // ---- same two lines to match your buffer layout ----
+      const Eigen::Matrix<T,3,1> a_raw = buf.a[i];
+      const T tempC = (T)buf.tempC[i];
+      // ---------------------------------------------------
+      if (!std::isfinite(a_raw.x()) || !std::isfinite(a_raw.y()) || !std::isfinite(a_raw.z())) continue;
+      if (!std::isfinite((double)tempC)) continue;
+
+      const Eigen::Matrix<T,3,1> b = bias_at_temp_(out.biasT, tempC);
+      const Eigen::Matrix<T,3,1> a_cal = out.S * (a_raw - b);
+      const T an = a_cal.norm();
+      if (!std::isfinite((double)an)) continue;
+      if (an < lo || an > hi) continue;
+
+      const T e = an - g;
+      sse += e * e;
+      ++m;
+    }
+    if (m > 0) out.rms_mag = std::sqrt((double)(sse / (T)m));
+  }
+  return true;
+}
+
 // Calibration outputs
 template <typename T>
 struct AccelCalibration {
