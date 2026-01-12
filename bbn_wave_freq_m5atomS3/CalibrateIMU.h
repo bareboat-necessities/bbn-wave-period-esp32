@@ -638,7 +638,7 @@ static TempBias3<T> fit_temp_bias3(const Eigen::Matrix<T,3,1>(&b)[N], const T(&t
 // This scales S by a scalar only (preserves axis ratios + off-diagonal structure).
 template <typename T>
 static inline Eigen::Matrix<T,3,1> bias_at_temp_(
-    const imu_cal::BiasTemp<T>& bt, T tempC)
+    const imu_cal::TempBias3<T>& bt, T tempC)
 {
   // bias(T) = b0 + k*(T - T0)
   return bt.b0 + bt.k * (tempC - bt.T0);
