@@ -681,10 +681,10 @@ template <typename T, typename AccelBufT>
 static inline bool post_scale_accel_S_to_match_g_(
     const AccelBufT& buf,
     AccelCalibration<T>& out,
-    T norm_gate_lo = T(0.50),    // accept norms in [0.5g, 1.5g] before scaling
-    T norm_gate_hi = T(1.50),
-    T scale_clamp_lo = T(0.85),  // safety clamp on the scale factor
-    T scale_clamp_hi = T(1.15))
+    T norm_gate_lo = T(0.90),    // accept norms in [0.9g, 1.1g] before scaling
+    T norm_gate_hi = T(1.10),
+    T scale_clamp_lo = T(0.95),  // safety clamp on the scale factor
+    T scale_clamp_hi = T(1.05))
 {
   if (!out.ok) return false;
   if (!(out.g > T(0))) return false;
