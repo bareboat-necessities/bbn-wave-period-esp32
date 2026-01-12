@@ -198,6 +198,8 @@ class CompassUI {
   M5Canvas _frame;
 };
 
+/*
+
 CompassUI ui;
 
 void setup() {
@@ -228,3 +230,6 @@ void loop() {
 
   delay(16); // ~60 fps cap
 }
+
+*/
+
