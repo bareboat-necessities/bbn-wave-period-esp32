@@ -666,8 +666,7 @@ static inline bool post_scale_accel_S_to_match_g_(
   int cnt = 0;
 
   for (int i = 0; i < n; ++i) {
-    // --- ADJUST THESE TWO LINES if your buffer uses different member names
-    const Eigen::Matrix<T,3,1> a_raw = buf.a[i];
+    const Eigen::Matrix<T,3,1> a_raw = buf.v[i];
     const T tempC = (T)buf.tempC[i];
 
     if (!std::isfinite(a_raw.x()) || !std::isfinite(a_raw.y()) || !std::isfinite(a_raw.z())) continue;
@@ -705,8 +704,7 @@ static inline bool post_scale_accel_S_to_match_g_(
     T sse = (T)0;
     int m = 0;
     for (int i = 0; i < n; ++i) {
-      // --- same two lines to match your buffer layout
-      const Eigen::Matrix<T,3,1> a_raw = buf.a[i];
+      const Eigen::Matrix<T,3,1> a_raw = buf.v[i];
       const T tempC = (T)buf.tempC[i];
 
       if (!std::isfinite(a_raw.x()) || !std::isfinite(a_raw.y()) || !std::isfinite(a_raw.z())) continue;
@@ -969,11 +967,11 @@ struct AccelCalibrator {
     }
 
     out.ok = true;
-    post_scale_accel_S_to_match_g_(this->buf, out);
     out.g = g;
     out.S = bestS;          // axis-safe S used here
     out.biasT = biasT;
     out.rms_mag = best_rms;
+    post_scale_accel_S_to_match_g_(this->buf, out);
 
     last_fail_ = FitFail::OK;
     if (reason_out) *reason_out = FitFail::OK;
