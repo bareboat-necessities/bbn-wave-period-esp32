@@ -988,7 +988,7 @@ struct AccelCalibrator {
     if (!did_scale) {
       did_scale = post_scale_accel_S_to_match_g_<T>(this->buf, out,
                                                     T(0.75), T(1.25),
-                                                    T(0.85), T(1.15));
+                                                    T(0.80), T(1.20));
     } 
 
     if (!did_scale) {
