@@ -696,7 +696,8 @@ static inline bool post_scale_accel_S_to_match_g_(
   const T lo = norm_gate_lo * g;
   const T hi = norm_gate_hi * g;
 
-  T sum = T(0);
+  // Use RMS of norm (sqrt(mean(||a||^2))) to avoid Jensen bias of mean(||a||).
+  T sum2 = T(0);
   int cnt = 0;
 
   for (int i = 0; i < n; ++i) {
@@ -714,13 +715,13 @@ static inline bool post_scale_accel_S_to_match_g_(
     // reject obvious motion/outliers
     if (an < lo || an > hi) continue;
 
-    sum += an;
+    sum2 += an * an;
     ++cnt;
   }
 
   if (cnt < 20) return false;
 
-  const T mean_norm = sum / (T)cnt;
+  const T mean_norm = (T)std::sqrt((double)(sum2 / (T)cnt));
   if (!(mean_norm > T(0)) || !finiteT(mean_norm)) return false;
 
   T scale = g / mean_norm;
@@ -732,7 +733,7 @@ static inline bool post_scale_accel_S_to_match_g_(
 
   out.S *= scale;
 
-  // Update out.rms_mag (no concepts / no requires; AccelCalibration always has rms_mag)
+  // Update out.rms_mag (AccelCalibration always has rms_mag)
   {
     T sse = T(0);
     int m = 0;
@@ -966,7 +967,9 @@ struct AccelCalibrator {
     out.S = bestS;          // axis-safe S used here
     out.biasT = biasT;
     out.rms_mag = best_rms;
-    post_scale_accel_S_to_match_g_<T>(this->buf, out);
+    post_scale_accel_S_to_match_g_<T>(this->buf, out,
+                                      T(0.95), T(1.05),   // only use very-near-g samples
+                                      T(0.95), T(1.05));  // allow only small rescale
 
     last_fail_ = FitFail::OK;
     if (reason_out) *reason_out = FitFail::OK;
