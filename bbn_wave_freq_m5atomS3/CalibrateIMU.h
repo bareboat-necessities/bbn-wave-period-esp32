@@ -630,101 +630,6 @@ static TempBias3<T> fit_temp_bias3(const Eigen::Matrix<T,3,1>(&b)[N], const T(&t
   return out;
 }
 
-// Accel post-fit gravity renormalization
-//
-// Goal: after fitting S and bias(T), ensure mean || S*(a_raw - bias(T)) || == g
-// on the *accepted* accel samples.
-//
-// This scales S by a scalar only (preserves axis ratios + off-diagonal structure).
-template <typename T>
-static inline Eigen::Matrix<T,3,1> bias_at_temp_(
-    const imu_cal::TempBias3<T>& bt, T tempC)
-{
-  // bias(T) = b0 + k*(T - T0)
-  return bt.b0 + bt.k * (tempC - bt.T0);
-}
-
-template <typename T, typename AccelBufT>
-static inline bool post_scale_accel_S_to_match_g_(
-    const AccelBufT& buf,
-    imu_cal::AccelCalibration<T>& out,
-    T norm_gate_lo = (T)0.50,   // accept norms in [0.5g, 1.5g] before scaling
-    T norm_gate_hi = (T)1.50,
-    T scale_clamp_lo = (T)0.85, // safety clamp on the scale factor
-    T scale_clamp_hi = (T)1.15)
-{
-  if (!out.ok) return false;
-  if (!(out.g > (T)0)) return false;
-  const int n = (int)buf.n;
-  if (n < 20) return false;
-
-  const T g = out.g;
-  const T lo = norm_gate_lo * g;
-  const T hi = norm_gate_hi * g;
-
-  T sum = (T)0;
-  int cnt = 0;
-
-  for (int i = 0; i < n; ++i) {
-    const Eigen::Matrix<T,3,1> a_raw = buf.v[i];
-    const T tempC = (T)buf.tempC[i];
-
-    if (!std::isfinite(a_raw.x()) || !std::isfinite(a_raw.y()) || !std::isfinite(a_raw.z())) continue;
-    if (!std::isfinite((double)tempC)) continue;
-
-    const Eigen::Matrix<T,3,1> b = bias_at_temp_(out.biasT, tempC);
-    const Eigen::Matrix<T,3,1> a_cal = out.S * (a_raw - b);
-    const T an = a_cal.norm();
-    if (!std::isfinite((double)an)) continue;
-
-    // reject obvious motion/outliers
-    if (an < lo || an > hi) continue;
-
-    sum += an;
-    ++cnt;
-  }
-
-  if (cnt < 20) return false;
-
-  const T mean_norm = sum / (T)cnt;
-  if (!(mean_norm > (T)0) || !std::isfinite((double)mean_norm)) return false;
-
-  T scale = g / mean_norm;
-  if (!std::isfinite((double)scale)) return false;
-
-  // clamp safety (prevents blowing up on bad datasets)
-  if (scale < scale_clamp_lo) scale = scale_clamp_lo;
-  if (scale > scale_clamp_hi) scale = scale_clamp_hi;
-
-  out.S *= scale;
-
-  // Optional: update out.rms_mag if you expose it (your print shows rms_mag exists)
-  // rms_mag = RMS of (||a_cal|| - g) over the same gated sample set
-  if constexpr (requires { out.rms_mag; }) {
-    T sse = (T)0;
-    int m = 0;
-    for (int i = 0; i < n; ++i) {
-      const Eigen::Matrix<T,3,1> a_raw = buf.v[i];
-      const T tempC = (T)buf.tempC[i];
-
-      if (!std::isfinite(a_raw.x()) || !std::isfinite(a_raw.y()) || !std::isfinite(a_raw.z())) continue;
-      if (!std::isfinite((double)tempC)) continue;
-
-      const Eigen::Matrix<T,3,1> b = bias_at_temp_(out.biasT, tempC);
-      const Eigen::Matrix<T,3,1> a_cal = out.S * (a_raw - b);
-      const T an = a_cal.norm();
-      if (!std::isfinite((double)an)) continue;
-      if (an < lo || an > hi) continue;
-
-      const T e = an - g;
-      sse += e * e;
-      ++m;
-    }
-    if (m > 0) out.rms_mag = std::sqrt((double)(sse / (T)m));
-  }
-  return true;
-}
-
 // Calibration outputs
 template <typename T>
 struct AccelCalibration {
@@ -762,6 +667,96 @@ struct GyroCalibration {
     return S * (w_raw - biasT.bias(tempC));
   }
 };
+
+// Accel post-fit gravity renormalization
+//
+// Goal: after fitting S and bias(T), enforce mean ||S*(a_raw - bias(T))|| == g
+// over gated (near-static) samples. This scales S by a scalar only.
+template <typename T>
+static inline Eigen::Matrix<T,3,1> bias_at_temp_(const TempBias3<T>& bt, T tempC) {
+  return bt.bias(tempC);
+}
+
+template <typename T, typename AccelBufT>
+static inline bool post_scale_accel_S_to_match_g_(
+    const AccelBufT& buf,
+    AccelCalibration<T>& out,
+    T norm_gate_lo = T(0.50),    // accept norms in [0.5g, 1.5g] before scaling
+    T norm_gate_hi = T(1.50),
+    T scale_clamp_lo = T(0.85),  // safety clamp on the scale factor
+    T scale_clamp_hi = T(1.15))
+{
+  if (!out.ok) return false;
+  if (!(out.g > T(0))) return false;
+
+  const int n = (int)buf.n;
+  if (n < 20) return false;
+
+  const T g  = out.g;
+  const T lo = norm_gate_lo * g;
+  const T hi = norm_gate_hi * g;
+
+  T sum = T(0);
+  int cnt = 0;
+
+  for (int i = 0; i < n; ++i) {
+    const Eigen::Matrix<T,3,1> a_raw = buf.v[i];
+    const T tempC = (T)buf.tempC[i];
+
+    if (!finiteT(a_raw.x()) || !finiteT(a_raw.y()) || !finiteT(a_raw.z())) continue;
+    if (!finiteT(tempC)) continue;
+
+    const Eigen::Matrix<T,3,1> b = bias_at_temp_(out.biasT, tempC);
+    const Eigen::Matrix<T,3,1> a_cal = out.S * (a_raw - b);
+    const T an = a_cal.norm();
+    if (!finiteT(an)) continue;
+
+    // reject obvious motion/outliers
+    if (an < lo || an > hi) continue;
+
+    sum += an;
+    ++cnt;
+  }
+
+  if (cnt < 20) return false;
+
+  const T mean_norm = sum / (T)cnt;
+  if (!(mean_norm > T(0)) || !finiteT(mean_norm)) return false;
+
+  T scale = g / mean_norm;
+  if (!finiteT(scale)) return false;
+
+  // clamp safety (prevents blowing up on bad datasets)
+  if (scale < scale_clamp_lo) scale = scale_clamp_lo;
+  if (scale > scale_clamp_hi) scale = scale_clamp_hi;
+
+  out.S *= scale;
+
+  // Update out.rms_mag (no concepts / no requires; AccelCalibration always has rms_mag)
+  {
+    T sse = T(0);
+    int m = 0;
+    for (int i = 0; i < n; ++i) {
+      const Eigen::Matrix<T,3,1> a_raw = buf.v[i];
+      const T tempC = (T)buf.tempC[i];
+
+      if (!finiteT(a_raw.x()) || !finiteT(a_raw.y()) || !finiteT(a_raw.z())) continue;
+      if (!finiteT(tempC)) continue;
+
+      const Eigen::Matrix<T,3,1> b = bias_at_temp_(out.biasT, tempC);
+      const Eigen::Matrix<T,3,1> a_cal = out.S * (a_raw - b);
+      const T an = a_cal.norm();
+      if (!finiteT(an)) continue;
+      if (an < lo || an > hi) continue;
+
+      const T e = an - g;
+      sse += e * e;
+      ++m;
+    }
+    if (m > 0) out.rms_mag = (T)std::sqrt((double)(sse / (T)m));
+  }
+  return true;
+}
 
 // Calibrator: Accel
 template <typename T, int N, int K_TBINS = 8>
@@ -971,7 +966,7 @@ struct AccelCalibrator {
     out.S = bestS;          // axis-safe S used here
     out.biasT = biasT;
     out.rms_mag = best_rms;
-    post_scale_accel_S_to_match_g_(this->buf, out);
+    post_scale_accel_S_to_match_g_<T>(this->buf, out);
 
     last_fail_ = FitFail::OK;
     if (reason_out) *reason_out = FitFail::OK;
