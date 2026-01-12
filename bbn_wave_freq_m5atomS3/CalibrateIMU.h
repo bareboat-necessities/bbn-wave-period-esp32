@@ -979,8 +979,9 @@ struct AccelCalibrator {
     }
 
     out.ok = true;
+    post_scale_accel_S_to_match_g_(this->buf, out);
     out.g = g;
-    out.S = bestS;          // <<<<< axis-safe S used here
+    out.S = bestS;          // axis-safe S used here
     out.biasT = biasT;
     out.rms_mag = best_rms;
 
