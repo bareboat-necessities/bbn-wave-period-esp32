@@ -1,5 +1,11 @@
 #pragma once
 
+/*
+
+  Copyright 2026, Mikhail Grushinskiy
+
+*/
+
 #include <M5Unified.h>
 #include <cmath>
 #include <cstring>
