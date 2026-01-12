@@ -779,13 +779,13 @@ struct AccelCalibrator {
   enum class AccelSMode : uint8_t { PolarSPD = 0, DiagonalOnly = 1 };
 
   // Recommended default for compass/attitude: DiagonalOnly
-  AccelSMode accel_S_mode = AccelSMode::DiagonalOnly;
+  AccelSMode accel_S_mode = AccelSMode::PolarSPD;  // AccelSMode::DiagonalOnly;
 
   // Plausibility gates (dimensionless)
   T accel_diag_lo = T(0.80);
   T accel_diag_hi = T(1.25);
-  T accel_max_offdiag_rms = T(0.03); // only used in PolarSPD mode
-  T accel_max_cond = T(2.5);
+  T accel_max_offdiag_rms = T(0.01); // only used in PolarSPD mode
+  T accel_max_cond = T(2.2);
 
   // Workspace to reduce stack use in fit()
   struct Workspace {
