@@ -57,8 +57,9 @@ static constexpr uint32_t MAG_SAMPLE_SPACING_MS = 12;     // ~<=80 Hz mag update
 static constexpr float    MAG_MIN_DELTA_uT      = 0.02f;  // reject repeats (0.02..0.10 typical)
 
 // Display / serial rates
-static constexpr uint32_t UI_REFRESH_MS     = 100;  // 10 Hz UI update
-static constexpr uint32_t SERIAL_REFRESH_MS = 200;  // 5 Hz serial update
+static constexpr uint32_t UI_REFRESH_MS     = 100;   // 10 Hz UI update
+static constexpr uint32_t DEBUG_SERIAL_MS   = 200;   // 5 Hz
+static constexpr uint32_t NMEA_SERIAL_MS    = 100;   // 10 Hz
 
 // Helpers
 static inline float clampf_(float x, float lo, float hi) { return x < lo ? lo : (x > hi ? hi : x); }
@@ -421,14 +422,17 @@ private:
 
   void streamSerial_() {
     const uint32_t now_ms = millis();
-    if (now_ms - last_serial_ms_ < SERIAL_REFRESH_MS) return;
-    last_serial_ms_ = now_ms;
-#if COMPASS_SERIAL_NMEA
-    // Rate-of-turn (deg/min) from gyro Z (rad/s).
-    // If sign is backwards in your plotter, flip: rot_dpm = -rot_dpm;
-    float rot_dpm = w_cal_.z() * RAD_TO_DEG * 60.0f;
   
-    // Valid once MEKF initialized; you can also require mag_ok_ if you want.
+#if COMPASS_SERIAL_NMEA
+    if (now_ms - last_serial_ms_ < NMEA_SERIAL_MS) return;
+#else
+    if (now_ms - last_serial_ms_ < DEBUG_SERIAL_MS) return;
+#endif
+  
+    last_serial_ms_ = now_ms;
+  
+#if COMPASS_SERIAL_NMEA
+    float rot_dpm = w_cal_.z() * RAD_TO_DEG * 60.0f;
     const bool valid = mekf_inited_;
   
     nmea_hdm(COMPASS_NMEA_TALKER, heading_deg_);
