@@ -70,6 +70,12 @@ static inline float wrap360_(float deg) {
   return deg;
 }
 
+static inline float wrap180_(float deg) {
+  while (deg < -180.0f) deg += 360.0f;
+  while (deg >= 180.0f) deg -= 360.0f;
+  return deg;
+}
+
 // App
 class CompassApp {
 public:
@@ -175,7 +181,13 @@ private:
   bool use_graphics_ = (COMPASS_UI_DEFAULT_GRAPHICS != 0);
   CompassUI compass_ui_{};
   bool compass_ui_ready_ = false;
-  
+
+  // ROT estimator (deg/min), derived from fused yaw
+  bool     rot_inited_ = false;
+  float    yaw_prev_deg_ = 0.0f;
+  uint32_t yaw_prev_us_  = 0;
+  float    rot_dpm_filt_ = 0.0f;
+
   // Calibration plumbing
   void reloadBlobAndRuntime_() {
     have_blob_ = store_.load(blob_);
@@ -346,6 +358,33 @@ private:
     yaw_deg_   = yaw   * RAD_TO_DEG;
 
     heading_deg_ = wrap360_(yaw_deg_);
+
+    // ROT from fused yaw (deg/min), wrap-safe + lightly filtered
+    const uint32_t now_us2 = micros();
+    if (!rot_inited_) {
+      rot_inited_   = true;
+      yaw_prev_deg_ = yaw_deg_;
+      yaw_prev_us_  = now_us2;
+      rot_dpm_filt_ = 0.0f;
+    } else {
+      float dt_rot = (now_us2 - yaw_prev_us_) * 1e-6f;
+      // keep sane (avoid division spikes if micros jitter or long stalls)
+      dt_rot = clampf_(dt_rot, 0.001f, 0.100f);
+
+      float dyaw = wrap180_(yaw_deg_ - yaw_prev_deg_);     // shortest path
+      float rot_dpm = (dyaw / dt_rot) * 60.0f;             // deg/sec -> deg/min
+
+      // Optional clamp to avoid garbage during re-init / magnetic glitches
+      rot_dpm = clampf_(rot_dpm, -720.0f, 720.0f);         // +/- 12 deg/s
+
+      // Low-pass (tune tau if you want)
+      const float tau = 0.25f;                             // seconds
+      const float alpha = 1.0f - expf(-dt_rot / tau);
+      rot_dpm_filt_ += alpha * (rot_dpm - rot_dpm_filt_);
+
+      yaw_prev_deg_ = yaw_deg_;
+      yaw_prev_us_  = now_us2;
+    }
   }
 
   // UI
@@ -432,7 +471,7 @@ private:
     last_serial_ms_ = now_ms;
   
 #if COMPASS_SERIAL_NMEA
-    float rot_dpm = w_cal_.z() * RAD_TO_DEG * 60.0f;
+    float rot_dpm = rot_dpm_filt_;
     const bool valid = mekf_inited_;
   
     nmea_hdm(COMPASS_NMEA_TALKER, heading_deg_);
