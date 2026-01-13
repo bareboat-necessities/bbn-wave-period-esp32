@@ -22,6 +22,12 @@
 
 #include "AtomS3R_ImuCal.h"
 #include "AtomS3R_ImuCalWizard.h"
+#include "AtomS3R_CompassUI.h"
+
+// 1 = graphical compass by default, 0 = text UI by default
+#ifndef COMPASS_UI_DEFAULT_GRAPHICS
+#define COMPASS_UI_DEFAULT_GRAPHICS 1
+#endif
 
 // q-mekf header that defines QuaternionMEKF
 #include "KalmanQMEKF.h"
@@ -72,6 +78,14 @@ public:
 
     ui_.begin();
 
+    // Optional graphical compass UI
+    if (use_graphics_) {
+      ui_.setReadRotation();     // ensure width/height match ROT_READ
+      compass_ui_.begin();
+      compass_ui_ready_ = compass_ui_.ok();
+      if (!compass_ui_ready_) use_graphics_ = false;
+    }
+
     if (!M5.Imu.isEnabled()) {
       Serial.println("[BOOT] IMU not found / not enabled");
       ui_.fail("IMU", "Not found");
@@ -118,7 +132,6 @@ public:
     }
     next_tick_us_ += LOOP_PERIOD_US;
 
-    M5.update();
     Input::update();
 
     // Tap handling (same behavior as your cal app)
@@ -141,12 +154,18 @@ public:
     ImuSample s;
     if (readImuMapped(M5.Imu, s)) {
       updateFilter_(s);
-      updateUI_();
-      streamSerial_();
     }
+
+    updateUI_();
+    streamSerial_();
   }
 
 private:
+  // UI mode
+  bool use_graphics_ = (COMPASS_UI_DEFAULT_GRAPHICS != 0);
+  CompassUI compass_ui_{};
+  bool compass_ui_ready_ = false;
+  
   // Calibration plumbing
   void reloadBlobAndRuntime_() {
     have_blob_ = store_.load(blob_);
@@ -348,10 +367,31 @@ private:
   }
 
   void updateUI_() {
+    // If we're in the tap-group decision window, keep the pending screen visible.
+    if (tap_count_ > 0) return;
+
     const uint32_t now_ms = millis();
     if (now_ms - last_ui_ms_ < UI_REFRESH_MS) return;
     last_ui_ms_ = now_ms;
 
+    if (use_graphics_ && compass_ui_ready_) {
+      updateUI_graphics_();
+    } else {
+      updateUI_text_();
+    }
+  }
+
+  void updateUI_graphics_() {
+    // Ensure the display rotation matches what CompassUI sprites were built for.
+    ui_.setReadRotation();
+
+    // Simple tilt warning (optional): tweak thresholds as you like
+    const bool tiltWarn = (fabsf(roll_deg_) > 35.0f) || (fabsf(pitch_deg_) > 35.0f);
+
+    compass_ui_.draw(heading_deg_, mag_ok_, mag_norm_uT_, tiltWarn);
+  }
+
+  void updateUI_text_() {
     ui_.setReadRotation();
     ui_.title("COMPASS");
 
