@@ -117,39 +117,40 @@ class CompassUI {
   }
 
   void drawNeedle(float headingDeg) {
-    if (!std::isfinite(headingDeg)) headingDeg = 0.0f;
-    headingDeg = wrap360(headingDeg);
-
-    // 0° = North (up): x = sin, y = -cos
+    // Screen coordinates: +x right, +y down
+    // We want 0° (north) to point up => x = sin, y = -cos
     float a = headingDeg * (float)M_PI / 180.0f;
     float sn = sinf(a), cs = cosf(a);
 
     int tipR  = _rInner - 2;
-    int tailR = _rInner - 18;
+    int baseR = 18;
+    int halfW = 6;
 
     int xt = _cx + (int)lroundf(sn * tipR);
     int yt = _cy - (int)lroundf(cs * tipR);
 
-    int xb = _cx - (int)lroundf(sn * tailR);
-    int yb = _cy + (int)lroundf(cs * tailR);
+    int xb = _cx + (int)lroundf(sn * baseR);
+    int yb = _cy - (int)lroundf(cs * baseR);
 
-    // Perp for thickness
-    int px = (int)lroundf(cs);
-    int py = (int)lroundf(sn);
+    // Perp direction for needle width
+    int px = (int)lroundf(cs * halfW);
+    int py = (int)lroundf(sn * halfW);
 
-    // Thick red "north" needle
-    for (int k = -2; k <= 2; ++k) {
-      _frame.drawLine(_cx + k*px, _cy + k*py, xt + k*px, yt + k*py, TFT_RED);
-    }
+    int xL = xb - px, yL = yb - py;
+    int xR = xb + px, yR = yb + py;
 
-    // Grey tail
-    for (int k = -1; k <= 1; ++k) {
-      _frame.drawLine(_cx + k*px, _cy + k*py, xb + k*px, yb + k*py, TFT_LIGHTGREY);
-    }
+    // North triangle
+    _frame.fillTriangle(xt, yt, xL, yL, xR, yR, TFT_RED);
+
+    // South tail (small)
+    int tailR = 10;
+    int xs = _cx - (int)lroundf(sn * tailR);
+    int ys = _cy + (int)lroundf(cs * tailR);
+    _frame.fillCircle(xs, ys, 3, TFT_LIGHTGREY);
 
     // Center hub
-    _frame.fillCircle(_cx, _cy, 5, TFT_BLACK);
-    _frame.drawCircle(_cx, _cy, 5, TFT_LIGHTGREY);
+    _frame.fillCircle(_cx, _cy, 4, TFT_BLACK);
+    _frame.drawCircle(_cx, _cy, 4, TFT_LIGHTGREY);
   }
 
   void drawCenterText(float headingDeg, bool magOk, float mag_uT, bool tiltWarn) {
@@ -203,6 +204,7 @@ class CompassUI {
   }
 
  private:
+  bool _ok = false;
   int _w = 128, _h = 128, _cx = 64, _cy = 64;
   int _rOuter = 60, _rInner = 50;
 
@@ -244,4 +246,3 @@ void loop() {
 }
 
 #endif
-
