@@ -23,10 +23,22 @@
 #include "AtomS3R_ImuCal.h"
 #include "AtomS3R_ImuCalWizard.h"
 #include "AtomS3R_CompassUI.h"
+#include "NmeaCompass.h"
 
 // 1 = graphical compass by default, 0 = text UI by default
 #ifndef COMPASS_UI_DEFAULT_GRAPHICS
 #define COMPASS_UI_DEFAULT_GRAPHICS 1
+#endif
+
+// 0 = keep debug serial
+// 1 = emit NMEA0183 (HDM + XDR + ROT) like pypilot
+#ifndef COMPASS_SERIAL_NMEA
+#define COMPASS_SERIAL_NMEA 1
+#endif
+
+// 2-char talker ID
+#ifndef COMPASS_NMEA_TALKER
+#define COMPASS_NMEA_TALKER "II"
 #endif
 
 // q-mekf header that defines QuaternionMEKF
@@ -73,7 +85,6 @@ public:
 
     // Critical: clear M5Unified’s own cal/offsets so it can’t stack with ours.
     clearM5UnifiedImuCalibration();
-
     delay(250);
 
     ui_.begin();
@@ -91,7 +102,6 @@ public:
       ui_.fail("IMU", "Not found");
       while (true) delay(100);
     }
-
     reloadBlobAndRuntime_();
 
     // If missing, immediately run wizard once (matches your requested flow)
@@ -155,7 +165,6 @@ public:
     if (readImuMapped(M5.Imu, s)) {
       updateFilter_(s);
     }
-
     updateUI_();
     streamSerial_();
   }
@@ -182,7 +191,6 @@ private:
       Serial.println("[HOME] erase cancelled");
       return;
     }
-
     store_.erase();
     clearM5UnifiedImuCalibration();
 
@@ -402,25 +410,33 @@ private:
     M5.Display.printf("MAG: %s %s\n",
                       mag_ok_ ? "OK " : "BAD",
                       mag_fresh_ ? "NEW" : "OLD");
-
     M5.Display.printf("|m|: %6.1f uT\n", (double)mag_norm_uT_);
     M5.Display.printf("|aR|:%5.2f |aC|:%5.2f\n",
                       (double)a_raw_norm_, (double)a_cal_.norm());
-
     ui_.line("");
     M5.Display.printf("A:%d G:%d M:%d  B:%s\n",
                       (int)runtime_.acc.ok, (int)runtime_.gyr.ok, (int)runtime_.mag.ok,
                       have_blob_ ? "YES" : "NO");
   }
 
-  // Serial
   void streamSerial_() {
     const uint32_t now_ms = millis();
     if (now_ms - last_serial_ms_ < SERIAL_REFRESH_MS) return;
     last_serial_ms_ = now_ms;
-
+#if COMPASS_SERIAL_NMEA
+    // Rate-of-turn (deg/min) from gyro Z (rad/s).
+    // If sign is backwards in your plotter, flip: rot_dpm = -rot_dpm;
+    float rot_dpm = w_cal_.z() * RAD_TO_DEG * 60.0f;
+  
+    // Valid once MEKF initialized; you can also require mag_ok_ if you want.
+    const bool valid = mekf_inited_;
+  
+    nmea_hdm(COMPASS_NMEA_TALKER, heading_deg_);
+    nmea_xdr_pitch_roll(COMPASS_NMEA_TALKER, pitch_deg_, roll_deg_);
+    nmea_rot(COMPASS_NMEA_TALKER, rot_dpm, valid);
+#else
     const float t = (micros() - start_us_) * 1e-6f;
-
+  
     Serial.printf("t=%.2f ", (double)t);
     Serial.printf("HDG:%6.1f ", (double)heading_deg_);
     Serial.printf("ROLL:%6.1f PITCH:%6.1f ", (double)roll_deg_, (double)pitch_deg_);
@@ -433,6 +449,7 @@ private:
     Serial.printf("wC:%+.4f,%+.4f,%+.4f ",
                   (double)w_cal_.x(), (double)w_cal_.y(), (double)w_cal_.z());
     Serial.println();
+#endif
   }
 
 private:
