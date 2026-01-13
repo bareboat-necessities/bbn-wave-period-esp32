@@ -26,7 +26,11 @@ static inline const char* cardinal8(float deg) {
 
 class CompassUI {
  public:
+  bool ok() const { return _ok; }
+
   void begin() {
+    _ok = false;
+
     _w = M5.Display.width();
     _h = M5.Display.height();
     _cx = _w / 2;
@@ -35,30 +39,41 @@ class CompassUI {
     _rOuter = (std::min(_w, _h) / 2) - 3;
     _rInner = _rOuter - 10;
 
+    // Allocate background sprite
     _bg.setColorDepth(16);
-    _bg.createSprite(_w, _h);
+    if (!_bg.createSprite(_w, _h)) return;
 
-    _frame = M5Canvas(&M5.Display); // set output destination
+    // Allocate frame sprite (DO NOT assign a temporary canvas)
     _frame.setColorDepth(16);
-    _frame.createSprite(_w, _h);
+    if (!_frame.createSprite(_w, _h)) {
+      _bg.deleteSprite();
+      return;
+    }
 
     drawBackground();
+    _ok = true;
   }
 
-  // Call every frame with your heading (deg, 0=N, 90=E)
   void draw(float headingDeg,
             bool magOk = true,
             float magStrength_uT = NAN,
             bool tiltWarn = false) {
+    if (!_ok) return;
+
     headingDeg = wrap360(headingDeg);
 
-    // Copy cached background into frame buffer (RGB565)
-    std::memcpy(_frame.getBuffer(), _bg.getBuffer(), _w * _h * 2);
+    auto* fb = (uint8_t*)_frame.getBuffer();
+    auto* bb = (uint8_t*)_bg.getBuffer();
+    if (!fb || !bb) return;               // avoid null memcpy crash
+
+    // 16-bit RGB565 => 2 bytes/pixel
+    std::memcpy(fb, bb, (size_t)_w * (size_t)_h * 2u);
 
     drawNeedle(headingDeg);
     drawCenterText(headingDeg, magOk, magStrength_uT, tiltWarn);
 
-    _frame.pushSprite(0, 0);
+    // Push explicitly to display (no parent pointer needed)
+    _frame.pushSprite(&M5.Display, 0, 0);
   }
 
  private:
