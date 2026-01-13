@@ -681,7 +681,7 @@ template <typename T, typename AccelBufT>
 static inline bool post_scale_accel_S_to_match_g_(
     const AccelBufT& buf,
     AccelCalibration<T>& out,
-    T norm_gate_lo = T(0.90),    // accept norms in [lo*g, hi*g] during scale estimation
+    T norm_gate_lo = T(0.90),    // gross sanity gate only (still used)
     T norm_gate_hi = T(1.10),
     T scale_clamp_lo = T(0.85),  // safety clamp on the scale factor
     T scale_clamp_hi = T(1.15))
@@ -696,7 +696,7 @@ static inline bool post_scale_accel_S_to_match_g_(
   const T lo = norm_gate_lo * g;
   const T hi = norm_gate_hi * g;
 
-  // Collect norms
+  // Collect norms in current calibrated space (pre-scaling)
   T norms[IMU_CAL_MAX_SAMPLES];
   int m = 0;
 
@@ -704,7 +704,7 @@ static inline bool post_scale_accel_S_to_match_g_(
     const Eigen::Matrix<T,3,1> a_raw = buf.v[i];
     const T tempC = (T)buf.tempC[i];
 
-    if (!finiteT(a_raw.x()) || !finiteT(a_raw.y()) || !finiteT(a_raw.z())) continue;
+    if (!isfinite3(a_raw)) continue;
     if (!finiteT(tempC)) continue;
 
     const Eigen::Matrix<T,3,1> b = bias_at_temp_(out.biasT, tempC);
@@ -712,59 +712,68 @@ static inline bool post_scale_accel_S_to_match_g_(
     const T an = a_cal.norm();
     if (!finiteT(an) || !(an > T(0))) continue;
 
-    // gate (helps reject motion or totally broken points, but can be widened by caller)
+    // Optional gross gate (caller may widen on fallback)
     if (an < lo || an > hi) continue;
 
     norms[m++] = an;
+    if (m >= IMU_CAL_MAX_SAMPLES) break;
   }
 
   if (m < 10) return false;
 
-  // Robust trimmed mean of norms (reject tails)
-  sort_small(norms, m);
-  int i0 = (int)floor(0.10 * (double)m);
-  int i1 = (int)ceil (0.90 * (double)m) - 1;
-  if (i1 < i0) { i0 = 0; i1 = m - 1; }
-  if ((i1 - i0 + 1) < 6) { i0 = 0; i1 = m - 1; }
+  // Robust center (median)
+  T tmp[IMU_CAL_MAX_SAMPLES];
+  for (int i = 0; i < m; ++i) tmp[i] = norms[i];
+  const T med = median_of_array(tmp, m);
+  if (!finiteT(med) || !(med > T(0))) return false;
 
-  T sum = T(0);
-  int k = 0;
-  for (int i = i0; i <= i1; ++i) { sum += norms[i]; ++k; }
-  if (k < 6) return false;
+  // Robust scale (MAD about median); robust_mad() overwrites its input
+  for (int i = 0; i < m; ++i) tmp[i] = norms[i];
+  T mad = robust_mad(tmp, m);
 
-  const T mean_norm = sum / (T)k;
-  if (!finiteT(mean_norm) || !(mean_norm > T(0))) return false;
+  const T mad_floor = T(1e-4) * g;          // scale-aware floor
+  const T mad_eff   = (mad > mad_floor ? mad : mad_floor);
+  const T thr       = T(4.0) * mad_eff + T(1e-6);
 
-  T scale = g / mean_norm;
+  // Inliers around the median (reject motion / transitions)
+  T inl[IMU_CAL_MAX_SAMPLES];
+  int mm = 0;
+  for (int i = 0; i < m; ++i) {
+    const T di = (T)fabs((double)(norms[i] - med));
+    if (di <= thr) inl[mm++] = norms[i];
+  }
+
+  // If too aggressive, fall back to using all gated samples
+  if (mm < 10) {
+    for (int i = 0; i < m; ++i) inl[i] = norms[i];
+    mm = m;
+  }
+
+  // Typical gravity magnitude from inliers = median
+  for (int i = 0; i < mm; ++i) tmp[i] = inl[i];
+  const T med2 = median_of_array(tmp, mm);
+  if (!finiteT(med2) || !(med2 > T(0))) return false;
+
+  // Final scale
+  T scale = g / med2;
   if (!finiteT(scale)) return false;
 
   if (scale < scale_clamp_lo) scale = scale_clamp_lo;
   if (scale > scale_clamp_hi) scale = scale_clamp_hi;
 
+  // Apply scalar renorm
   out.S *= scale;
 
-  // Update out.rms_mag on the same gated set
+  // Update rms_mag over the same inlier set (no need to recompute vectors;
+  // scaling S by scalar scales norms linearly)
   {
     T sse = T(0);
-    int mm = 0;
-    for (int i = 0; i < n; ++i) {
-      const Eigen::Matrix<T,3,1> a_raw = buf.v[i];
-      const T tempC = (T)buf.tempC[i];
-
-      if (!finiteT(a_raw.x()) || !finiteT(a_raw.y()) || !finiteT(a_raw.z())) continue;
-      if (!finiteT(tempC)) continue;
-
-      const Eigen::Matrix<T,3,1> b = bias_at_temp_(out.biasT, tempC);
-      const Eigen::Matrix<T,3,1> a_cal = out.S * (a_raw - b);
-      const T an = a_cal.norm();
-      if (!finiteT(an)) continue;
-      if (an < lo || an > hi) continue;
-
-      const T e = an - g;
+    for (int i = 0; i < mm; ++i) {
+      const T an2 = inl[i] * scale;
+      const T e   = an2 - g;
       sse += e * e;
-      ++mm;
     }
-    if (mm > 0) out.rms_mag = (T)std::sqrt((double)(sse / (T)mm));
+    out.rms_mag = (mm > 0) ? (T)std::sqrt((double)(sse / (T)mm)) : T(0);
   }
 
   return true;
