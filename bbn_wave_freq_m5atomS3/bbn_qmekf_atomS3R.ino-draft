@@ -76,6 +76,16 @@ static inline float wrap180_(float deg) {
   return deg;
 }
 
+static inline Vector3f quatRotateBodyToWorld_(float x, float y, float z, float w,
+                                             const Vector3f& v_body) {
+  // Assumes (x,y,z,w) is a UNIT quaternion rotating body->world
+  // v_world = v + w*(2 q×v) + q×(2 q×v)
+  Vector3f q(x, y, z);
+  Vector3f t = 2.0f * q.cross(v_body);
+  return v_body + w * t + q.cross(t);
+}
+
+
 // App
 class CompassApp {
 public:
@@ -182,11 +192,9 @@ private:
   CompassUI compass_ui_{};
   bool compass_ui_ready_ = false;
 
-  // ROT estimator (deg/min), derived from fused yaw
-  bool     rot_inited_ = false;
-  float    yaw_prev_deg_ = 0.0f;
-  uint32_t yaw_prev_us_  = 0;
-  float    rot_dpm_filt_ = 0.0f;
+  // ROT estimator (deg/min), derived from gyro projected into world-Z
+  bool  rot_inited_   = false;
+  float rot_dpm_filt_ = 0.0f;
 
   // Calibration plumbing
   void reloadBlobAndRuntime_() {
@@ -257,6 +265,9 @@ private:
     last_mag_uT_.setZero();
     last_mag_ms_ = 0;
 
+    rot_inited_   = false;
+    rot_dpm_filt_ = 0.0f;
+    
     Serial.println("[MEKF] reset");
   }
 
@@ -359,31 +370,25 @@ private:
 
     heading_deg_ = wrap360_(yaw_deg_);
 
-    // ROT from fused yaw (deg/min), wrap-safe + lightly filtered
-    const uint32_t now_us2 = micros();
+    // ROT from gyro projected into world-Z (deg/min) + LPF
+    // Uses the SAME quaternion convention you already use for yaw/pitch/roll.
+    Vector3f w_world = quatRotateBodyToWorld_(x, y, z, w, w_cal_);
+
+    // In NED, +Z is "down". Rate about +Z corresponds to "turn right" positive (NMEA ROT).
+    float rot_dpm_meas = w_world.z() * RAD_TO_DEG * 60.0f;   // rad/s -> deg/min
+
+    // Clamp insane spikes during init / magnetic glitches
+    rot_dpm_meas = clampf_(rot_dpm_meas, -720.0f, 720.0f);
+
+    // Low-pass filter (use the SAME dt already computed above)
+    const float tau_rot = 1.5f;                              // seconds
+    const float alpha = 1.0f - expf(-dt / tau_rot);
+
     if (!rot_inited_) {
       rot_inited_   = true;
-      yaw_prev_deg_ = yaw_deg_;
-      yaw_prev_us_  = now_us2;
-      rot_dpm_filt_ = 0.0f;
+      rot_dpm_filt_ = rot_dpm_meas;
     } else {
-      float dt_rot = (now_us2 - yaw_prev_us_) * 1e-6f;
-      // keep sane (avoid division spikes if micros jitter or long stalls)
-      dt_rot = clampf_(dt_rot, 0.001f, 0.100f);
-
-      float dyaw = wrap180_(yaw_deg_ - yaw_prev_deg_);     // shortest path
-      float rot_dpm = (dyaw / dt_rot) * 60.0f;             // deg/sec -> deg/min
-
-      // Optional clamp to avoid garbage during re-init / magnetic glitches
-      rot_dpm = clampf_(rot_dpm, -720.0f, 720.0f);         // +/- 12 deg/s
-
-      // Low-pass (tune tau if you want)
-      const float tau = 0.25f;                             // seconds
-      const float alpha = 1.0f - expf(-dt_rot / tau);
-      rot_dpm_filt_ += alpha * (rot_dpm - rot_dpm_filt_);
-
-      yaw_prev_deg_ = yaw_deg_;
-      yaw_prev_us_  = now_us2;
+      rot_dpm_filt_ += alpha * (rot_dpm_meas - rot_dpm_filt_);
     }
   }
 
