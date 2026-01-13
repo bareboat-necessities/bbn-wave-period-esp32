@@ -792,8 +792,8 @@ struct AccelCalibrator {
   T T0 = T(25);
 
   // acceptance gates
-  T max_gyro_for_static = T(0.35);  // rad/s
-  T accel_mag_tol = T(1.0);         // m/s^2, accept if | |a| - g | < tol
+  T max_gyro_for_static = T(0.07);   // rad/s
+  T accel_mag_tol = T(0.25);         // m/s^2, accept if | |a| - g | < tol
 
   // prevent axis rotation
   enum class AccelSMode : uint8_t { PolarSPD = 0, DiagonalOnly = 1 };
@@ -988,21 +988,24 @@ struct AccelCalibrator {
     out.biasT = biasT;
     out.rms_mag = best_rms;
 
-    // 1) Try a reasonably tight gate first.
-    // 2) If it can't find enough samples, fall back to a wider gate
-    //    so scale is ALWAYS corrected on real datasets.
+    // Tight-first g renorm. Relax only if it can't find enough near-static samples.
     bool did_scale = post_scale_accel_S_to_match_g_<T>(this->buf, out,
-                                                       T(0.90), T(1.10),
-                                                       T(0.85), T(1.15));
+                                                       T(0.985), T(1.015),  // ±1.5%
+                                                       T(0.97),  T(1.03));  // clamp scale
     if (!did_scale) {
       did_scale = post_scale_accel_S_to_match_g_<T>(this->buf, out,
-                                                    T(0.75), T(1.25),
-                                                    T(0.80), T(1.20));
-    } 
-
+                                                    T(0.95),  T(1.05),   // ±5%
+                                                    T(0.93),  T(1.07));  // clamp scale
+    }
     if (!did_scale) {
-      // At least surface it. Either fail fit, or record a warning code.
-      last_fail_ = FitFail::ACCEL_S_UNPHYSICAL; 
+      // Last-chance fallback so real datasets still succeed.
+      did_scale = post_scale_accel_S_to_match_g_<T>(this->buf, out,
+                                                    T(0.90),  T(1.10),
+                                                    T(0.90),  T(1.10));
+    }
+    
+    if (!did_scale) {
+      last_fail_ = FitFail::ACCEL_S_UNPHYSICAL;
       if (reason_out) *reason_out = last_fail_;
       return false;
     }
@@ -1127,8 +1130,8 @@ struct GyroCalibrator {
   T T0 = T(25);
 
   // stationary gate thresholds
-  T max_gyro_norm = T(0.08);   // rad/s
-  T max_accel_dev = T(1.0);    // m/s^2
+  T max_gyro_norm = T(0.07);    // rad/s
+  T max_accel_dev = T(0.25);    // m/s^2
   T g = T(9.80665);
 
   mutable FitFail last_fail_ = FitFail::OK;
