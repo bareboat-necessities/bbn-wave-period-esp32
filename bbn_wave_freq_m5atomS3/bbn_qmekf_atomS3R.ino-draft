@@ -61,6 +61,11 @@ static constexpr uint32_t UI_REFRESH_MS     = 100;   // 10 Hz UI update
 static constexpr uint32_t DEBUG_SERIAL_MS   = 200;   // 5 Hz
 static constexpr uint32_t NMEA_SERIAL_MS    = 100;   // 10 Hz
 
+// ROT bias removal (stillness-gated gyro bias estimator)
+static constexpr float ROT_BIAS_TAU_S          = 20.0f;   // how fast bias adapts when still
+static constexpr float ROT_STILL_G_TOL_FRAC    = 0.12f;   // | |a| - g | < 12% g counts as still
+static constexpr float ROT_STILL_GYRO_RAD_S    = 0.20f;   // |w| < 0.20 rad/s (~11.5 dps) counts as still
+
 // Helpers
 static inline float clampf_(float x, float lo, float hi) { return x < lo ? lo : (x > hi ? hi : x); }
 
@@ -191,10 +196,12 @@ private:
   bool use_graphics_ = (COMPASS_UI_DEFAULT_GRAPHICS != 0);
   CompassUI compass_ui_{};
   bool compass_ui_ready_ = false;
-
-  // ROT estimator (deg/min), derived from gyro projected into world-Z
-  bool  rot_inited_   = false;
-  float rot_dpm_filt_ = 0.0f;
+  
+  // ROT estimator (deg/min) + stillness-gated gyro bias removal
+  bool     rot_inited_    = false;
+  float    rot_dpm_filt_  = 0.0f;
+  bool     gyro_bias_ok_  = false;
+  Vector3f gyro_bias_ema_ = Vector3f::Zero();   // rad/s (BODY)
 
   // Calibration plumbing
   void reloadBlobAndRuntime_() {
@@ -267,7 +274,10 @@ private:
 
     rot_inited_   = false;
     rot_dpm_filt_ = 0.0f;
-    
+
+    gyro_bias_ok_  = false;
+    gyro_bias_ema_.setZero();
+        
     Serial.println("[MEKF] reset");
   }
 
@@ -370,25 +380,44 @@ private:
 
     heading_deg_ = wrap360_(yaw_deg_);
 
-    // ROT from gyro projected into world-Z (deg/min) + LPF
-    // Uses the SAME quaternion convention you already use for yaw/pitch/roll.
-    Vector3f w_world = quatRotateBodyToWorld_(x, y, z, w, w_cal_);
+    // ---- ROT (deg/min): gyro projected into world-Z, with stillness-gated bias removal ----
+    // Update a slow gyro bias estimate ONLY when still (so it doesn't "learn" real turns).
+    const float g = ImuCalCfg::g_std;
+    const float a_err = fabsf(a_raw_norm_ - g);
+    const bool still = (a_err < ROT_STILL_G_TOL_FRAC * g) && (w_cal_.norm() < ROT_STILL_GYRO_RAD_S);
 
-    // In NED, +Z is "down". Rate about +Z corresponds to "turn right" positive (NMEA ROT).
-    float rot_dpm_meas = w_world.z() * RAD_TO_DEG * 60.0f;   // rad/s -> deg/min
+    if (still) {
+      const float alpha_b = 1.0f - expf(-dt / ROT_BIAS_TAU_S);
+      if (!gyro_bias_ok_) {
+        gyro_bias_ok_  = true;
+        gyro_bias_ema_ = w_cal_;
+      } else {
+        gyro_bias_ema_ += alpha_b * (w_cal_ - gyro_bias_ema_);
+      }
+    }
 
-    // Clamp insane spikes during init / magnetic glitches
+    // Bias-correct gyro for ROT
+    Vector3f w_use = w_cal_;
+    if (gyro_bias_ok_) w_use -= gyro_bias_ema_;
+
+    // Project to world frame using the SAME quaternion convention you already use for yaw/pitch/roll.
+    Vector3f w_world = quatRotateBodyToWorld_(x, y, z, w, w_use);
+
+    // In NED, +Z is down. Rate about +Z maps to NMEA ROT sign (if sign is flipped, negate here).
+    float rot_dpm_meas = w_world.z() * RAD_TO_DEG * 60.0f;    // rad/s -> deg/min
+
+    // Clamp nonsense spikes (init/glitches)
     rot_dpm_meas = clampf_(rot_dpm_meas, -720.0f, 720.0f);
 
-    // Low-pass filter (use the SAME dt already computed above)
-    const float tau_rot = 1.5f;                              // seconds
-    const float alpha = 1.0f - expf(-dt / tau_rot);
+    // Low-pass ROT
+    const float tau_rot = 1.5f;                               // seconds (your previous choice is fine)
+    const float alpha_r = 1.0f - expf(-dt / tau_rot);
 
     if (!rot_inited_) {
       rot_inited_   = true;
       rot_dpm_filt_ = rot_dpm_meas;
     } else {
-      rot_dpm_filt_ += alpha * (rot_dpm_meas - rot_dpm_filt_);
+      rot_dpm_filt_ += alpha_r * (rot_dpm_meas - rot_dpm_filt_);
     }
   }
 
