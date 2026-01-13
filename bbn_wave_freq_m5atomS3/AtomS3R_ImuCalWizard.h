@@ -394,6 +394,7 @@ public:
       accelCal_.clear();
       gyroCal_.clear();
       magCal_.clear();
+      configureCalibrators_();
 
       acc_out_ = imu_cal::AccelCalibration<float>{};
       gyr_out_ = imu_cal::GyroCalibration<float>{};
@@ -653,6 +654,31 @@ private:
   bool readSample_(ImuSample& s) {
     // Uses the mapping/read function from AtomS3R_ImuCal.h
     return readImuMapped(M5.Imu, s);
+  }
+
+  void configureCalibrators_() {
+    // Use the SAME g that mapping uses (AtomS3R_ImuCal.h)
+    const float g = ImuCalCfg::g_std;
+
+    accelCal_.g = g;
+    gyroCal_.g  = g;
+
+    // Keep gates reasonable (too tight can bias fits / stall capture)
+    accelCal_.accel_mag_tol       = 0.8f;   // m/s^2
+    accelCal_.max_gyro_for_static = 0.12f;  // rad/s
+
+    gyroCal_.max_accel_dev = 0.8f;          // m/s^2
+    gyroCal_.max_gyro_norm = 0.12f;         // rad/s
+
+    // Allow symmetric cross-axis correction
+    using AC = imu_cal::AccelCalibrator<float, 400, 1>;
+    accelCal_.accel_S_mode = AC::AccelSMode::PolarSPD;
+
+    // Plausibility gates (tweakable)
+    accelCal_.accel_diag_lo = 0.80f;
+    accelCal_.accel_diag_hi = 1.25f;
+    accelCal_.accel_max_cond = 6.0f;
+    accelCal_.accel_max_offdiag_rms = 0.10f; // allow some coupling correction
   }
 
   bool captureAccelPose_(const Pose& p) {
