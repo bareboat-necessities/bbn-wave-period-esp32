@@ -64,7 +64,7 @@ static constexpr uint32_t NMEA_SERIAL_MS    = 100;   // 10 Hz
 // ROT bias removal (stillness-gated gyro bias estimator)
 static constexpr float ROT_BIAS_TAU_S          = 20.0f;   // how fast bias adapts when still
 static constexpr float ROT_STILL_G_TOL_FRAC    = 0.12f;   // | |a| - g | < 12% g counts as still
-static constexpr float ROT_STILL_GYRO_RAD_S    = 0.20f;   // |w| < 0.20 rad/s (~11.5 dps) counts as still
+static constexpr float ROT_STILL_GYRO_RAD_S    = 0.05f;   // |w| < 0.05 rad/s counts as still
 
 // Helpers
 static inline float clampf_(float x, float lo, float hi) { return x < lo ? lo : (x > hi ? hi : x); }
@@ -383,7 +383,7 @@ private:
     // ---- ROT (deg/min): gyro projected into world-Z, with stillness-gated bias removal ----
     // Update a slow gyro bias estimate ONLY when still (so it doesn't "learn" real turns).
     const float g = ImuCalCfg::g_std;
-    const float a_err = fabsf(a_raw_norm_ - g);
+    const float a_err = fabsf(a_cal_.norm() - g);
     const bool still = (a_err < ROT_STILL_G_TOL_FRAC * g) && (w_cal_.norm() < ROT_STILL_GYRO_RAD_S);
 
     if (still) {
