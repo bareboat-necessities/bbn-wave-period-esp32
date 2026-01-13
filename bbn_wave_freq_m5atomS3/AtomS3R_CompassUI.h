@@ -117,74 +117,82 @@ class CompassUI {
   }
 
   void drawNeedle(float headingDeg) {
-    if (!std::isfinite(headingDeg)) headingDeg = 0.0f;
-    headingDeg = wrap360(headingDeg);
-
-    // 0° = North (up): x = sin, y = -cos
+    // Screen coordinates: +x right, +y down
+    // We want 0° (north) to point up => x = sin, y = -cos
     float a = headingDeg * (float)M_PI / 180.0f;
     float sn = sinf(a), cs = cosf(a);
 
     int tipR  = _rInner - 2;
-    int tailR = _rInner - 18;
+    int baseR = 18;
+    int halfW = 6;
 
     int xt = _cx + (int)lroundf(sn * tipR);
     int yt = _cy - (int)lroundf(cs * tipR);
 
-    int xb = _cx - (int)lroundf(sn * tailR);
-    int yb = _cy + (int)lroundf(cs * tailR);
+    int xb = _cx + (int)lroundf(sn * baseR);
+    int yb = _cy - (int)lroundf(cs * baseR);
 
-    // Perp for thickness
-    int px = (int)lroundf(cs);
-    int py = (int)lroundf(sn);
+    // Perp direction for needle width
+    int px = (int)lroundf(cs * halfW);
+    int py = (int)lroundf(sn * halfW);
 
-    // Thick red "north" needle
-    for (int k = -2; k <= 2; ++k) {
-      _frame.drawLine(_cx + k*px, _cy + k*py, xt + k*px, yt + k*py, TFT_RED);
-    }
+    int xL = xb - px, yL = yb - py;
+    int xR = xb + px, yR = yb + py;
 
-    // Grey tail
-    for (int k = -1; k <= 1; ++k) {
-      _frame.drawLine(_cx + k*px, _cy + k*py, xb + k*px, yb + k*py, TFT_LIGHTGREY);
-    }
+    // North triangle
+    _frame.fillTriangle(xt, yt, xL, yL, xR, yR, TFT_RED);
+
+    // South tail (small)
+    int tailR = 10;
+    int xs = _cx - (int)lroundf(sn * tailR);
+    int ys = _cy + (int)lroundf(cs * tailR);
+    _frame.fillCircle(xs, ys, 3, TFT_LIGHTGREY);
 
     // Center hub
-    _frame.fillCircle(_cx, _cy, 5, TFT_BLACK);
-    _frame.drawCircle(_cx, _cy, 5, TFT_LIGHTGREY);
+    _frame.fillCircle(_cx, _cy, 4, TFT_BLACK);
+    _frame.drawCircle(_cx, _cy, 4, TFT_LIGHTGREY);
   }
 
   void drawCenterText(float headingDeg, bool magOk, float mag_uT, bool tiltWarn) {
     // Big numeric
     char buf[16];
     int hdg = (int)lroundf(headingDeg);
-    snprintf(buf, sizeof(buf), "%d%c", hdg, (char)0xF8);
-    // snprintf(buf, sizeof(buf), "%d%c", hdg, (char)0xDF);
-
+    snprintf(buf, sizeof(buf), "%d", hdg);
+    
     _frame.setTextColor(TFT_WHITE, TFT_BLACK);
     _frame.setTextSize(2);
 
     int yText = _cy - 10;
     centerPrint(buf, yText);
 
+    // draw degree circle to the right of the number
+    int w = _frame.textWidth(buf);
+    int x = (_w - w) / 2 + w + 4;
+    int y = yText + 2;
+    _frame.drawCircle(x, y, 3, TFT_WHITE);
+
     // Small cardinal
     _frame.setTextSize(1);
     centerPrint(cardinal8(headingDeg), yText + 22);
 
     // Bottom status strip
-    _frame.fillRect(0, _h - 16, _w, 16, TFT_BLACK);
-    _frame.setCursor(2, _h - 14);
-    _frame.setTextColor(magOk ? TFT_GREEN : TFT_ORANGE, TFT_BLACK);
-    _frame.print(magOk ? "MAG OK" : "MAG ?");
-
-    _frame.setTextColor(tiltWarn ? TFT_ORANGE : TFT_DARKGREY, TFT_BLACK);
-    _frame.setCursor(_w - 40, _h - 14);
-    _frame.print(tiltWarn ? "TILT" : "    ");
-
-    if (std::isfinite(mag_uT)) {
-      _frame.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-      _frame.setCursor(_w/2 - 18, _h - 14);
-      char mbuf[16];
-      snprintf(mbuf, sizeof(mbuf), "%4.1fuT", mag_uT);
-      _frame.print(mbuf);
+    if (false) {
+      _frame.fillRect(0, _h - 16, _w, 16, TFT_BLACK);
+      _frame.setCursor(2, _h - 14);
+      _frame.setTextColor(magOk ? TFT_GREEN : TFT_ORANGE, TFT_BLACK);
+      _frame.print(magOk ? "MAG OK" : "MAG ?");
+  
+      _frame.setTextColor(tiltWarn ? TFT_ORANGE : TFT_DARKGREY, TFT_BLACK);
+      _frame.setCursor(_w - 40, _h - 14);
+      _frame.print(tiltWarn ? "TILT" : "    ");
+  
+      if (std::isfinite(mag_uT)) {
+        _frame.setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+        _frame.setCursor(_w/2 - 18, _h - 14);
+        char mbuf[16];
+        snprintf(mbuf, sizeof(mbuf), "%4.1fuT", mag_uT);
+        _frame.print(mbuf);
+      }
     }
   }
 
