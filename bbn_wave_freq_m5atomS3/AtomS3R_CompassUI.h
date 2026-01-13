@@ -9,6 +9,7 @@
 #include <M5Unified.h>
 #include <cmath>
 #include <cstring>
+#include <algorithm>
 
 static inline float wrap360(float deg) {
   while (deg < 0) deg += 360.0f;
@@ -173,20 +174,17 @@ class CompassUI {
   }
 
   void centerPrint(const char* s, int y) {
-    // Portable centering without setTextDatum:
-    int16_t x1, y1;
-    uint16_t ww, hh;
-    _frame.getTextBounds(s, 0, 0, &x1, &y1, &ww, &hh);
-    int x = (_w - (int)ww) / 2;
+    // Works on M5Canvas (no getTextBounds on some builds)
+    int ww = _frame.textWidth(s);
+    int x = (_w - ww) / 2;
     _frame.setCursor(x, y);
     _frame.print(s);
   }
 
   void drawLabel(const char* s, int x, int y) {
-    int16_t x1, y1;
-    uint16_t ww, hh;
-    _bg.getTextBounds(s, 0, 0, &x1, &y1, &ww, &hh);
-    _bg.setCursor(x - (int)ww / 2, y - (int)hh / 2);
+    int ww = _bg.textWidth(s);
+    int hh = _bg.fontHeight();   // current font height with current text size
+    _bg.setCursor(x - ww / 2, y - hh / 2);
     _bg.print(s);
   }
 
