@@ -156,7 +156,8 @@ class CompassUI {
     // Big numeric
     char buf[16];
     int hdg = (int)lroundf(headingDeg);
-    snprintf(buf, sizeof(buf), "%d°", hdg);
+    snprintf(buf, sizeof(buf), "%d%c", hdg, (char)0xF8);
+    // snprintf(buf, sizeof(buf), "%d%c", hdg, (char)0xDF);
 
     _frame.setTextColor(TFT_WHITE, TFT_BLACK);
     _frame.setTextSize(2);
