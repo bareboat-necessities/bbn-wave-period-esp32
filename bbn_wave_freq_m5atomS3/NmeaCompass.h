@@ -32,11 +32,15 @@ static inline void nmea_rot(const char* talker2, float rot_deg_per_min, bool val
   nmea_send(s);
 }
 
-// $--XDR,A,pitch,D,PITCH,A,roll,D,ROLL*hh  (angular displacement in degrees)
+// $--XDR,A,x.x,D,PTCH*hh  (angular displacement in degrees)
+// $--XDR,A,x.x,D,ROLL*hh  
 static inline void nmea_xdr_pitch_roll(const char* talker2, float pitch_deg, float roll_deg) {
   char s[82];
   // Keep it short to stay under 82 chars
-  snprintf(s, sizeof(s), "$%sXDR,A,%.1f,D,PITCH,A,%.1f,D,ROLL",
-           talker2, (double)pitch_deg, (double)roll_deg);
+  snprintf(s, sizeof(s), "$%sXDR,A,%.1f,D,PTCH",
+           talker2, (double)pitch_deg);
+  nmea_send(s);
+  snprintf(s, sizeof(s), "$%sXDR,A,%.1f,D,ROLL",
+           talker2, (double)roll_deg);
   nmea_send(s);
 }
