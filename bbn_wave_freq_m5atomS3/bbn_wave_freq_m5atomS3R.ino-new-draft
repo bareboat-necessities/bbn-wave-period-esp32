@@ -4,30 +4,13 @@
   AtomS3R Tilt-Compensated Compass (+ optional IMU Calibration Wizard)
   (SeaStateFusion version: Kalman3D_Wave + mag init + yaw correction)
 
-  - Uses AtomS3R_ImuCal.h (blob + runtime apply + axis mapping + clearM5UnifiedImuCalibration)
-  - OPTIONAL: Uses AtomS3R_ImuCalWizard.h (UI + wizard capture/fit/save + Input tap logic)
-  - Uses SeaStateFusion (SeaStateFusionFilter + Kalman3D_Wave) for fused roll/pitch/yaw + mag yaw
-  - Runs accel+gyro at ~240 Hz, mag is slower and gated by time+delta (stale-repeat rejection)
-  - Shows Heading (deg, 0..360), Roll/Pitch (deg) on screen and prints to Serial
-
-  Taps (only when wizard enabled):
-    - 1 tap  : run wizard (save new blob)
-    - 3 taps : erase blob (and clear M5Unified calibration)
-
-  Notes:
-    - Feed calibrated accel (m/s^2), gyro (rad/s), mag (uT) in BODY-NED
-    - DO NOT normalize accel to g for SeaState/Kalman3D_Wave updates.
-    - DO NOT normalize mag; keep uT for mag-world-ref learning + yaw correction.
-
   Compile-time flags:
-    - COMPASS_ENABLE_WIZARD: 0/1  (default 0)  — compile wizard code in/out
+    - COMPASS_ENABLE_WIZARD: 0/1 (default 0) — compile wizard code in/out
 */
 
 #include <Arduino.h>
 
-// -------------------------
 // Compile-time switches
-// -------------------------
 #ifndef COMPASS_ENABLE_WIZARD
   #define COMPASS_ENABLE_WIZARD 0   // disabled by default (reduces compile load)
 #endif
@@ -36,7 +19,6 @@
 #include <new>
 #include <cmath>
 
-// Force Eigen big temporaries to heap (safe on embedded)
 #ifndef EIGEN_STACK_ALLOCATION_LIMIT
   #define EIGEN_STACK_ALLOCATION_LIMIT 0
 #endif
@@ -49,71 +31,52 @@
 #include "AtomS3R_CompassUI.h"
 #include "NmeaCompass.h"
 
-// -------------------------
 // UI / Serial switches
-// -------------------------
-
-// 1 = graphical compass by default, 0 = text UI by default
 #ifndef COMPASS_UI_DEFAULT_GRAPHICS
   #define COMPASS_UI_DEFAULT_GRAPHICS 1
 #endif
 
-// 0 = keep debug serial
-// 1 = emit NMEA0183 (HDM + XDR + ROT) like pypilot
 #ifndef COMPASS_SERIAL_NMEA
   #define COMPASS_SERIAL_NMEA 1
 #endif
 
-// 2-char talker ID
 #ifndef COMPASS_NMEA_TALKER
   #define COMPASS_NMEA_TALKER "II"
 #endif
 
-// -------------------------
 // SeaStateFusion requirements
-// -------------------------
-constexpr float g_std     = atoms3r_ical::ImuCalCfg::g_std;  // global symbol used by tracker policies
-constexpr float FREQ_GUESS = 0.3f;                          // used by defaults in filter header
+constexpr float g_std      = atoms3r_ical::ImuCalCfg::g_std;
+constexpr float FREQ_GUESS = 0.3f;
 
-// Zero-crossing policy macros (only used if TrackerType::ZEROCROSS is instantiated)
 #define ZERO_CROSSINGS_SCALE          1.0f
 #define ZERO_CROSSINGS_DEBOUNCE_TIME  0.12f
 #define ZERO_CROSSINGS_STEEPNESS_TIME 0.21f
 
 enum class TrackerType { ARANOVSKIY = 0, KALMANF = 1, ZEROCROSS = 2 };
 
-// Include after the above definitions
 #include "SeaStateFusionFilter.h"
 
-// -------------------------
 // App constants
-// -------------------------
-
-// Sampling / gating tuning
 static constexpr float    LOOP_HZ        = 240.0f;
 static constexpr uint32_t LOOP_PERIOD_US = (uint32_t)(1000000.0f / LOOP_HZ);
 
-// Mag ODR is slower; also many builds repeat stale values.
-// Gate by spacing + delta (stale-repeat rejection).
-static constexpr uint32_t MAG_SAMPLE_SPACING_MS = 12;     // ~<=80 Hz mag updates
-static constexpr float    MAG_MIN_DELTA_uT      = 0.02f;  // reject repeats (0.02..0.10 typical)
+static constexpr uint32_t MAG_SAMPLE_SPACING_MS = 12;
+static constexpr float    MAG_MIN_DELTA_uT      = 0.02f;
 
-// Display / serial rates
-static constexpr uint32_t UI_REFRESH_MS     = 100;   // 10 Hz UI update
-static constexpr uint32_t DEBUG_SERIAL_MS   = 200;   // 5 Hz
-static constexpr uint32_t NMEA_SERIAL_MS    = 100;   // 10 Hz
+static constexpr uint32_t UI_REFRESH_MS   = 100;
+static constexpr uint32_t DEBUG_SERIAL_MS = 200;
+static constexpr uint32_t NMEA_SERIAL_MS  = 100;
 
-// ROT bias removal (stillness-gated gyro bias estimator)
-static constexpr float ROT_BIAS_TAU_S          = 20.0f;   // how fast bias adapts when still
-static constexpr float ROT_STILL_G_TOL_FRAC    = 0.12f;   // | |a| - g | < 12% g counts as still
-static constexpr float ROT_STILL_GYRO_RAD_S    = 0.15f;   // |w| < 0.15 rad/s counts as still
+static constexpr float ROT_BIAS_TAU_S       = 20.0f;
+static constexpr float ROT_STILL_G_TOL_FRAC = 0.12f;
+static constexpr float ROT_STILL_GYRO_RAD_S = 0.15f;
 
 using namespace atoms3r_ical;
 using Vector3f = Eigen::Vector3f;
 
-// -------------------------
+using UI = CompassUI;   
+
 // Helpers
-// -------------------------
 static inline float clampf_(float x, float lo, float hi) { return x < lo ? lo : (x > hi ? hi : x); }
 
 static inline float wrap360_(float deg) {
@@ -124,16 +87,12 @@ static inline float wrap360_(float deg) {
 
 static inline Vector3f quatRotateBodyToWorld_(float x, float y, float z, float w,
                                               const Vector3f& v_body) {
-  // Assumes (x,y,z,w) is a UNIT quaternion rotating body->world
-  // v_world = v + w*(2 q×v) + q×(2 q×v)
   Vector3f q(x, y, z);
   Vector3f t = 2.0f * q.cross(v_body);
   return v_body + w * t + q.cross(t);
 }
 
-// -------------------------
 // App
-// -------------------------
 class CompassApp {
 public:
   CompassApp()
@@ -146,20 +105,18 @@ public:
     Serial.begin(115200);
     delay(150);
     Serial.println();
-    Serial.printf("[BOOT] AtomS3R Compass (SeaStateFusion)  wizard=%d\n", (int)COMPASS_ENABLE_WIZARD);
+    Serial.printf("[BOOT] AtomS3R Compass (SeaStateFusion) wizard=%d\n", (int)COMPASS_ENABLE_WIZARD);
 
     auto cfg = M5.config();
     M5.begin(cfg);
 
-    // Critical: clear M5Unified’s own cal/offsets so it can’t stack with ours.
     clearM5UnifiedImuCalibration();
     delay(250);
 
     ui_.begin();
 
-    // Optional graphical compass UI
     if (use_graphics_) {
-      ui_.setReadRotation();     // ensure width/height match ROT_READ
+      ui_.setReadRotation();
       compass_ui_.begin();
       compass_ui_ready_ = compass_ui_.ok();
       if (!compass_ui_ready_) use_graphics_ = false;
@@ -174,7 +131,6 @@ public:
     reloadBlobAndRuntime_();
 
 #if COMPASS_ENABLE_WIZARD
-    // If missing, immediately run wizard once
     if (!have_blob_) {
       Serial.println("[BOOT] No saved calibration. Starting wizard...");
       ImuCalBlobV1 saved{};
@@ -194,12 +150,8 @@ public:
       printBlobDetail(Serial, blob_);
     }
 #else
-    if (!have_blob_) {
-      Serial.println("[BOOT] No saved calibration. Wizard disabled; running uncalibrated.");
-    } else {
-      Serial.println("[BOOT] Found saved calibration:");
-      printBlobSummary(Serial, blob_);
-    }
+    if (!have_blob_) Serial.println("[BOOT] No saved calibration. Wizard disabled.");
+    else             Serial.println("[BOOT] Found saved calibration.");
 #endif
 
     resetFusion_();
@@ -211,7 +163,6 @@ public:
   }
 
   void tick() {
-    // Pace loop to ~240 Hz (light pacing)
     const uint32_t now_us = micros();
     int32_t wait_us = (int32_t)(next_tick_us_ - now_us);
     if (wait_us > 0) {
@@ -223,7 +174,6 @@ public:
 #if COMPASS_ENABLE_WIZARD
     Input::update();
 
-    // Tap handling
     if (Input::tapPressed()) {
       tap_count_++;
       tap_deadline_ms_ = millis() + ImuCalWizardCfg::TAP_WINDOW_MS;
@@ -240,7 +190,6 @@ public:
     }
 #endif
 
-    // Read IMU and update filter
     ImuSample s;
     if (readImuMapped(M5.Imu, s)) {
       updateFilter_(s);
@@ -256,334 +205,25 @@ private:
   CompassUI compass_ui_{};
   bool compass_ui_ready_ = false;
 
-  // ROT estimator (deg/min) + stillness-gated gyro bias removal
+  // ROT estimator + stillness-gated gyro bias removal
   bool     rot_inited_    = false;
   float    rot_dpm_filt_  = 0.0f;
   bool     gyro_bias_ok_  = false;
-  Vector3f gyro_bias_ema_ = Vector3f::Zero();   // rad/s (BODY)
+  Vector3f gyro_bias_ema_ = Vector3f::Zero();
 
-  // Calibration plumbing
-  void reloadBlobAndRuntime_() {
-    have_blob_ = store_.load(blob_);
-    if (!have_blob_) {
-      memset(&blob_, 0, sizeof(blob_));
-    }
-    runtime_.rebuildFromBlob(blob_);
-  }
-
-  void handleErase_() {
-    Serial.println("[HOME] triple tap => ERASE");
-
-#if COMPASS_ENABLE_WIZARD
-    if (!ui_.eraseConfirm()) {
-      Serial.println("[HOME] erase cancelled");
-      return;
-    }
-#endif
-
-    store_.erase();
-    clearM5UnifiedImuCalibration();
-
-    reloadBlobAndRuntime_();
-    resetFusion_();
-
-    Serial.println("[HOME] erased blob + cleared M5Unified cal");
-  }
-
-#if COMPASS_ENABLE_WIZARD
-  void handleRunWizard_() {
-    Serial.println("[HOME] single tap => RUN WIZARD");
-
-    ImuCalBlobV1 saved{};
-    bool ok = wizard_.runAndSave(saved);
-    if (!ok) {
-      ui_.notSavedNotice();
-      return;
-    }
-
-    Serial.println("[HOME] new calibration saved:");
-    printBlobSummary(Serial, saved);
-    printBlobDetail(Serial, saved);
-
-    blob_ = saved;
-    have_blob_ = true;
-    runtime_.rebuildFromBlob(blob_);
-
-    resetFusion_();
-  }
-#endif
-
-  // SeaStateFusion setup
-  using Fusion = SeaStateFusion<TrackerType::KALMANF>;
-
-  void resetFusion_() {
-    constexpr bool WANT_LINEAR_BLOCK = true;
-
-    // Sensor noise tuning (conservative handheld/boat defaults).
-    const float g = ImuCalCfg::g_std;
-
-    // accel noise (m/s^2), gyro noise (rad/s), mag noise (uT)
-    Vector3f sigma_a(0.06f * g, 0.06f * g, 0.06f * g);
-    Vector3f sigma_g(0.0030f,   0.0030f,   0.0030f);
-    Vector3f sigma_m(0.60f,     0.60f,     0.60f);   // uT-ish conservative for AtomS3R
-
-    Fusion::Config fcfg;
-    fcfg.with_mag = true;
-    fcfg.sigma_a  = sigma_a;
-    fcfg.sigma_g  = sigma_g;
-    fcfg.sigma_m  = sigma_m;
-
-    // Mag startup policy
-    fcfg.mag_delay_sec              = 5.0f;
-    fcfg.use_fixed_mag_world_ref    = false;
-    fcfg.freeze_acc_bias_until_live = true;
-    fcfg.Racc_warmup                = 0.5f;
-
-    // MagAutoTuner gating later:
-    fcfg.mag_ref_timeout_sec = 1.5f;
-    fcfg.mag_odr_guess_hz    = 80.0f;
-
-    fusion_.begin(fcfg);
-
-    // Apply a few runtime knobs on the underlying filter
-    auto& ff = fusion_.raw();
-    ff.enableLinearBlock(WANT_LINEAR_BLOCK);  // compass-only mode
-    ff.enableTuner(true);
-    ff.enableClamp(true);
-    ff.setFreqInputCutoffHz(6.0f);            // tracker input LPF cutoff
-
-    // Reset mag gating state
-    last_mag_uT_.setZero();
-    last_mag_ms_ = 0;
-
-    // Reset ROT state
-    rot_inited_   = false;
-    rot_dpm_filt_ = 0.0f;
-
-    gyro_bias_ok_  = false;
-    gyro_bias_ema_.setZero();
-
-    fusion_started_ = true;
-
-    Serial.println("[FUSION] reset");
-  }
-
-  void updateFilter_(const ImuSample& s) {
-    // Cache raw mapped norms for debug
-    a_raw_norm_ = s.a.norm();
-
-    // Calibrate signals (or pass through if missing)
-    a_cal_ = runtime_.applyAccel(s.a, s.tempC);   // m/s^2, BODY NED
-    w_cal_ = runtime_.applyGyro (s.w, s.tempC);   // rad/s, BODY NED
-    m_cal_ = runtime_.applyMag  (s.m);            // uT,    BODY NED
-
-    // dt from micros; clamp sane
-    const uint32_t now_us = micros();
-    float dt = (now_us - last_update_us_) * 1e-6f;
-    last_update_us_ = now_us;
-    dt = clampf_(dt, 0.0010f, 0.0200f);
-
-    // Mag validity (magnitude sanity)
-    const float mn = m_cal_.norm();
-    mag_ok_ = (mn > 5.0f && mn < 200.0f); // broad uT bounds
-    mag_norm_uT_ = mn;
-
-    // Stale-repeat rejection + ODR gating
-    const uint32_t now_ms = millis();
-    bool mag_fresh = false;
-    if (mag_ok_) {
-      const uint32_t dtm = now_ms - last_mag_ms_;
-      const float dm = (m_cal_ - last_mag_uT_).norm();
-      if (dtm >= MAG_SAMPLE_SPACING_MS && dm >= MAG_MIN_DELTA_uT) {
-        mag_fresh = true;
-        last_mag_ms_ = now_ms;
-        last_mag_uT_ = m_cal_;
-      }
-    }
-    mag_fresh_ = mag_fresh;
-
-    // Main fusion step (acc+gyro always)
-    if (fusion_started_) {
-      fusion_.update(dt, w_cal_, a_cal_, s.tempC);
-
-      // Mag update at mag ODR (gated)
-      if (mag_ok_ && mag_fresh_) {
-        fusion_.updateMag(m_cal_);
-      }
-    }
-
-    // Attitude (nautical, degrees): roll, pitch, yaw
-    Eigen::Vector3f eul_deg = fusion_.raw().getEulerNautical();
-    roll_deg_  = eul_deg.x();
-    pitch_deg_ = eul_deg.y();
-    yaw_deg_   = eul_deg.z();
-
-    heading_deg_ = wrap360_(yaw_deg_);
-
-    // ROT (deg/min): gyro projected into world-Z, with stillness-gated bias removal
-    const float g = ImuCalCfg::g_std;
-    const float a_err = fabsf(a_cal_.norm() - g);
-    const bool still = (a_err < ROT_STILL_G_TOL_FRAC * g) && (w_cal_.norm() < ROT_STILL_GYRO_RAD_S);
-
-    if (still) {
-      const float alpha_b = 1.0f - expf(-dt / ROT_BIAS_TAU_S);
-      if (!gyro_bias_ok_) {
-        gyro_bias_ok_  = true;
-        gyro_bias_ema_ = w_cal_;
-      } else {
-        gyro_bias_ema_ += alpha_b * (w_cal_ - gyro_bias_ema_);
-      }
-    }
-
-    // Bias-correct gyro for ROT
-    Vector3f w_use = w_cal_;
-    if (gyro_bias_ok_) w_use -= gyro_bias_ema_;
-
-    // Get body->world quaternion from Kalman3D_Wave
-    Eigen::Quaternionf q_bw = fusion_.raw().mekf().quaternion_boat();
-    q_bw.normalize();
-
-    // Project gyro to world frame
-    Vector3f w_world = quatRotateBodyToWorld_(q_bw.x(), q_bw.y(), q_bw.z(), q_bw.w(), w_use);
-
-    // In NED, +Z is down.
-    float rot_dpm_meas = w_world.z() * RAD_TO_DEG * 60.0f;    // rad/s -> deg/min
-    rot_dpm_meas = clampf_(rot_dpm_meas, -720.0f, 720.0f);
-
-    // Low-pass ROT
-    const float tau_rot = 1.5f;                               // seconds
-    const float alpha_r = 1.0f - expf(-dt / tau_rot);
-
-    if (!rot_inited_) {
-      rot_inited_   = true;
-      rot_dpm_filt_ = rot_dpm_meas;
-    } else {
-      rot_dpm_filt_ += alpha_r * (rot_dpm_meas - rot_dpm_filt_);
-    }
-  }
-
-  // UI
-  void drawHomeStatic_() {
-    ui_.setReadRotation();
-    ui_.title("COMPASS");
-    M5.Display.printf("BLOB: %s\n", have_blob_ ? "YES" : "NO");
-    M5.Display.printf("A:%d G:%d M:%d\n",
-                      (int)runtime_.acc.ok, (int)runtime_.gyr.ok, (int)runtime_.mag.ok);
-
-#if COMPASS_ENABLE_WIZARD
-    ui_.line("Tap: calibrate");
-    ui_.line("Tap x3: erase");
-#else
-    ui_.line("Wizard: DISABLED");
-    ui_.line("Set COMPASS_ENABLE_WIZARD=1");
-#endif
-    ui_.line("");
-  }
-
-#if COMPASS_ENABLE_WIZARD
-  void drawHomePending_() {
-    ui_.setReadRotation();
-    ui_.title("COMPASS");
-    M5.Display.printf("Tap count: %d\n", tap_count_);
-    ui_.line("");
-    ui_.line("Wait...");
-    ui_.line("1 tap=CAL");
-    ui_.line("3 taps=ERASE");
-
-    int32_t remain = (int32_t)(tap_deadline_ms_ - millis());
-    remain = remain < 0 ? 0 : remain;
-    float t01 = 1.0f - (float)remain / (float)ImuCalWizardCfg::TAP_WINDOW_MS;
-    ui_.bar01(t01);
-  }
-#endif
-
-  void updateUI_() {
-#if COMPASS_ENABLE_WIZARD
-    // If we're in the tap-group decision window, keep the pending screen visible.
-    if (tap_count_ > 0) return;
-#endif
-
-    const uint32_t now_ms = millis();
-    if (now_ms - last_ui_ms_ < UI_REFRESH_MS) return;
-    last_ui_ms_ = now_ms;
-
-    if (use_graphics_ && compass_ui_ready_) updateUI_graphics_();
-    else                                   updateUI_text_();
-  }
-
-  void updateUI_graphics_() {
-    ui_.setReadRotation();
-    const bool tiltWarn = (fabsf(roll_deg_) > 35.0f) || (fabsf(pitch_deg_) > 35.0f);
-    compass_ui_.draw(heading_deg_, mag_ok_, mag_norm_uT_, tiltWarn);
-  }
-
-  void updateUI_text_() {
-    ui_.setReadRotation();
-    ui_.title("COMPASS");
-
-    M5.Display.printf("HDG: %6.1f deg\n", (double)heading_deg_);
-    M5.Display.printf("ROL: %6.1f deg\n", (double)roll_deg_);
-    M5.Display.printf("PIT: %6.1f deg\n", (double)pitch_deg_);
-
-    M5.Display.printf("MAG: %s %s\n",
-                      mag_ok_ ? "OK " : "BAD",
-                      mag_fresh_ ? "NEW" : "OLD");
-    M5.Display.printf("|m|: %6.1f uT\n", (double)mag_norm_uT_);
-    M5.Display.printf("|aR|:%5.2f |aC|:%5.2f\n",
-                      (double)a_raw_norm_, (double)a_cal_.norm());
-    ui_.line("");
-    M5.Display.printf("A:%d G:%d M:%d  B:%s\n",
-                      (int)runtime_.acc.ok, (int)runtime_.gyr.ok, (int)runtime_.mag.ok,
-                      have_blob_ ? "YES" : "NO");
-  }
-
-  void streamSerial_() {
-    const uint32_t now_ms = millis();
-
-#if COMPASS_SERIAL_NMEA
-    if (now_ms - last_serial_ms_ < NMEA_SERIAL_MS) return;
-#else
-    if (now_ms - last_serial_ms_ < DEBUG_SERIAL_MS) return;
-#endif
-    last_serial_ms_ = now_ms;
-
-#if COMPASS_SERIAL_NMEA
-    const bool valid = fusion_.isLive();
-    nmea_hdm(COMPASS_NMEA_TALKER, heading_deg_);
-    nmea_xdr_pitch_roll(COMPASS_NMEA_TALKER, pitch_deg_, roll_deg_);
-    nmea_rot(COMPASS_NMEA_TALKER, rot_dpm_filt_, valid);
-#else
-    const float t = (micros() - start_us_) * 1e-6f;
-    Serial.printf("t=%.2f HDG:%6.1f R:%6.1f P:%6.1f mag:%s/%s |m|=%.1f live:%d\n",
-                  (double)t,
-                  (double)heading_deg_,
-                  (double)roll_deg_,
-                  (double)pitch_deg_,
-                  mag_ok_ ? "OK" : "BAD",
-                  mag_fresh_ ? "NEW" : "OLD",
-                  (double)mag_norm_uT_,
-                  (int)fusion_.isLive());
-#endif
-  }
-
-private:
   // Plumbing
-  M5Ui ui_{};
+  UI ui_{};
   ImuCalStoreNvs store_{};
 
 #if COMPASS_ENABLE_WIZARD
   ImuCalWizard wizard_;
+  int tap_count_ = 0;
+  uint32_t tap_deadline_ms_ = 0;
 #endif
 
   bool have_blob_ = false;
   ImuCalBlobV1 blob_{};
   RuntimeCals runtime_{};
-
-#if COMPASS_ENABLE_WIZARD
-  // Tap state
-  int tap_count_ = 0;
-  uint32_t tap_deadline_ms_ = 0;
-#endif
 
   // Timing
   uint32_t start_us_ = 0;
@@ -616,13 +256,238 @@ private:
   Vector3f last_mag_uT_ = Vector3f::Zero();
   uint32_t last_mag_ms_ = 0;
 
-  // ROT output
-  float rot_dpm_filt_ = 0.0f;
-  bool rot_inited_ = false;
+private:
+  void reloadBlobAndRuntime_() {
+    have_blob_ = store_.load(blob_);
+    if (!have_blob_) memset(&blob_, 0, sizeof(blob_));
+    runtime_.rebuildFromBlob(blob_);
+  }
 
-  // gyro bias estimator
-  bool gyro_bias_ok_ = false;
-  Vector3f gyro_bias_ema_ = Vector3f::Zero();
+  void handleErase_() {
+    Serial.println("[HOME] ERASE");
+#if COMPASS_ENABLE_WIZARD
+    if (!ui_.eraseConfirm()) {
+      Serial.println("[HOME] erase cancelled");
+      return;
+    }
+#endif
+    store_.erase();
+    clearM5UnifiedImuCalibration();
+    reloadBlobAndRuntime_();
+    resetFusion_();
+  }
+
+#if COMPASS_ENABLE_WIZARD
+  void handleRunWizard_() {
+    Serial.println("[HOME] RUN WIZARD");
+    ImuCalBlobV1 saved{};
+    if (!wizard_.runAndSave(saved)) {
+      ui_.notSavedNotice();
+      return;
+    }
+    blob_ = saved;
+    have_blob_ = true;
+    runtime_.rebuildFromBlob(blob_);
+    resetFusion_();
+  }
+
+  void drawHomePending_() {
+    ui_.setReadRotation();
+    ui_.title("COMPASS");
+    M5.Display.printf("Tap count: %d\n", tap_count_);
+    ui_.line("");
+    ui_.line("Wait...");
+    ui_.line("1 tap=CAL");
+    ui_.line("3 taps=ERASE");
+
+    int32_t remain = (int32_t)(tap_deadline_ms_ - millis());
+    remain = remain < 0 ? 0 : remain;
+    float t01 = 1.0f - (float)remain / (float)ImuCalWizardCfg::TAP_WINDOW_MS;
+    ui_.bar01(t01);
+  }
+#endif
+
+  void resetFusion_() {
+    constexpr bool WANT_LINEAR_BLOCK = true;
+    const float g = ImuCalCfg::g_std;
+
+    Vector3f sigma_a(0.06f * g, 0.06f * g, 0.06f * g);
+    Vector3f sigma_g(0.0030f,   0.0030f,   0.0030f);
+    Vector3f sigma_m(0.60f,     0.60f,     0.60f);
+
+    Fusion::Config fcfg;
+    fcfg.with_mag = true;
+    fcfg.sigma_a  = sigma_a;
+    fcfg.sigma_g  = sigma_g;
+    fcfg.sigma_m  = sigma_m;
+
+    fcfg.mag_delay_sec              = 5.0f;
+    fcfg.use_fixed_mag_world_ref    = false;
+    fcfg.freeze_acc_bias_until_live = true;
+    fcfg.Racc_warmup                = 0.5f;
+
+    fcfg.mag_ref_timeout_sec = 1.5f;
+    fcfg.mag_odr_guess_hz    = 80.0f;
+
+    fusion_.begin(fcfg);
+
+    auto& ff = fusion_.raw();
+    ff.enableLinearBlock(WANT_LINEAR_BLOCK);
+    ff.enableTuner(true);
+    ff.enableClamp(true);
+    ff.setFreqInputCutoffHz(6.0f);
+
+    last_mag_uT_.setZero();
+    last_mag_ms_ = 0;
+
+    rot_inited_ = false;
+    rot_dpm_filt_ = 0.0f;
+    gyro_bias_ok_ = false;
+    gyro_bias_ema_.setZero();
+
+    fusion_started_ = true;
+  }
+
+  void updateFilter_(const ImuSample& s) {
+    a_raw_norm_ = s.a.norm();
+
+    a_cal_ = runtime_.applyAccel(s.a, s.tempC);
+    w_cal_ = runtime_.applyGyro (s.w, s.tempC);
+    m_cal_ = runtime_.applyMag  (s.m);
+
+    const uint32_t now_us = micros();
+    float dt = (now_us - last_update_us_) * 1e-6f;
+    last_update_us_ = now_us;
+    dt = clampf_(dt, 0.0010f, 0.0200f);
+
+    const float mn = m_cal_.norm();
+    mag_ok_ = (mn > 5.0f && mn < 200.0f);
+    mag_norm_uT_ = mn;
+
+    const uint32_t now_ms = millis();
+    bool mag_fresh = false;
+    if (mag_ok_) {
+      const uint32_t dtm = now_ms - last_mag_ms_;
+      const float dm = (m_cal_ - last_mag_uT_).norm();
+      if (dtm >= MAG_SAMPLE_SPACING_MS && dm >= MAG_MIN_DELTA_uT) {
+        mag_fresh = true;
+        last_mag_ms_ = now_ms;
+        last_mag_uT_ = m_cal_;
+      }
+    }
+    mag_fresh_ = mag_fresh;
+
+    if (fusion_started_) {
+      fusion_.update(dt, w_cal_, a_cal_, s.tempC);
+      if (mag_ok_ && mag_fresh_) fusion_.updateMag(m_cal_);
+    }
+
+    Eigen::Vector3f eul_deg = fusion_.raw().getEulerNautical();
+    roll_deg_  = eul_deg.x();
+    pitch_deg_ = eul_deg.y();
+    yaw_deg_   = eul_deg.z();
+    heading_deg_ = wrap360_(yaw_deg_);
+
+    const float g = ImuCalCfg::g_std;
+    const float a_err = fabsf(a_cal_.norm() - g);
+    const bool still = (a_err < ROT_STILL_G_TOL_FRAC * g) && (w_cal_.norm() < ROT_STILL_GYRO_RAD_S);
+
+    if (still) {
+      const float alpha_b = 1.0f - expf(-dt / ROT_BIAS_TAU_S);
+      if (!gyro_bias_ok_) { gyro_bias_ok_ = true; gyro_bias_ema_ = w_cal_; }
+      else { gyro_bias_ema_ += alpha_b * (w_cal_ - gyro_bias_ema_); }
+    }
+
+    Vector3f w_use = w_cal_;
+    if (gyro_bias_ok_) w_use -= gyro_bias_ema_;
+
+    Eigen::Quaternionf q_bw = fusion_.raw().mekf().quaternion_boat();
+    q_bw.normalize();
+
+    Vector3f w_world = quatRotateBodyToWorld_(q_bw.x(), q_bw.y(), q_bw.z(), q_bw.w(), w_use);
+
+    float rot_dpm_meas = w_world.z() * RAD_TO_DEG * 60.0f;
+    rot_dpm_meas = clampf_(rot_dpm_meas, -720.0f, 720.0f);
+
+    const float tau_rot = 1.5f;
+    const float alpha_r = 1.0f - expf(-dt / tau_rot);
+    if (!rot_inited_) { rot_inited_ = true; rot_dpm_filt_ = rot_dpm_meas; }
+    else { rot_dpm_filt_ += alpha_r * (rot_dpm_meas - rot_dpm_filt_); }
+  }
+
+  void drawHomeStatic_() {
+    ui_.setReadRotation();
+    ui_.title("COMPASS");
+    M5.Display.printf("BLOB: %s\n", have_blob_ ? "YES" : "NO");
+    M5.Display.printf("A:%d G:%d M:%d\n",
+                      (int)runtime_.acc.ok, (int)runtime_.gyr.ok, (int)runtime_.mag.ok);
+
+#if COMPASS_ENABLE_WIZARD
+    ui_.line("Tap: calibrate");
+    ui_.line("Tap x3: erase");
+#else
+    ui_.line("Wizard: DISABLED");
+    ui_.line("Set COMPASS_ENABLE_WIZARD=1");
+#endif
+    ui_.line("");
+  }
+
+  void updateUI_() {
+#if COMPASS_ENABLE_WIZARD
+    if (tap_count_ > 0) return;
+#endif
+    const uint32_t now_ms = millis();
+    if (now_ms - last_ui_ms_ < UI_REFRESH_MS) return;
+    last_ui_ms_ = now_ms;
+
+    if (use_graphics_ && compass_ui_ready_) updateUI_graphics_();
+    else                                   updateUI_text_();
+  }
+
+  void updateUI_graphics_() {
+    ui_.setReadRotation();
+    const bool tiltWarn = (fabsf(roll_deg_) > 35.0f) || (fabsf(pitch_deg_) > 35.0f);
+    compass_ui_.draw(heading_deg_, mag_ok_, mag_norm_uT_, tiltWarn);
+  }
+
+  void updateUI_text_() {
+    ui_.setReadRotation();
+    ui_.title("COMPASS");
+    M5.Display.printf("HDG: %6.1f deg\n", (double)heading_deg_);
+    M5.Display.printf("ROL: %6.1f deg\n", (double)roll_deg_);
+    M5.Display.printf("PIT: %6.1f deg\n", (double)pitch_deg_);
+    M5.Display.printf("MAG: %s %s\n", mag_ok_ ? "OK " : "BAD", mag_fresh_ ? "NEW" : "OLD");
+    M5.Display.printf("|m|: %6.1f uT\n", (double)mag_norm_uT_);
+    M5.Display.printf("|aR|:%5.2f |aC|:%5.2f\n", (double)a_raw_norm_, (double)a_cal_.norm());
+    ui_.line("");
+  }
+
+  void streamSerial_() {
+    const uint32_t now_ms = millis();
+
+#if COMPASS_SERIAL_NMEA
+    if (now_ms - last_serial_ms_ < NMEA_SERIAL_MS) return;
+#else
+    if (now_ms - last_serial_ms_ < DEBUG_SERIAL_MS) return;
+#endif
+    last_serial_ms_ = now_ms;
+
+#if COMPASS_SERIAL_NMEA
+    const bool valid = fusion_.isLive();
+    nmea_hdm(COMPASS_NMEA_TALKER, heading_deg_);
+    nmea_xdr_pitch_roll(COMPASS_NMEA_TALKER, pitch_deg_, roll_deg_);
+    nmea_rot(COMPASS_NMEA_TALKER, rot_dpm_filt_, valid);
+#else
+    const float t = (micros() - start_us_) * 1e-6f;
+    Serial.printf("t=%.2f HDG:%6.1f R:%6.1f P:%6.1f |m|=%.1f live:%d\n",
+                  (double)t,
+                  (double)heading_deg_,
+                  (double)roll_deg_,
+                  (double)pitch_deg_,
+                  (double)mag_norm_uT_,
+                  (int)fusion_.isLive());
+#endif
+  }
 };
 
 static CompassApp g_app;
