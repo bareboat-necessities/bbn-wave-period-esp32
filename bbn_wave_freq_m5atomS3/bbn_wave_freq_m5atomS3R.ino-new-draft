@@ -1,4 +1,6 @@
 /*
+  Copyright 2026, Mikhail Grushinskiy
+ 
   AtomS3R Tilt-Compensated Compass + IMU Calibration Wizard
   (SeaStateFusion version: Kalman3D_Wave + mag init + yaw correction)
 
@@ -34,7 +36,7 @@
 #include "AtomS3R_CompassUI.h"
 #include "NmeaCompass.h"
 
-// ---------------- UI / Serial switches ----------------
+// UI / Serial switches
 
 // 1 = graphical compass by default, 0 = text UI by default
 #ifndef COMPASS_UI_DEFAULT_GRAPHICS
@@ -52,9 +54,7 @@
 #define COMPASS_NMEA_TALKER "II"
 #endif
 
-// ---------------- SeaStateFusion requirements ----------------
-
-// The SeaStateFusionFilter.h you pasted expects these globals/macros to exist.
+// SeaStateFusion requirements
 constexpr float g_std = atoms3r_ical::ImuCalCfg::g_std; // global symbol used by tracker policies
 constexpr float FREQ_GUESS = 0.3f;                      // used by default init in filter header
 
@@ -63,13 +63,12 @@ constexpr float FREQ_GUESS = 0.3f;                      // used by default init 
 #define ZERO_CROSSINGS_DEBOUNCE_TIME  0.12f
 #define ZERO_CROSSINGS_STEEPNESS_TIME 0.21f
 
-// Tracker selection enum (must match the template in your SeaStateFusionFilter.h)
 enum class TrackerType { ARANOVSKIY = 0, KALMANF = 1, ZEROCROSS = 2 };
 
 // Include after the above definitions
 #include "SeaStateFusionFilter.h"
 
-// ---------------- App constants ----------------
+// App constants
 
 // Sampling / gating tuning
 static constexpr float    LOOP_HZ        = 240.0f;
@@ -148,7 +147,7 @@ public:
 
     reloadBlobAndRuntime_();
 
-    // If missing, immediately run wizard once (matches your requested flow)
+    // If missing, immediately run wizard once
     if (!have_blob_) {
       Serial.println("[BOOT] No saved calibration. Starting wizard...");
       ImuCalBlobV1 saved{};
@@ -272,19 +271,15 @@ private:
     resetFusion_();
   }
 
-  // ---------------- SeaStateFusion setup ----------------
+  // SeaStateFusion setup
 
   using Fusion = SeaStateFusion<TrackerType::KALMANF>;
 
   void resetFusion_() {
-    // If you only want a compass (no heave integration), you can disable the linear block.
-    // This keeps the filter in attitude/bias mode but still uses mag yaw.
-    // (It also reduces CPU and avoids heave-related drift machinery.)
-    constexpr bool WANT_LINEAR_BLOCK = false;
+    constexpr bool WANT_LINEAR_BLOCK = true;
 
     // Sensor noise tuning (conservative handheld/boat defaults).
     // These are *measurement noise* priors the Kalman uses.
-    // If your calibrations are good, you can reduce these.
     const float g = ImuCalCfg::g_std;
 
     // accel noise (m/s^2), gyro noise (rad/s), mag noise (uT)
@@ -298,15 +293,15 @@ private:
     fcfg.sigma_g  = sigma_g;
     fcfg.sigma_m  = sigma_m;
 
-    // Mag startup policy (mirrors your heave app)
+    // Mag startup policy
     fcfg.mag_delay_sec              = 5.0f;
     fcfg.use_fixed_mag_world_ref    = false;
     fcfg.freeze_acc_bias_until_live = true;
     fcfg.Racc_warmup                = 0.5f;
 
-    // (Optional) if you want MagAutoTuner gating later:
-    // fcfg.mag_ref_timeout_sec = 1.5f;
-    // fcfg.mag_odr_guess_hz    = 80.0f;
+    // MagAutoTuner gating later:
+    fcfg.mag_ref_timeout_sec = 1.5f;
+    fcfg.mag_odr_guess_hz    = 80.0f;
 
     fusion_.begin(fcfg);
 
@@ -315,7 +310,7 @@ private:
     ff.enableLinearBlock(WANT_LINEAR_BLOCK);     // compass-only mode
     ff.enableTuner(true);
     ff.enableClamp(true);
-    ff.setFreqInputCutoffHz(6.0f);              // tracker input LPF cutoff
+    ff.setFreqInputCutoffHz(6.0f);               // tracker input LPF cutoff
 
     // Reset mag gating state
     last_mag_uT_.setZero();
@@ -385,7 +380,7 @@ private:
 
     heading_deg_ = wrap360_(yaw_deg_);
 
-    // ---- ROT (deg/min): gyro projected into world-Z, with stillness-gated bias removal ----
+    // ROT (deg/min): gyro projected into world-Z, with stillness-gated bias removal
     // Update a slow gyro bias estimate ONLY when still (so it doesn't "learn" real turns).
     const float g = ImuCalCfg::g_std;
     const float a_err = fabsf(a_cal_.norm() - g);
