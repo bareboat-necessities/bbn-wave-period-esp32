@@ -74,10 +74,6 @@ namespace atoms3r_ical {
 
 // Wizard configuration
 struct ImuCalWizardCfg {
-  // If text rotated wrong initially, change this to 1 or 3.
-  static constexpr uint8_t ROT_READ = 0;
-  static constexpr uint32_t KEEP_AWAKE_EVERY_MS = 200;
-
   // Step pacing
   static constexpr uint32_t PLACE_TIME_MS       = 6500;
   static constexpr uint32_t OK_PAUSE_MS         = 900;
@@ -114,10 +110,6 @@ struct ImuCalWizardCfg {
 
   static constexpr uint32_t FIT_STACK_WORDS     = 16384;
   static constexpr uint32_t FIT_TIMEOUT_MS      = 30000;
-
-  static constexpr uint32_t TAP_WINDOW_MS       = 700;
-  static constexpr uint8_t  LCD_BRIGHTNESS      = 200;
-  static constexpr uint32_t MENU_TAP_WINDOW_MS  = 650;
 };
 
 // Small helpers
