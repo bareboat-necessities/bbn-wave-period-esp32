@@ -220,7 +220,6 @@ class FusionApp {
     Vector3f gyro_bias_ema_ = Vector3f::Zero();
 
     // Runtime auto-detect
-    bool gyro_units_dps_ = false;       // true => incoming gyro is deg/s (needs DEG_TO_RAD)
     bool q_is_body_to_world_ = true;    // true => q maps body->world; false => q maps world->body
     bool q_dir_locked_ = false;         // lock after confident detection
 
@@ -376,28 +375,14 @@ class FusionApp {
       last_update_us_ = now_us;
       dt = clampf_(dt, 0.0010f, 0.0200f);
 
-      // --- determine "still" (used for auto-detect) ---
+      // determine "still"
       const float g = ImuCalCfg::g_std;
       const float a_err = fabsf(a_cal_.norm() - g);
       const bool still = (a_err < ROT_STILL_G_TOL_FRAC * g);
 
-      // --- gyro units auto-detect (deg/s vs rad/s) ---
-      // Heuristic: at rest, gyro norm in rad/s should be tiny (~0.01..0.05),
-      // while deg/s often looks like ~0.5..5+ if not converted.
-      if (still) {
-        const float wn = w_cal_.norm();
-        // lock-on if it looks clearly like deg/s
-        if (wn > 0.35f) gyro_units_dps_ = true;
-        // if it's clearly rad/s, allow turning it off
-        if (wn < 0.10f) gyro_units_dps_ = false;
-      }
-
       Vector3f w_use = w_cal_;
-      if (gyro_units_dps_) {
-        w_use *= DEG_TO_RAD; // critical if your pipeline is feeding deg/s
-      }
 
-      // --- MAG pacing (time only) ---
+      // MAG pacing (time only)
       const uint32_t now_ms = millis();
       mag_fresh_ = false;
       if ((uint32_t)(now_ms - last_mag_ms_) >= MAG_SAMPLE_SPACING_MS) {
@@ -409,8 +394,8 @@ class FusionApp {
         fusion_.updateMag(m_cal_);
       }
 
-      // --- Update filter once per IMU sample ---
-      fusion_.update(dt, w_use, a_cal_, s.tempC);
+      // Update filter once per IMU sample
+      fusion_.update(dt, w_use, a_cal_, 35.0f);
 
       // Euler for UI
       Eigen::Vector3f eul_deg = fusion_.raw().getEulerNautical();
@@ -422,7 +407,7 @@ class FusionApp {
       Eigen::Quaternionf q = fusion_.raw().mekf().quaternion_boat();
       q.normalize();
 
-      // --- Auto-detect quaternion direction using gravity consistency ---
+      // Auto-detect quaternion direction using gravity consistency
       // Model at rest: specific force f_b ≈ R_wb(-g_world), where g_world=(0,0,g) in NED.
       // So target vector in world is (-g_world) = (0,0,-g).
       if (still && !q_dir_locked_) {
@@ -456,7 +441,7 @@ class FusionApp {
         return q_is_body_to_world_ ? quatRotate_(q.conjugate(), v_world) : quatRotate_(q, v_world);
       };
 
-      // --- Heading from mag + gravity (tilt-compensated, yaw-free) ---
+      // Heading from mag + gravity (tilt-compensated, yaw-free)
       // Assumes BODY-NED axes: x=forward, y=right, z=down
       // World NED: north=x, east=y, down=z
       {
@@ -500,7 +485,7 @@ class FusionApp {
         }
       }
 
-      // --- Stillness-gated gyro bias removal for ROT (keep your logic) ---
+      // Stillness-gated gyro bias removal for ROT
       const bool still_for_bias = still && (w_use.norm() < ROT_STILL_GYRO_RAD_S);
 
       if (still_for_bias) {
@@ -532,11 +517,7 @@ class FusionApp {
       else {
         rot_dpm_filt_ += alpha_r * (rot_dpm_meas - rot_dpm_filt_);
       }
-
-      // Optional: quick debug breadcrumbs (comment out once fixed)
-      // Serial.printf("gyro_dps=%d q_b2w=%d\n", (int)gyro_units_dps_, (int)q_is_body_to_world_);
     }
-
 
     void drawHomeStatic_() {
       ui_.setReadRotation();
