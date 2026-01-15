@@ -12,7 +12,7 @@
 
 // Compile-time switches
 #ifndef COMPASS_ENABLE_WIZARD
-  #define COMPASS_ENABLE_WIZARD 0   // disabled by default (reduces compile load)
+#define COMPASS_ENABLE_WIZARD 0   // disabled by default (reduces compile load)
 #endif
 
 #include <M5Unified.h>
@@ -20,29 +20,29 @@
 #include <cmath>
 
 #ifndef EIGEN_STACK_ALLOCATION_LIMIT
-  #define EIGEN_STACK_ALLOCATION_LIMIT 0
+#define EIGEN_STACK_ALLOCATION_LIMIT 0
 #endif
 #include <ArduinoEigenDense.h>
 
 #include "AtomS3R_ImuCal.h"
 #include "AtomS3R_M5Ui.h"
 #if COMPASS_ENABLE_WIZARD
-  #include "AtomS3R_ImuCalWizard.h"
+#include "AtomS3R_ImuCalWizard.h"
 #endif
 #include "AtomS3R_CompassUI.h"
 #include "NmeaCompass.h"
 
 // UI / Serial switches
 #ifndef COMPASS_UI_DEFAULT_GRAPHICS
-  #define COMPASS_UI_DEFAULT_GRAPHICS 1
+#define COMPASS_UI_DEFAULT_GRAPHICS 1
 #endif
 
 #ifndef COMPASS_SERIAL_NMEA
-  #define COMPASS_SERIAL_NMEA 1
+#define COMPASS_SERIAL_NMEA 1
 #endif
 
 #ifndef COMPASS_NMEA_TALKER
-  #define COMPASS_NMEA_TALKER "II"
+#define COMPASS_NMEA_TALKER "II"
 #endif
 
 // SeaStateFusion requirements
@@ -76,7 +76,9 @@ using namespace atoms3r_ical;
 using Vector3f = Eigen::Vector3f;
 
 // Helpers
-static inline float clampf_(float x, float lo, float hi) { return x < lo ? lo : (x > hi ? hi : x); }
+static inline float clampf_(float x, float lo, float hi) {
+  return x < lo ? lo : (x > hi ? hi : x);
+}
 
 static inline float wrap360_(float deg) {
   while (deg < 0.0f) deg += 360.0f;
@@ -84,8 +86,15 @@ static inline float wrap360_(float deg) {
   return deg;
 }
 
+static inline Vector3f quatRotate_(const Eigen::Quaternionf& q, const Vector3f& v) {
+  // Applies q * v * q_conj (q maps "from" -> "to")
+  Vector3f qv(q.x(), q.y(), q.z());
+  Vector3f t = 2.0f * qv.cross(v);
+  return v + q.w() * t + qv.cross(t);
+}
+
 static inline Vector3f quatRotateBodyToWorld_(float x, float y, float z, float w,
-                                              const Vector3f& v_body) {
+    const Vector3f& v_body) {
   Vector3f q(x, y, z);
   Vector3f t = 2.0f * q.cross(v_body);
   return v_body + w * t + q.cross(t);
@@ -93,404 +102,522 @@ static inline Vector3f quatRotateBodyToWorld_(float x, float y, float z, float w
 
 // App
 class FusionApp {
-public:
-  FusionApp()
+  public:
+    FusionApp()
 #if COMPASS_ENABLE_WIZARD
-    : wizard_(ui_, store_)
+      : wizard_(ui_, store_)
 #endif
-  {}
+    {}
 
-  void begin() {
-    Serial.begin(115200);
-    delay(150);
-    Serial.println();
-    Serial.printf("[BOOT] AtomS3R Compass (SeaStateFusion) wizard=%d\n", (int)COMPASS_ENABLE_WIZARD);
+    void begin() {
+      Serial.begin(115200);
+      delay(150);
+      Serial.println();
+      Serial.printf("[BOOT] AtomS3R Compass (SeaStateFusion) wizard=%d\n", (int)COMPASS_ENABLE_WIZARD);
 
-    auto cfg = M5.config();
-    M5.begin(cfg);
+      auto cfg = M5.config();
+      M5.begin(cfg);
 
-    clearM5UnifiedImuCalibration();
-    delay(250);
+      clearM5UnifiedImuCalibration();
+      delay(250);
 
-    ui_.begin();
+      ui_.begin();
 
-    if (use_graphics_) {
-      ui_.setReadRotation();
-      compass_ui_.begin();
-      compass_ui_ready_ = compass_ui_.ok();
-      if (!compass_ui_ready_) use_graphics_ = false;
-    }
-
-    if (!M5.Imu.isEnabled()) {
-      Serial.println("[BOOT] IMU not found / not enabled");
-      ui_.fail("IMU", "Not found");
-      while (true) delay(100);
-    }
-
-    reloadBlobAndRuntime_();
-
-#if COMPASS_ENABLE_WIZARD
-    if (!have_blob_) {
-      Serial.println("[BOOT] No saved calibration. Starting wizard...");
-      ImuCalBlobV1 saved{};
-      if (wizard_.runAndSave(saved)) {
-        Serial.println("[BOOT] Wizard saved calibration. Loaded:");
-        printBlobSummary(Serial, saved);
-        printBlobDetail(Serial, saved);
-        blob_ = saved;
-        have_blob_ = true;
-        runtime_.rebuildFromBlob(blob_);
-      } else {
-        Serial.println("[BOOT] Wizard did not save calibration. Running with raw values.");
+      if (use_graphics_) {
+        ui_.setReadRotation();
+        compass_ui_.begin();
+        compass_ui_ready_ = compass_ui_.ok();
+        if (!compass_ui_ready_) use_graphics_ = false;
       }
-    } else {
-      Serial.println("[BOOT] Found saved calibration:");
-      printBlobSummary(Serial, blob_);
-      printBlobDetail(Serial, blob_);
-    }
+
+      if (!M5.Imu.isEnabled()) {
+        Serial.println("[BOOT] IMU not found / not enabled");
+        ui_.fail("IMU", "Not found");
+        while (true) delay(100);
+      }
+
+      reloadBlobAndRuntime_();
+
+#if COMPASS_ENABLE_WIZARD
+      if (!have_blob_) {
+        Serial.println("[BOOT] No saved calibration. Starting wizard...");
+        ImuCalBlobV1 saved{};
+        if (wizard_.runAndSave(saved)) {
+          Serial.println("[BOOT] Wizard saved calibration. Loaded:");
+          printBlobSummary(Serial, saved);
+          printBlobDetail(Serial, saved);
+          blob_ = saved;
+          have_blob_ = true;
+          runtime_.rebuildFromBlob(blob_);
+        } else {
+          Serial.println("[BOOT] Wizard did not save calibration. Running with raw values.");
+        }
+      } else {
+        Serial.println("[BOOT] Found saved calibration:");
+        printBlobSummary(Serial, blob_);
+        printBlobDetail(Serial, blob_);
+      }
 #else
-    if (!have_blob_) Serial.println("[BOOT] No saved calibration. Wizard disabled.");
-    else             Serial.println("[BOOT] Found saved calibration.");
+      if (!have_blob_) Serial.println("[BOOT] No saved calibration. Wizard disabled.");
+      else             Serial.println("[BOOT] Found saved calibration.");
 #endif
 
-    resetFusion_();
-    drawHomeStatic_();
-
-    start_us_       = micros();
-    next_tick_us_   = micros();
-    last_update_us_ = micros();
-  }
-
-  void tick() {
-    const uint32_t now_us = micros();
-    int32_t wait_us = (int32_t)(next_tick_us_ - now_us);
-    if (wait_us > 0) {
-      if (wait_us > 200) delayMicroseconds(200);
-      else delayMicroseconds((uint32_t)wait_us);
-    }
-    next_tick_us_ += LOOP_PERIOD_US;
-
-#if COMPASS_ENABLE_WIZARD
-    Input::update();
-
-    if (Input::tapPressed()) {
-      tap_count_++;
-      tap_deadline_ms_ = millis() + M5UiCfg::MENU_TAP_WINDOW_MS;
-      drawHomePending_();
-      Serial.printf("[TAP] count=%d\n", tap_count_);
-    }
-
-    if (tap_count_ > 0 && (int32_t)(millis() - tap_deadline_ms_) > 0) {
-      if (tap_count_ >= 3) handleErase_();
-      else                 handleRunWizard_();
-      tap_count_ = 0;
-      tap_deadline_ms_ = 0;
+      resetFusion_();
       drawHomeStatic_();
-    }
-#endif
 
-    ImuSample s;
-    if (readImuMapped(M5.Imu, s)) {
-      updateFilter_(s);
+      start_us_       = micros();
+      next_tick_us_   = micros();
+      last_update_us_ = micros();
     }
 
-    updateUI_();
-    streamSerial_();
-  }
-
-private:
-  // UI mode
-  bool use_graphics_ = (COMPASS_UI_DEFAULT_GRAPHICS != 0);
-  CompassUI compass_ui_{};
-  bool compass_ui_ready_ = false;
-
-  // ROT estimator + stillness-gated gyro bias removal
-  bool     rot_inited_    = false;
-  float    rot_dpm_filt_  = 0.0f;
-  bool     gyro_bias_ok_  = false;
-  Vector3f gyro_bias_ema_ = Vector3f::Zero();
-
-  // Plumbing
-  using UI = atoms3r_ical::M5Ui;
-  UI ui_{};
-  ImuCalStoreNvs store_{};
+    void tick() {
+      const uint32_t now_us = micros();
+      int32_t wait_us = (int32_t)(next_tick_us_ - now_us);
+      if (wait_us > 0) {
+        if (wait_us > 200) delayMicroseconds(200);
+        else delayMicroseconds((uint32_t)wait_us);
+      }
+      next_tick_us_ += LOOP_PERIOD_US;
 
 #if COMPASS_ENABLE_WIZARD
-  ImuCalWizard wizard_;
-  int tap_count_ = 0;
-  uint32_t tap_deadline_ms_ = 0;
+      Input::update();
+
+      if (Input::tapPressed()) {
+        tap_count_++;
+        tap_deadline_ms_ = millis() + M5UiCfg::MENU_TAP_WINDOW_MS;
+        drawHomePending_();
+        Serial.printf("[TAP] count=%d\n", tap_count_);
+      }
+
+      if (tap_count_ > 0 && (int32_t)(millis() - tap_deadline_ms_) > 0) {
+        if (tap_count_ >= 3) handleErase_();
+        else                 handleRunWizard_();
+        tap_count_ = 0;
+        tap_deadline_ms_ = 0;
+        drawHomeStatic_();
+      }
 #endif
 
-  bool have_blob_ = false;
-  ImuCalBlobV1 blob_{};
-  RuntimeCals runtime_{};
+      ImuSample s;
+      if (readImuMapped(M5.Imu, s)) {
+        updateFilter_(s);
+      }
 
-  // Timing
-  uint32_t start_us_ = 0;
-  uint32_t next_tick_us_ = 0;
-  uint32_t last_update_us_ = 0;
-  uint32_t last_ui_ms_ = 0;
-  uint32_t last_serial_ms_ = 0;
-
-  // SeaStateFusion
-  using Fusion = SeaStateFusion<TrackerType::KALMANF>;
-  Fusion fusion_{};
-  bool fusion_started_ = false;
-
-  // Latest calibrated values
-  Vector3f a_cal_ = Vector3f::Zero();
-  Vector3f w_cal_ = Vector3f::Zero();
-  Vector3f m_cal_ = Vector3f::Zero();
-  float a_raw_norm_ = 0.0f;
-
-  // Attitude / heading (deg)
-  float roll_deg_ = 0.0f;
-  float pitch_deg_ = 0.0f;
-  float yaw_deg_ = 0.0f;
-  float heading_deg_ = 0.0f;
-
-  // Mag gating
-  bool mag_ok_ = false;
-  bool mag_fresh_ = false;
-  float mag_norm_uT_ = 0.0f;
-  Vector3f last_mag_uT_ = Vector3f::Zero();
-  uint32_t last_mag_ms_ = 0;
-
-private:
-  void reloadBlobAndRuntime_() {
-    have_blob_ = store_.load(blob_);
-    if (!have_blob_) memset(&blob_, 0, sizeof(blob_));
-    runtime_.rebuildFromBlob(blob_);
-  }
-
-  void handleErase_() {
-    Serial.println("[HOME] ERASE");
-#if COMPASS_ENABLE_WIZARD
-    if (!ui_.eraseConfirm()) {
-      Serial.println("[HOME] erase cancelled");
-      return;
+      updateUI_();
+      streamSerial_();
     }
-#endif
-    store_.erase();
-    clearM5UnifiedImuCalibration();
-    reloadBlobAndRuntime_();
-    resetFusion_();
-  }
+
+  private:
+    // UI mode
+    bool use_graphics_ = (COMPASS_UI_DEFAULT_GRAPHICS != 0);
+    CompassUI compass_ui_{};
+    bool compass_ui_ready_ = false;
+
+    // ROT estimator + stillness-gated gyro bias removal
+    bool     rot_inited_    = false;
+    float    rot_dpm_filt_  = 0.0f;
+    bool     gyro_bias_ok_  = false;
+    Vector3f gyro_bias_ema_ = Vector3f::Zero();
+
+    // Runtime auto-detect
+    bool gyro_units_dps_ = false;       // true => incoming gyro is deg/s (needs DEG_TO_RAD)
+    bool q_is_body_to_world_ = true;    // true => q maps body->world; false => q maps world->body
+    bool q_dir_locked_ = false;         // lock after confident detection
+
+    // Plumbing
+    using UI = atoms3r_ical::M5Ui;
+    UI ui_{};
+    ImuCalStoreNvs store_{};
 
 #if COMPASS_ENABLE_WIZARD
-  void handleRunWizard_() {
-    Serial.println("[HOME] RUN WIZARD");
-    ImuCalBlobV1 saved{};
-    if (!wizard_.runAndSave(saved)) {
-      ui_.notSavedNotice();
-      return;
-    }
-    blob_ = saved;
-    have_blob_ = true;
-    runtime_.rebuildFromBlob(blob_);
-    resetFusion_();
-  }
-
-  void drawHomePending_() {
-    ui_.setReadRotation();
-    ui_.title("COMPASS");
-    M5.Display.printf("Tap count: %d\n", tap_count_);
-    ui_.line("");
-    ui_.line("Wait...");
-    ui_.line("1 tap=CAL");
-    ui_.line("3 taps=ERASE");
-
-    int32_t remain = (int32_t)(tap_deadline_ms_ - millis());
-    remain = remain < 0 ? 0 : remain;
-    float t01 = 1.0f - (float)remain / (float)M5UiCfg::MENU_TAP_WINDOW_MS;
-    ui_.bar01(t01);
-  }
+    ImuCalWizard wizard_;
+    int tap_count_ = 0;
+    uint32_t tap_deadline_ms_ = 0;
 #endif
 
-  void resetFusion_() {
-    constexpr bool WANT_LINEAR_BLOCK = true;
-    const float g = ImuCalCfg::g_std;
+    bool have_blob_ = false;
+    ImuCalBlobV1 blob_{};
+    RuntimeCals runtime_{};
 
-    Vector3f sigma_a(0.06f * g, 0.06f * g, 0.06f * g);
-    Vector3f sigma_g(0.0030f,   0.0030f,   0.0030f);
-    Vector3f sigma_m(0.60f,     0.60f,     0.60f);
+    // Timing
+    uint32_t start_us_ = 0;
+    uint32_t next_tick_us_ = 0;
+    uint32_t last_update_us_ = 0;
+    uint32_t last_ui_ms_ = 0;
+    uint32_t last_serial_ms_ = 0;
 
-    Fusion::Config fcfg;
-    fcfg.with_mag = true;
-    fcfg.sigma_a  = sigma_a;
-    fcfg.sigma_g  = sigma_g;
-    fcfg.sigma_m  = sigma_m;
+    // SeaStateFusion
+    using Fusion = SeaStateFusion<TrackerType::KALMANF>;
+    Fusion fusion_{};
+    bool fusion_started_ = false;
 
-    fcfg.mag_delay_sec              = 5.0f;
-    fcfg.use_fixed_mag_world_ref    = false;
-    fcfg.freeze_acc_bias_until_live = true;
-    fcfg.Racc_warmup                = 0.5f;
+    // Latest calibrated values
+    Vector3f a_cal_ = Vector3f::Zero();
+    Vector3f w_cal_ = Vector3f::Zero();
+    Vector3f m_cal_ = Vector3f::Zero();
+    float a_raw_norm_ = 0.0f;
 
-    fcfg.mag_ref_timeout_sec = 1.5f;
-    fcfg.mag_odr_guess_hz    = 80.0f;
+    // Attitude / heading (deg)
+    float roll_deg_ = 0.0f;
+    float pitch_deg_ = 0.0f;
+    float yaw_deg_ = 0.0f;
+    float heading_deg_ = 0.0f;
 
-    fusion_.begin(fcfg);
+    // Mag gating
+    bool mag_ok_ = false;
+    bool mag_fresh_ = false;
+    float mag_norm_uT_ = 0.0f;
+    Vector3f last_mag_uT_ = Vector3f::Zero();
+    uint32_t last_mag_ms_ = 0;
 
-    auto& ff = fusion_.raw();
-    ff.enableLinearBlock(WANT_LINEAR_BLOCK);
-    ff.enableTuner(true);
-    ff.enableClamp(true);
-    ff.setFreqInputCutoffHz(6.0f);
+  private:
+    void reloadBlobAndRuntime_() {
+      have_blob_ = store_.load(blob_);
+      if (!have_blob_) memset(&blob_, 0, sizeof(blob_));
+      runtime_.rebuildFromBlob(blob_);
+    }
 
-    last_mag_uT_.setZero();
-    last_mag_ms_ = 0;
+    void handleErase_() {
+      Serial.println("[HOME] ERASE");
+#if COMPASS_ENABLE_WIZARD
+      if (!ui_.eraseConfirm()) {
+        Serial.println("[HOME] erase cancelled");
+        return;
+      }
+#endif
+      store_.erase();
+      clearM5UnifiedImuCalibration();
+      reloadBlobAndRuntime_();
+      resetFusion_();
+    }
 
-    rot_inited_ = false;
-    rot_dpm_filt_ = 0.0f;
-    gyro_bias_ok_ = false;
-    gyro_bias_ema_.setZero();
+#if COMPASS_ENABLE_WIZARD
+    void handleRunWizard_() {
+      Serial.println("[HOME] RUN WIZARD");
+      ImuCalBlobV1 saved{};
+      if (!wizard_.runAndSave(saved)) {
+        ui_.notSavedNotice();
+        return;
+      }
+      blob_ = saved;
+      have_blob_ = true;
+      runtime_.rebuildFromBlob(blob_);
+      resetFusion_();
+    }
 
-    fusion_started_ = true;
-  }
+    void drawHomePending_() {
+      ui_.setReadRotation();
+      ui_.title("COMPASS");
+      M5.Display.printf("Tap count: %d\n", tap_count_);
+      ui_.line("");
+      ui_.line("Wait...");
+      ui_.line("1 tap=CAL");
+      ui_.line("3 taps=ERASE");
 
-  void updateFilter_(const ImuSample& s) {
-    a_raw_norm_ = s.a.norm();
+      int32_t remain = (int32_t)(tap_deadline_ms_ - millis());
+      remain = remain < 0 ? 0 : remain;
+      float t01 = 1.0f - (float)remain / (float)M5UiCfg::MENU_TAP_WINDOW_MS;
+      ui_.bar01(t01);
+    }
+#endif
 
-    a_cal_ = runtime_.applyAccel(s.a, s.tempC);
-    w_cal_ = runtime_.applyGyro (s.w, s.tempC);
-    m_cal_ = runtime_.applyMag  (s.m);
+    void resetFusion_() {
+      constexpr bool WANT_LINEAR_BLOCK = false;
+      const float g = ImuCalCfg::g_std;
 
-    const uint32_t now_us = micros();
-    float dt = (now_us - last_update_us_) * 1e-6f;
-    last_update_us_ = now_us;
-    dt = clampf_(dt, 0.0010f, 0.0200f);
+      Vector3f sigma_a(0.06f * g, 0.06f * g, 0.06f * g);
+      Vector3f sigma_g(0.0030f,   0.0030f,   0.0030f);
+      Vector3f sigma_m(0.60f,     0.60f,     0.60f);
 
-    const float mn = m_cal_.norm();
-    mag_ok_ = (mn > 5.0f && mn < 200.0f);
-    mag_norm_uT_ = mn;
+      Fusion::Config fcfg;
+      fcfg.with_mag = true;
+      fcfg.sigma_a  = sigma_a;
+      fcfg.sigma_g  = sigma_g;
+      fcfg.sigma_m  = sigma_m;
 
-    const uint32_t now_ms = millis();
-    bool mag_fresh = false;
-    if (mag_ok_) {
-      const uint32_t dtm = now_ms - last_mag_ms_;
-      const float dm = (m_cal_ - last_mag_uT_).norm();
-      if (dtm >= MAG_SAMPLE_SPACING_MS && dm >= MAG_MIN_DELTA_uT) {
-        mag_fresh = true;
+      fcfg.mag_delay_sec              = 5.0f;
+      fcfg.use_fixed_mag_world_ref    = false;
+      fcfg.freeze_acc_bias_until_live = true;
+      fcfg.Racc_warmup                = 0.5f;
+
+      fcfg.mag_ref_timeout_sec = 1.5f;
+      fcfg.mag_odr_guess_hz    = 80.0f;
+
+      fusion_.begin(fcfg);
+
+      auto& ff = fusion_.raw();
+      ff.enableLinearBlock(WANT_LINEAR_BLOCK);
+      ff.enableTuner(true);
+      ff.enableClamp(true);
+      ff.setFreqInputCutoffHz(6.0f);
+
+      last_mag_uT_.setZero();
+      last_mag_ms_ = 0;
+
+      rot_inited_ = false;
+      rot_dpm_filt_ = 0.0f;
+      gyro_bias_ok_ = false;
+      gyro_bias_ema_.setZero();
+
+      fusion_started_ = true;
+    }
+
+    void updateFilter_(const ImuSample& s) {
+      a_raw_norm_ = s.a.norm();
+
+      // Calibrate
+      a_cal_ = runtime_.applyAccel(s.a, s.tempC);
+      w_cal_ = runtime_.applyGyro (s.w, s.tempC);
+      m_cal_ = runtime_.applyMag  (s.m);
+
+      // dt
+      const uint32_t now_us = micros();
+      float dt = (now_us - last_update_us_) * 1e-6f;
+      last_update_us_ = now_us;
+      dt = clampf_(dt, 0.0010f, 0.0200f);
+
+      // --- determine "still" (used for auto-detect) ---
+      const float g = ImuCalCfg::g_std;
+      const float a_err = fabsf(a_cal_.norm() - g);
+      const bool still = (a_err < ROT_STILL_G_TOL_FRAC * g);
+
+      // --- gyro units auto-detect (deg/s vs rad/s) ---
+      // Heuristic: at rest, gyro norm in rad/s should be tiny (~0.01..0.05),
+      // while deg/s often looks like ~0.5..5+ if not converted.
+      if (still) {
+        const float wn = w_cal_.norm();
+        // lock-on if it looks clearly like deg/s
+        if (wn > 0.35f) gyro_units_dps_ = true;
+        // if it's clearly rad/s, allow turning it off
+        if (wn < 0.10f) gyro_units_dps_ = false;
+      }
+
+      Vector3f w_use = w_cal_;
+      if (gyro_units_dps_) {
+        w_use *= DEG_TO_RAD; // critical if your pipeline is feeding deg/s
+      }
+
+      // --- MAG pacing (time only) ---
+      const uint32_t now_ms = millis();
+      mag_fresh_ = false;
+      if ((uint32_t)(now_ms - last_mag_ms_) >= MAG_SAMPLE_SPACING_MS) {
         last_mag_ms_ = now_ms;
         last_mag_uT_ = m_cal_;
+        mag_fresh_ = true;
+
+        // Feed mag first (sim-style)
+        fusion_.updateMag(m_cal_);
       }
+
+      // --- Update filter once per IMU sample ---
+      fusion_.update(dt, w_use, a_cal_, s.tempC);
+
+      // Euler for UI
+      Eigen::Vector3f eul_deg = fusion_.raw().getEulerNautical();
+      roll_deg_  = eul_deg.x();
+      pitch_deg_ = eul_deg.y();
+      yaw_deg_   = eul_deg.z();
+
+      // Grab quaternion (unknown direction!)
+      Eigen::Quaternionf q = fusion_.raw().mekf().quaternion_boat();
+      q.normalize();
+
+      // --- Auto-detect quaternion direction using gravity consistency ---
+      // Model at rest: specific force f_b ≈ R_wb(-g_world), where g_world=(0,0,g) in NED.
+      // So target vector in world is (-g_world) = (0,0,-g).
+      if (still && !q_dir_locked_) {
+        const Vector3f minus_g_world(0.0f, 0.0f, -g);
+
+        // Case A: q is body->world => world->body is q.conjugate()
+        Vector3f f_pred_A = quatRotate_(q.conjugate(), minus_g_world);
+        float errA = (a_cal_ - f_pred_A).norm();
+
+        // Case B: q is world->body => world->body is q (direct)
+        Vector3f f_pred_B = quatRotate_(q, minus_g_world);
+        float errB = (a_cal_ - f_pred_B).norm();
+
+        q_is_body_to_world_ = (errA <= errB);
+
+        // Lock it once it’s decisive enough (prevents flip-flopping during motion)
+        // Threshold is loose; we just need a clear winner.
+        if (fabsf(errA - errB) > 0.25f * g) {
+          q_dir_locked_ = true;
+        }
+      }
+
+      // Build consistent rotators based on detected direction
+      auto rot_body_to_world = [&](const Vector3f & v_body) -> Vector3f {
+        // If q is body->world: use q
+        // If q is world->body: body->world is q.conjugate()
+        return q_is_body_to_world_ ? quatRotate_(q, v_body) : quatRotate_(q.conjugate(), v_body);
+      };
+      auto rot_world_to_body = [&](const Vector3f & v_world) -> Vector3f {
+        // inverse of above
+        return q_is_body_to_world_ ? quatRotate_(q.conjugate(), v_world) : quatRotate_(q, v_world);
+      };
+
+      // --- Heading from mag + gravity (tilt-compensated, yaw-free) ---
+      // Assumes BODY-NED axes: x=forward, y=right, z=down
+      // World NED: north=x, east=y, down=z
+      {
+        // Use the same quaternion you already fetched + normalized: Eigen::Quaternionf q;
+        // We need down direction in BODY. If q is body->world, world->body is q.conjugate(), and vice-versa.
+        // Use your existing detected direction helpers if you have them:
+        //   rot_world_to_body(v_world)
+        //   rot_body_to_world(v_body)
+
+        const Vector3f down_world(0.0f, 0.0f, 1.0f);  // NED "down"
+
+        // Get down expressed in body (independent of yaw)
+        Vector3f down_b = rot_world_to_body(down_world);
+
+        // Use calibrated mag in body
+        Vector3f mag_b = m_cal_;
+
+        // Reject near-zero
+        if (down_b.squaredNorm() > 1e-6f && mag_b.squaredNorm() > 1e-6f) {
+          down_b.normalize();
+          mag_b.normalize();
+
+          // East in BODY: e = down x mag  (in NED, z x mag gives east-ish)
+          Vector3f east_b = down_b.cross(mag_b);
+          if (east_b.squaredNorm() > 1e-6f) {
+            east_b.normalize();
+
+            // North in BODY: n = east x down  (y x z = x)
+            Vector3f north_b = east_b.cross(down_b);
+            if (north_b.squaredNorm() > 1e-6f) {
+              north_b.normalize();
+
+              // Body forward axis in BODY coordinates
+              const Vector3f fwd_b(1.0f, 0.0f, 0.0f);
+
+              // Heading (cw from North): atan2(E, N)
+              float hdg = atan2f(fwd_b.dot(east_b), fwd_b.dot(north_b)) * RAD_TO_DEG;
+              heading_deg_ = wrap360_(hdg);
+            }
+          }
+        }
+      }
+
+      // --- Stillness-gated gyro bias removal for ROT (keep your logic) ---
+      const bool still_for_bias = still && (w_use.norm() < ROT_STILL_GYRO_RAD_S);
+
+      if (still_for_bias) {
+        const float alpha_b = 1.0f - expf(-dt / ROT_BIAS_TAU_S);
+        if (!gyro_bias_ok_) {
+          gyro_bias_ok_ = true;
+          gyro_bias_ema_ = w_use;
+        }
+        else {
+          gyro_bias_ema_ += alpha_b * (w_use - gyro_bias_ema_);
+        }
+      }
+
+      Vector3f w_biascorr = w_use;
+      if (gyro_bias_ok_) w_biascorr -= gyro_bias_ema_;
+
+      // World yaw rate (NED: z is down)
+      Vector3f w_world = rot_body_to_world(w_biascorr);
+
+      float rot_dpm_meas = w_world.z() * RAD_TO_DEG * 60.0f;
+      rot_dpm_meas = clampf_(rot_dpm_meas, -720.0f, 720.0f);
+
+      const float tau_rot = 1.5f;
+      const float alpha_r = 1.0f - expf(-dt / tau_rot);
+      if (!rot_inited_) {
+        rot_inited_ = true;
+        rot_dpm_filt_ = rot_dpm_meas;
+      }
+      else {
+        rot_dpm_filt_ += alpha_r * (rot_dpm_meas - rot_dpm_filt_);
+      }
+
+      // Optional: quick debug breadcrumbs (comment out once fixed)
+      // Serial.printf("gyro_dps=%d q_b2w=%d\n", (int)gyro_units_dps_, (int)q_is_body_to_world_);
     }
-    mag_fresh_ = mag_fresh;
 
-    if (fusion_started_) {
-      fusion_.update(dt, w_cal_, a_cal_, s.tempC);
-      if (mag_ok_ && mag_fresh_) fusion_.updateMag(m_cal_);
-    }
 
-    Eigen::Vector3f eul_deg = fusion_.raw().getEulerNautical();
-    roll_deg_  = eul_deg.x();
-    pitch_deg_ = eul_deg.y();
-    yaw_deg_   = eul_deg.z();
-    heading_deg_ = wrap360_(yaw_deg_);
-
-    const float g = ImuCalCfg::g_std;
-    const float a_err = fabsf(a_cal_.norm() - g);
-    const bool still = (a_err < ROT_STILL_G_TOL_FRAC * g) && (w_cal_.norm() < ROT_STILL_GYRO_RAD_S);
-
-    if (still) {
-      const float alpha_b = 1.0f - expf(-dt / ROT_BIAS_TAU_S);
-      if (!gyro_bias_ok_) { gyro_bias_ok_ = true; gyro_bias_ema_ = w_cal_; }
-      else { gyro_bias_ema_ += alpha_b * (w_cal_ - gyro_bias_ema_); }
-    }
-
-    Vector3f w_use = w_cal_;
-    if (gyro_bias_ok_) w_use -= gyro_bias_ema_;
-
-    Eigen::Quaternionf q_bw = fusion_.raw().mekf().quaternion_boat();
-    q_bw.normalize();
-
-    Vector3f w_world = quatRotateBodyToWorld_(q_bw.x(), q_bw.y(), q_bw.z(), q_bw.w(), w_use);
-
-    float rot_dpm_meas = w_world.z() * RAD_TO_DEG * 60.0f;
-    rot_dpm_meas = clampf_(rot_dpm_meas, -720.0f, 720.0f);
-
-    const float tau_rot = 1.5f;
-    const float alpha_r = 1.0f - expf(-dt / tau_rot);
-    if (!rot_inited_) { rot_inited_ = true; rot_dpm_filt_ = rot_dpm_meas; }
-    else { rot_dpm_filt_ += alpha_r * (rot_dpm_meas - rot_dpm_filt_); }
-  }
-
-  void drawHomeStatic_() {
-    ui_.setReadRotation();
-    ui_.title("COMPASS");
-    M5.Display.printf("BLOB: %s\n", have_blob_ ? "YES" : "NO");
-    M5.Display.printf("A:%d G:%d M:%d\n",
-                      (int)runtime_.acc.ok, (int)runtime_.gyr.ok, (int)runtime_.mag.ok);
+    void drawHomeStatic_() {
+      ui_.setReadRotation();
+      ui_.title("COMPASS");
+      M5.Display.printf("BLOB: %s\n", have_blob_ ? "YES" : "NO");
+      M5.Display.printf("A:%d G:%d M:%d\n",
+                        (int)runtime_.acc.ok, (int)runtime_.gyr.ok, (int)runtime_.mag.ok);
 
 #if COMPASS_ENABLE_WIZARD
-    ui_.line("Tap: calibrate");
-    ui_.line("Tap x3: erase");
+      ui_.line("Tap: calibrate");
+      ui_.line("Tap x3: erase");
 #else
-    ui_.line("Wizard: DISABLED");
-    ui_.line("Set COMPASS_ENABLE_WIZARD=1");
+      ui_.line("Wizard: DISABLED");
+      ui_.line("Set COMPASS_ENABLE_WIZARD=1");
 #endif
-    ui_.line("");
-  }
+      ui_.line("");
+    }
 
-  void updateUI_() {
+    void updateUI_() {
 #if COMPASS_ENABLE_WIZARD
-    if (tap_count_ > 0) return;
+      if (tap_count_ > 0) return;
 #endif
-    const uint32_t now_ms = millis();
-    if (now_ms - last_ui_ms_ < UI_REFRESH_MS) return;
-    last_ui_ms_ = now_ms;
+      const uint32_t now_ms = millis();
+      if (now_ms - last_ui_ms_ < UI_REFRESH_MS) return;
+      last_ui_ms_ = now_ms;
 
-    if (use_graphics_ && compass_ui_ready_) updateUI_graphics_();
-    else                                   updateUI_text_();
-  }
+      if (use_graphics_ && compass_ui_ready_) updateUI_graphics_();
+      else                                   updateUI_text_();
+    }
 
-  void updateUI_graphics_() {
-    ui_.setReadRotation();
-    const bool tiltWarn = (fabsf(roll_deg_) > 35.0f) || (fabsf(pitch_deg_) > 35.0f);
-    compass_ui_.draw(heading_deg_, mag_ok_, mag_norm_uT_, tiltWarn);
-  }
+    void updateUI_graphics_() {
+      ui_.setReadRotation();
+      const bool tiltWarn = (fabsf(roll_deg_) > 35.0f) || (fabsf(pitch_deg_) > 35.0f);
+      compass_ui_.draw(heading_deg_, mag_ok_, mag_norm_uT_, tiltWarn);
+    }
 
-  void updateUI_text_() {
-    ui_.setReadRotation();
-    ui_.title("COMPASS");
-    M5.Display.printf("HDG: %6.1f deg\n", (double)heading_deg_);
-    M5.Display.printf("ROL: %6.1f deg\n", (double)roll_deg_);
-    M5.Display.printf("PIT: %6.1f deg\n", (double)pitch_deg_);
-    M5.Display.printf("MAG: %s %s\n", mag_ok_ ? "OK " : "BAD", mag_fresh_ ? "NEW" : "OLD");
-    M5.Display.printf("|m|: %6.1f uT\n", (double)mag_norm_uT_);
-    M5.Display.printf("|aR|:%5.2f |aC|:%5.2f\n", (double)a_raw_norm_, (double)a_cal_.norm());
-    ui_.line("");
-  }
+    void updateUI_text_() {
+      ui_.setReadRotation();
+      ui_.title("COMPASS");
+      M5.Display.printf("HDG: %6.1f deg\n", (double)heading_deg_);
+      M5.Display.printf("ROL: %6.1f deg\n", (double)roll_deg_);
+      M5.Display.printf("PIT: %6.1f deg\n", (double)pitch_deg_);
+      M5.Display.printf("MAG: %s %s\n", mag_ok_ ? "OK " : "BAD", mag_fresh_ ? "NEW" : "OLD");
+      M5.Display.printf("|m|: %6.1f uT\n", (double)mag_norm_uT_);
+      M5.Display.printf("|aR|:%5.2f |aC|:%5.2f\n", (double)a_raw_norm_, (double)a_cal_.norm());
+      ui_.line("");
+    }
 
-  void streamSerial_() {
-    const uint32_t now_ms = millis();
+    void streamSerial_() {
+      const uint32_t now_ms = millis();
 
 #if COMPASS_SERIAL_NMEA
-    if (now_ms - last_serial_ms_ < NMEA_SERIAL_MS) return;
+      if (now_ms - last_serial_ms_ < NMEA_SERIAL_MS) return;
 #else
-    if (now_ms - last_serial_ms_ < DEBUG_SERIAL_MS) return;
+      if (now_ms - last_serial_ms_ < DEBUG_SERIAL_MS) return;
 #endif
-    last_serial_ms_ = now_ms;
+      last_serial_ms_ = now_ms;
 
 #if COMPASS_SERIAL_NMEA
-    const bool valid = fusion_.isLive();
-    nmea_hdm(COMPASS_NMEA_TALKER, heading_deg_);
-    nmea_xdr_pitch_roll(COMPASS_NMEA_TALKER, pitch_deg_, roll_deg_);
-    nmea_rot(COMPASS_NMEA_TALKER, rot_dpm_filt_, valid);
+      const bool valid = fusion_.isLive();
+      nmea_hdm(COMPASS_NMEA_TALKER, heading_deg_);
+      nmea_xdr_pitch_roll(COMPASS_NMEA_TALKER, pitch_deg_, roll_deg_);
+      nmea_rot(COMPASS_NMEA_TALKER, rot_dpm_filt_, valid);
 #else
-    const float t = (micros() - start_us_) * 1e-6f;
-    Serial.printf("t=%.2f HDG:%6.1f R:%6.1f P:%6.1f |m|=%.1f live:%d\n",
-                  (double)t,
-                  (double)heading_deg_,
-                  (double)roll_deg_,
-                  (double)pitch_deg_,
-                  (double)mag_norm_uT_,
-                  (int)fusion_.isLive());
+      const float t = (micros() - start_us_) * 1e-6f;
+      Serial.printf("t=%.2f HDG:%6.1f R:%6.1f P:%6.1f |m|=%.1f live:%d\n",
+                    (double)t,
+                    (double)heading_deg_,
+                    (double)roll_deg_,
+                    (double)pitch_deg_,
+                    (double)mag_norm_uT_,
+                    (int)fusion_.isLive());
 #endif
-  }
+    }
 };
 
 static FusionApp g_app;
 
-void setup() { g_app.begin(); }
-void loop()  { g_app.tick(); }
+void setup() {
+  g_app.begin();
+}
+void loop()  {
+  g_app.tick();
+}
