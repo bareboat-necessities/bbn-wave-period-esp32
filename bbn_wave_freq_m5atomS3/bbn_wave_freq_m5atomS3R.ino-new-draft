@@ -93,9 +93,9 @@ static inline Vector3f quatRotateBodyToWorld_(float x, float y, float z, float w
 }
 
 // App
-class CompassApp {
+class FusionApp {
 public:
-  CompassApp()
+  FusionApp()
 #if COMPASS_ENABLE_WIZARD
     : wizard_(ui_, store_)
 #endif
@@ -490,7 +490,7 @@ private:
   }
 };
 
-static CompassApp g_app;
+static FusionApp g_app;
 
 void setup() { g_app.begin(); }
 void loop()  { g_app.tick(); }
