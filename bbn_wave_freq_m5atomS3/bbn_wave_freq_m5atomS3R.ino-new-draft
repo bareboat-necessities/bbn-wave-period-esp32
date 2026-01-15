@@ -25,10 +25,11 @@
 #include <ArduinoEigenDense.h>
 
 #include "AtomS3R_ImuCal.h"
+#include "AtomS3R_M5Ui.h"     
 #if COMPASS_ENABLE_WIZARD
   #include "AtomS3R_ImuCalWizard.h"
 #endif
-#include "AtomS3R_CompassUI.h"
+#include "AtomS3R_CompassUI.h" 
 #include "NmeaCompass.h"
 
 // UI / Serial switches
