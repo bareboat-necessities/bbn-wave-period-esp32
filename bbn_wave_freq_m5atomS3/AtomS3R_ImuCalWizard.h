@@ -76,7 +76,6 @@ namespace atoms3r_ical {
 struct ImuCalWizardCfg {
   // Step pacing
   static constexpr uint32_t PLACE_TIME_MS       = 6500;
-  static constexpr uint32_t OK_PAUSE_MS         = 900;
   static constexpr uint32_t ACCEL_TIMEOUT_MS    = 90000;
   static constexpr uint32_t GYRO_TIMEOUT_MS     = 70000;
   static constexpr uint32_t MAG_TIMEOUT_MS      = 220000;
@@ -203,7 +202,7 @@ public:
 
       ui_.waitTap("IMU CAL", "Tap to begin");
 
-      const uint8_t R = ImuCalWizardCfg::ROT_READ;
+      const uint8_t R = M5UiCfg::ROT_READ;
       const Pose poses[6] = {
         {"1/6 SCREEN UP",    "Screen faces up",      R},
         {"2/6 SCREEN DOWN",  "Screen faces table",   R},
