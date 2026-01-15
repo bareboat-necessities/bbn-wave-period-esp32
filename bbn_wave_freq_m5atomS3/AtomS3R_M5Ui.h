@@ -27,7 +27,7 @@ public:
     M5.update();
 
     const uint32_t now = millis();
-    if ((uint32_t)(now - last_keep_awake_ms_) > M5UiCfg::KEEP_AWAKE_EVERY_MS) {
+    if ((uint32_t)(now - last_keep_awake_ms_) >= M5UiCfg::KEEP_AWAKE_EVERY_MS) {
       last_keep_awake_ms_ = now;
       M5.Display.setBrightness(M5UiCfg::LCD_BRIGHTNESS);
       M5.Display.wakeup();
