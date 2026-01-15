@@ -25,11 +25,10 @@
 #include <ArduinoEigenDense.h>
 
 #include "AtomS3R_ImuCal.h"
-#include "AtomS3R_M5Ui.h"     
 #if COMPASS_ENABLE_WIZARD
   #include "AtomS3R_ImuCalWizard.h"
 #endif
-#include "AtomS3R_CompassUI.h" 
+#include "AtomS3R_CompassUI.h"
 #include "NmeaCompass.h"
 
 // UI / Serial switches
@@ -74,6 +73,8 @@ static constexpr float ROT_STILL_GYRO_RAD_S = 0.15f;
 
 using namespace atoms3r_ical;
 using Vector3f = Eigen::Vector3f;
+
+using UI = CompassUI;   
 
 // Helpers
 static inline float clampf_(float x, float lo, float hi) { return x < lo ? lo : (x > hi ? hi : x); }
@@ -211,6 +212,7 @@ private:
   Vector3f gyro_bias_ema_ = Vector3f::Zero();
 
   // Plumbing
+  using UI = atoms3r_ical::M5Ui;
   UI ui_{};
   ImuCalStoreNvs store_{};
 
