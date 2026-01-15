@@ -174,7 +174,7 @@ public:
 
     if (Input::tapPressed()) {
       tap_count_++;
-      tap_deadline_ms_ = millis() + ImuCalWizardCfg::TAP_WINDOW_MS;
+      tap_deadline_ms_ = millis() + M5UiCfg::MENU_TAP_WINDOW_MS;
       drawHomePending_();
       Serial.printf("[TAP] count=%d\n", tap_count_);
     }
@@ -301,7 +301,7 @@ private:
 
     int32_t remain = (int32_t)(tap_deadline_ms_ - millis());
     remain = remain < 0 ? 0 : remain;
-    float t01 = 1.0f - (float)remain / (float)ImuCalWizardCfg::TAP_WINDOW_MS;
+    float t01 = 1.0f - (float)remain / (float)M5UiCfg::MENU_TAP_WINDOW_MS;
     ui_.bar01(t01);
   }
 #endif
