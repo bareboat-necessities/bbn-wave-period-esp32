@@ -74,8 +74,6 @@ static constexpr float ROT_STILL_GYRO_RAD_S = 0.15f;
 using namespace atoms3r_ical;
 using Vector3f = Eigen::Vector3f;
 
-using UI = CompassUI;   
-
 // Helpers
 static inline float clampf_(float x, float lo, float hi) { return x < lo ? lo : (x > hi ? hi : x); }
 
