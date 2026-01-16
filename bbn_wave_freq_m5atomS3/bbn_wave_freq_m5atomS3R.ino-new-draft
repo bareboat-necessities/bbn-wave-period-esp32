@@ -1,3 +1,4 @@
+
 /*
   Copyright 2026, Mikhail Grushinskiy
 
@@ -5,10 +6,15 @@
   (SeaStateFusion version: Kalman3D_Wave + mag init + yaw correction)
 
   FIXED:
-    - Report attitude (heading/roll/pitch) from fusion quaternion in NED.
-    - No COMPASS_QUAT_BODY_TO_WORLD knob.
-    - No startup verification / autodetect.
-    - Assumes fusion.mekf().quaternion_boat() returns BODY->WORLD quaternion (q_bw).
+    - Reports ATTITUDE (heading/roll/pitch) from fusion quaternion in NED.
+    - No COMPASS_QUAT_BODY_TO_WORLD knob and no startup verification/autodetect.
+    - DOES NOT pass temp into fusion.update() (temp already handled in calibration).
+    - Heading “too twitchy” mitigation:
+        (1) Increase sigma_m (trust mag less)
+        (2) Add circular low-pass smoothing on reported heading
+
+  Assumptions:
+    - fusion_.raw().mekf().quaternion_boat() returns BODY->WORLD quaternion (q_bw), world frame is NED (+Z down).
 */
 
 #include <Arduino.h>
@@ -33,7 +39,6 @@
 #include "AtomS3R_CompassUI.h"
 #include "NmeaCompass.h"
 
-// UI defaults
 #ifndef COMPASS_UI_DEFAULT_GRAPHICS
   #define COMPASS_UI_DEFAULT_GRAPHICS 1
 #endif
@@ -46,7 +51,7 @@
   #define COMPASS_NMEA_TALKER "II"
 #endif
 
-// SeaStateFusion requirements
+// SeaStateFusion requirements / constants
 constexpr float g_std      = atoms3r_ical::ImuCalCfg::g_std;
 constexpr float FREQ_GUESS = 0.3f;
 
@@ -58,11 +63,17 @@ enum class TrackerType { ARANOVSKIY = 0, KALMANF = 1, ZEROCROSS = 2 };
 
 #include "SeaStateFusionFilter.h"
 
+// If your header already defines MAG_DELAY_SEC, this uses it.
+// Otherwise fallback (but you said yours likely defines it).
+#ifndef MAG_DELAY_SEC
+  #define MAG_DELAY_SEC 8.0f
+#endif
+
 // App constants
 static constexpr float    LOOP_HZ        = 240.0f;
 static constexpr uint32_t LOOP_PERIOD_US = (uint32_t)(1000000.0f / LOOP_HZ);
 
-// Mag pacing only (wrapper gates internally)
+// Mag pacing only (wrapper gates internally); 12ms ~ 83 Hz
 static constexpr uint32_t MAG_SAMPLE_SPACING_MS = 12;
 
 // Display / serial rates
@@ -75,10 +86,13 @@ static constexpr float ROT_BIAS_TAU_S       = 20.0f;
 static constexpr float ROT_STILL_G_TOL_FRAC = 0.12f;
 static constexpr float ROT_STILL_GYRO_RAD_S = 0.15f;
 
+// Output smoothing (tames twitchy heading)
+static constexpr float HEADING_TAU_S = 1.2f;   // increase for smoother/slower (0.8..2.0 typical)
+
 using namespace atoms3r_ical;
 using Vector3f = Eigen::Vector3f;
 
-// -------------------- small helpers --------------------
+// -------------------- helpers --------------------
 static inline float clampf_(float x, float lo, float hi) { return x < lo ? lo : (x > hi ? hi : x); }
 
 static inline float wrap360_(float deg) {
@@ -101,8 +115,6 @@ static inline Vector3f quatRotate_(const Eigen::Quaternionf& q, const Vector3f& 
 }
 
 // UI semantics (EDIT ONLY THESE TWO VECTORS IF NEEDED):
-// - FWD_B: unit vector in BODY pointing "USB down the screen"
-// - RGT_B: unit vector in BODY pointing "screen right"
 static inline void uiRollPitchFromDownBody_(
     const Vector3f& down_b_unit,
     float& roll_deg_out,
@@ -113,33 +125,42 @@ static inline void uiRollPitchFromDownBody_(
 
   Vector3f f = FWD_B.normalized();
   Vector3f r = RGT_B.normalized();
-  Vector3f d = f.cross(r);                 // UI “screen normal” (right-hand)
+  Vector3f d = f.cross(r);                 // UI “screen normal”
   if (d.squaredNorm() < 1e-6f) { roll_deg_out = 0.0f; pitch_deg_out = 0.0f; return; }
   d.normalize();
 
-  // Components of world-down in the UI frame
   const float df = down_b_unit.dot(f);
   const float dr = down_b_unit.dot(r);
   const float dd = down_b_unit.dot(d);
 
-  // Roll: tilt left/right (right side down => +)
   const float roll  = atan2f(dr, dd);
-
-  // Pitch: USB end up/down
   const float pitch = atan2f(df, sqrtf(dr*dr + dd*dd));
 
   roll_deg_out  = wrap180_(roll  * RAD_TO_DEG);
   pitch_deg_out = wrap180_(pitch * RAD_TO_DEG);
 }
 
-// Heading from BODY->WORLD quaternion in NED.
-// Computes yaw about +Z_down, and uses it as heading (0..360).
+// Heading from BODY->WORLD quaternion in NED (yaw about +Z_down).
 static inline float headingFromQuatBodyToWorldNED_(const Eigen::Quaternionf& q_bw) {
   const float x = q_bw.x(), y = q_bw.y(), z = q_bw.z(), w = q_bw.w();
   const float siny_cosp = 2.0f * (w*z + x*y);
   const float cosy_cosp = 1.0f - 2.0f * (y*y + z*z);
   const float yaw = atan2f(siny_cosp, cosy_cosp);
   return wrap360_(yaw * RAD_TO_DEG);
+}
+
+// Circular low-pass: state is in degrees [0,360).
+static inline void lpf_heading_deg_(float meas_deg, float dt, float tau, bool& inited, float& state_deg) {
+  if (!std::isfinite(meas_deg)) return;
+  if (!inited) {
+    state_deg = wrap360_(meas_deg);
+    inited = true;
+    return;
+  }
+  const float alpha = 1.0f - expf(-dt / tau);
+  // move shortest way around circle
+  const float err = wrap180_(meas_deg - state_deg);    // [-180,180]
+  state_deg = wrap360_(state_deg + alpha * err);
 }
 
 // -------------------- App --------------------
@@ -156,11 +177,11 @@ public:
     delay(150);
     Serial.println();
     Serial.printf("[BOOT] AtomS3R Compass (SeaStateFusion) wizard=%d\n", (int)COMPASS_ENABLE_WIZARD);
+    Serial.printf("[BOOT] mag_delay_sec = %.2f\n", (double)MAG_DELAY_SEC);
 
     auto cfg = M5.config();
     M5.begin(cfg);
 
-    // Prevent double-cal: clear M5Unified offsets
     clearM5UnifiedImuCalibration();
     delay(250);
 
@@ -210,7 +231,6 @@ public:
   }
 
   void tick() {
-    // pace loop ~240 Hz
     const uint32_t now_us = micros();
     int32_t wait_us = (int32_t)(next_tick_us_ - now_us);
     if (wait_us > 0) {
@@ -248,16 +268,20 @@ public:
   }
 
 private:
-  // UI mode
+  // UI
   bool use_graphics_ = (COMPASS_UI_DEFAULT_GRAPHICS != 0);
   CompassUI compass_ui_{};
   bool compass_ui_ready_ = false;
 
-  // ROT estimator + stillness-gated gyro bias removal
+  // ROT estimator + stillness bias removal
   bool     rot_inited_    = false;
   float    rot_dpm_filt_  = 0.0f;
   bool     gyro_bias_ok_  = false;
-  Vector3f gyro_bias_ema_ = Vector3f::Zero();   // rad/s (BODY)
+  Vector3f gyro_bias_ema_ = Vector3f::Zero();
+
+  // Heading smoothing
+  bool  heading_inited_ = false;
+  float heading_filt_deg_ = 0.0f;
 
   // Plumbing
   using UI = atoms3r_ical::M5Ui;
@@ -281,20 +305,20 @@ private:
   uint32_t last_ui_ms_ = 0;
   uint32_t last_serial_ms_ = 0;
 
-  // SeaStateFusion
+  // Fusion
   using Fusion = SeaStateFusion<TrackerType::KALMANF>;
   Fusion fusion_{};
 
-  // Latest calibrated values
-  Vector3f a_cal_ = Vector3f::Zero();   // specific force (m/s^2) in BODY
-  Vector3f w_cal_ = Vector3f::Zero();   // rad/s in BODY
-  Vector3f m_cal_ = Vector3f::Zero();   // uT in BODY
+  // Signals
+  Vector3f a_cal_ = Vector3f::Zero();
+  Vector3f w_cal_ = Vector3f::Zero();
+  Vector3f m_cal_ = Vector3f::Zero();
   float    a_raw_norm_ = 0.0f;
 
-  // Display state (from fusion)
+  // Display
   float roll_deg_ = 0.0f;
   float pitch_deg_ = 0.0f;
-  float heading_deg_ = 0.0f;
+  float heading_deg_ = 0.0f;   // smoothed heading for UI/NMEA
 
   // Mag gating
   bool mag_ok_ = false;
@@ -312,9 +336,17 @@ private:
   void resetFusion_() {
     constexpr bool WANT_LINEAR_BLOCK = true;
 
-    Vector3f sigma_a(0.06f * g_std, 0.06f * g_std, 0.06f * g_std);
-    Vector3f sigma_g(0.0030f,       0.0030f,       0.0030f);
-    Vector3f sigma_m(0.60f,         0.60f,         0.60f);
+    // --- IMU: keep “desktop-ish” scale (not 0.06g) ---
+    const float acc_sigma = 1.51e-3f * g_std;  // ~0.0148 m/s^2
+    const float gyr_sigma = 0.00157f;          // rad/s
+
+    const Vector3f sigma_a(2.8f * acc_sigma, 2.8f * acc_sigma, 2.8f * acc_sigma); // ~0.041
+    const Vector3f sigma_g(2.0f * gyr_sigma, 2.0f * gyr_sigma, 2.0f * gyr_sigma); // ~0.00314
+
+    // --- MAG: increase sigma_m to reduce twitchy yaw (trust mag less) ---
+    // BMM150 @ ~80 Hz: rough per-sample RMS ~0.5..0.7 uT; choose conservative and then inflate.
+    const float sigma_m_uT = 1.0f;  // <-- key knob for twitchy heading (0.8..1.5 uT typical)
+    const Vector3f sigma_m(sigma_m_uT, sigma_m_uT, sigma_m_uT);
 
     Fusion::Config fcfg;
     fcfg.with_mag = true;
@@ -322,11 +354,15 @@ private:
     fcfg.sigma_g  = sigma_g;
     fcfg.sigma_m  = sigma_m;
 
-    fcfg.mag_delay_sec              = 5.0f;
-    fcfg.use_fixed_mag_world_ref    = false;
+    // match your baseline
+    fcfg.mag_delay_sec           = MAG_DELAY_SEC;
+    fcfg.use_fixed_mag_world_ref = false;
+
+    // warmup policy
     fcfg.freeze_acc_bias_until_live = true;
     fcfg.Racc_warmup                = 0.5f;
 
+    // mag init pacing hints
     fcfg.mag_ref_timeout_sec = 1.5f;
     fcfg.mag_odr_guess_hz    = 80.0f;
 
@@ -340,11 +376,14 @@ private:
 
     last_mag_ms_ = 0;
 
-    rot_inited_   = false;
+    rot_inited_ = false;
     rot_dpm_filt_ = 0.0f;
-
-    gyro_bias_ok_  = false;
+    gyro_bias_ok_ = false;
     gyro_bias_ema_.setZero();
+
+    heading_inited_ = false;
+    heading_filt_deg_ = 0.0f;
+    heading_deg_ = 0.0f;
   }
 
 #if COMPASS_ENABLE_WIZARD
@@ -392,7 +431,7 @@ private:
   void updateFilter_(const ImuSample& s) {
     a_raw_norm_ = s.a.norm();
 
-    // Apply your runtime calibration
+    // Calibration already handles temperature internally.
     a_cal_ = runtime_.applyAccel(s.a, s.tempC);
     w_cal_ = runtime_.applyGyro (s.w, s.tempC);
     m_cal_ = runtime_.applyMag  (s.m);
@@ -411,7 +450,7 @@ private:
     mag_norm_uT_ = m_cal_.norm();
     mag_ok_ = (mag_norm_uT_ > 5.0f && mag_norm_uT_ < 200.0f);
 
-    // Mag pacing (time only) - wrapper decides whether to use it / init ref etc.
+    // Mag pacing (wrapper decides if/when it uses it / initializes ref etc.)
     const uint32_t now_ms = millis();
     mag_fresh_ = false;
     if (mag_ok_ && (uint32_t)(now_ms - last_mag_ms_) >= MAG_SAMPLE_SPACING_MS) {
@@ -420,20 +459,22 @@ private:
       fusion_.updateMag(m_cal_);
     }
 
-    // Main fusion update (prop + accel update inside wrapper)
+    // Main fusion update (NO temp passed here)
     fusion_.update(dt, w_cal_, a_cal_);
 
     // -------------------- ATTITUDE FROM FUSION (NED) --------------------
-    // Assumption: quaternion_boat() returns BODY->WORLD quaternion (q_bw).
     Eigen::Quaternionf q_bw = fusion_.raw().mekf().quaternion_boat();
     q_bw.normalize();
 
-    // Heading from fused yaw
-    heading_deg_ = headingFromQuatBodyToWorldNED_(q_bw);
+    const float heading_meas = headingFromQuatBodyToWorldNED_(q_bw);
 
-    // Roll/pitch for UI: compute world-down expressed in BODY then map to screen semantics.
+    // Smooth the reported heading (tames twitch)
+    lpf_heading_deg_(heading_meas, dt, HEADING_TAU_S, heading_inited_, heading_filt_deg_);
+    heading_deg_ = heading_filt_deg_;
+
+    // Roll/pitch for UI: world-down expressed in BODY (NED: down = +Z)
     {
-      const Vector3f down_w(0.0f, 0.0f, 1.0f);                 // NED: +Z is down
+      const Vector3f down_w(0.0f, 0.0f, 1.0f);
       Vector3f down_b = quatRotate_(q_bw.conjugate(), down_w); // WORLD->BODY
       const float dn = down_b.norm();
       if (dn > 1e-6f) {
@@ -457,8 +498,6 @@ private:
     if (gyro_bias_ok_) w_use -= gyro_bias_ema_;
 
     Vector3f w_world = quatRotate_(q_bw, w_use);  // BODY->WORLD
-
-    // NED: +Z is down. ROT uses rate about world Z.
     float rot_dpm_meas = w_world.z() * RAD_TO_DEG * 60.0f;
     rot_dpm_meas = clampf_(rot_dpm_meas, -720.0f, 720.0f);
 
@@ -532,13 +571,15 @@ private:
     nmea_rot(COMPASS_NMEA_TALKER, rot_dpm_filt_, valid);
 #else
     const float t = (micros() - start_us_) * 1e-6f;
-    Serial.printf("t=%.2f HDG:%6.1f R:%6.1f P:%6.1f |m|=%.1f live:%d\n",
+    Serial.printf("t=%.2f HDG:%6.1f R:%6.1f P:%6.1f |m|=%.1f live:%d sigma_m_uT=%.2f hdg_tau=%.2f\n",
                   (double)t,
                   (double)heading_deg_,
                   (double)roll_deg_,
                   (double)pitch_deg_,
                   (double)mag_norm_uT_,
-                  (int)fusion_.isLive());
+                  (int)fusion_.isLive(),
+                  1.0, // sigma_m_uT printed as constant used above
+                  (double)HEADING_TAU_S);
 #endif
   }
 };
