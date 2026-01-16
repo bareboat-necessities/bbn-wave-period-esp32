@@ -383,7 +383,7 @@ private:
     fcfg.use_fixed_mag_world_ref = false;
 
     fcfg.freeze_acc_bias_until_live = true;
-    fcfg.Racc_warmup                = 0.5f;
+    fcfg.Racc_warmup                = 0.12f;
 
     fcfg.mag_ref_timeout_sec = 1.5f;
     fcfg.mag_odr_guess_hz    = 80.0f;
