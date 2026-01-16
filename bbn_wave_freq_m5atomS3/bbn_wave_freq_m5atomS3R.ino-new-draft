@@ -346,7 +346,7 @@ private:
   }
 
   void resetFusion_() {
-    constexpr bool WANT_LINEAR_BLOCK = false;
+    constexpr bool WANT_LINEAR_BLOCK = true;
     const float g = ImuCalCfg::g_std;
 
     Vector3f sigma_a(0.06f * g, 0.06f * g, 0.06f * g);
@@ -458,7 +458,7 @@ private:
     }
 
     // Main fusion update (prop + accel update inside wrapper)
-    fusion_.update(dt, w_cal_, a_cal_, s.tempC);
+    fusion_.update(dt, w_cal_, a_cal_);
 
     // --- UI roll/pitch & heading from ACC+MAG (independent of quaternion direction) ---
     // At rest, accel measures specific force ~ -g_world expressed in BODY.
