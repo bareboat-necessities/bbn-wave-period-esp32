@@ -4,27 +4,17 @@
   AtomS3R Tilt-Compensated Compass (+ optional IMU Calibration Wizard)
   (SeaStateFusion version: Kalman3D_Wave + mag init + yaw correction)
 
-  FIX: Report attitude (heading/roll/pitch) from the fusion quaternion (NED world).
-       - heading_deg_ now comes from fused yaw (about +Z_down in NED)
-       - roll_deg_/pitch_deg_ now come from fused DOWN vector (world-down expressed in BODY),
-         mapped through your UI semantics helper.
-
-  IMPORTANT knobs you may need to set once:
-
-    1) Quaternion direction from fusion mekf:
-       If your fusion quaternion accessor returns body->world, set to 1.
-       If it returns world->body, set to 0.
+  FIXED:
+    - Report attitude (heading/roll/pitch) from fusion quaternion in NED.
+    - No COMPASS_QUAT_BODY_TO_WORLD knob.
+    - No startup verification / autodetect.
+    - Assumes fusion.mekf().quaternion_boat() returns BODY->WORLD quaternion (q_bw).
 */
 
 #include <Arduino.h>
 
 #ifndef COMPASS_ENABLE_WIZARD
   #define COMPASS_ENABLE_WIZARD 0
-#endif
-
-// Quaternion direction: 1 => q rotates BODY->WORLD, 0 => q rotates WORLD->BODY
-#ifndef COMPASS_QUAT_BODY_TO_WORLD
-  #define COMPASS_QUAT_BODY_TO_WORLD 1
 #endif
 
 #include <M5Unified.h>
@@ -43,6 +33,7 @@
 #include "AtomS3R_CompassUI.h"
 #include "NmeaCompass.h"
 
+// UI defaults
 #ifndef COMPASS_UI_DEFAULT_GRAPHICS
   #define COMPASS_UI_DEFAULT_GRAPHICS 1
 #endif
@@ -71,7 +62,7 @@ enum class TrackerType { ARANOVSKIY = 0, KALMANF = 1, ZEROCROSS = 2 };
 static constexpr float    LOOP_HZ        = 240.0f;
 static constexpr uint32_t LOOP_PERIOD_US = (uint32_t)(1000000.0f / LOOP_HZ);
 
-// Mag pacing only (don’t “delta-gate” here; your fusion wrapper already gates internally)
+// Mag pacing only (wrapper gates internally)
 static constexpr uint32_t MAG_SAMPLE_SPACING_MS = 12;
 
 // Display / serial rates
@@ -112,9 +103,6 @@ static inline Vector3f quatRotate_(const Eigen::Quaternionf& q, const Vector3f& 
 // UI semantics (EDIT ONLY THESE TWO VECTORS IF NEEDED):
 // - FWD_B: unit vector in BODY pointing "USB down the screen"
 // - RGT_B: unit vector in BODY pointing "screen right"
-//
-// Start with BODY axes assuming x=USB-down, y=screen-right, z=screen-out (or down).
-// If pitch/roll are swapped or inverted, change these vectors (or flip signs).
 static inline void uiRollPitchFromDownBody_(
     const Vector3f& down_b_unit,
     float& roll_deg_out,
@@ -144,18 +132,13 @@ static inline void uiRollPitchFromDownBody_(
   pitch_deg_out = wrap180_(pitch * RAD_TO_DEG);
 }
 
-// Convert a BODY->WORLD quaternion (NED world) to heading (deg 0..360)
-// Yaw extracted as ZYX yaw about +Z_down. In NED, positive yaw is clockwise from North.
+// Heading from BODY->WORLD quaternion in NED.
+// Computes yaw about +Z_down, and uses it as heading (0..360).
 static inline float headingFromQuatBodyToWorldNED_(const Eigen::Quaternionf& q_bw) {
-  const float x = q_bw.x();
-  const float y = q_bw.y();
-  const float z = q_bw.z();
-  const float w = q_bw.w();
-
+  const float x = q_bw.x(), y = q_bw.y(), z = q_bw.z(), w = q_bw.w();
   const float siny_cosp = 2.0f * (w*z + x*y);
   const float cosy_cosp = 1.0f - 2.0f * (y*y + z*z);
   const float yaw = atan2f(siny_cosp, cosy_cosp);
-
   return wrap360_(yaw * RAD_TO_DEG);
 }
 
@@ -173,12 +156,11 @@ public:
     delay(150);
     Serial.println();
     Serial.printf("[BOOT] AtomS3R Compass (SeaStateFusion) wizard=%d\n", (int)COMPASS_ENABLE_WIZARD);
-    Serial.printf("[BOOT] quat body->world = %d\n", (int)COMPASS_QUAT_BODY_TO_WORLD);
 
     auto cfg = M5.config();
     M5.begin(cfg);
 
-    // Critical: clear M5Unified’s own cal/offsets so it can’t stack with ours.
+    // Prevent double-cal: clear M5Unified offsets
     clearM5UnifiedImuCalibration();
     delay(250);
 
@@ -204,9 +186,7 @@ public:
       Serial.println("[BOOT] No saved calibration. Starting wizard...");
       ImuCalBlobV1 saved{};
       if (wizard_.runAndSave(saved)) {
-        Serial.println("[BOOT] Wizard saved calibration. Loaded:");
-        printBlobSummary(Serial, saved);
-        printBlobDetail(Serial, saved);
+        Serial.println("[BOOT] Wizard saved calibration.");
         blob_ = saved;
         have_blob_ = true;
         runtime_.rebuildFromBlob(blob_);
@@ -214,9 +194,7 @@ public:
         Serial.println("[BOOT] Wizard did not save calibration. Running with raw values.");
       }
     } else {
-      Serial.println("[BOOT] Found saved calibration:");
-      printBlobSummary(Serial, blob_);
-      printBlobDetail(Serial, blob_);
+      Serial.println("[BOOT] Found saved calibration.");
     }
 #else
     if (!have_blob_) Serial.println("[BOOT] No saved calibration. Wizard disabled.");
@@ -313,7 +291,7 @@ private:
   Vector3f m_cal_ = Vector3f::Zero();   // uT in BODY
   float    a_raw_norm_ = 0.0f;
 
-  // Display state (NOW from fusion attitude)
+  // Display state (from fusion)
   float roll_deg_ = 0.0f;
   float pitch_deg_ = 0.0f;
   float heading_deg_ = 0.0f;
@@ -333,11 +311,10 @@ private:
 
   void resetFusion_() {
     constexpr bool WANT_LINEAR_BLOCK = true;
-    const float g = ImuCalCfg::g_std;
 
-    Vector3f sigma_a(0.06f * g, 0.06f * g, 0.06f * g);
-    Vector3f sigma_g(0.0030f,   0.0030f,   0.0030f);
-    Vector3f sigma_m(0.60f,     0.60f,     0.60f);
+    Vector3f sigma_a(0.06f * g_std, 0.06f * g_std, 0.06f * g_std);
+    Vector3f sigma_g(0.0030f,       0.0030f,       0.0030f);
+    Vector3f sigma_m(0.60f,         0.60f,         0.60f);
 
     Fusion::Config fcfg;
     fcfg.with_mag = true;
@@ -363,9 +340,10 @@ private:
 
     last_mag_ms_ = 0;
 
-    rot_inited_ = false;
+    rot_inited_   = false;
     rot_dpm_filt_ = 0.0f;
-    gyro_bias_ok_ = false;
+
+    gyro_bias_ok_  = false;
     gyro_bias_ema_.setZero();
   }
 
@@ -426,15 +404,14 @@ private:
     dt = clampf_(dt, 0.0010f, 0.0200f);
 
     // Stillness (for gyro bias learning only)
-    const float g = ImuCalCfg::g_std;
-    const float a_err = fabsf(a_cal_.norm() - g);
-    const bool still = (a_err < ROT_STILL_G_TOL_FRAC * g) && (w_cal_.norm() < ROT_STILL_GYRO_RAD_S);
+    const float a_err = fabsf(a_cal_.norm() - g_std);
+    const bool still = (a_err < ROT_STILL_G_TOL_FRAC * g_std) && (w_cal_.norm() < ROT_STILL_GYRO_RAD_S);
 
     // Mag sanity
     mag_norm_uT_ = m_cal_.norm();
     mag_ok_ = (mag_norm_uT_ > 5.0f && mag_norm_uT_ < 200.0f);
 
-    // Mag pacing (time only) -> wrapper decides whether to use it / init ref etc.
+    // Mag pacing (time only) - wrapper decides whether to use it / init ref etc.
     const uint32_t now_ms = millis();
     mag_fresh_ = false;
     if (mag_ok_ && (uint32_t)(now_ms - last_mag_ms_) >= MAG_SAMPLE_SPACING_MS) {
@@ -446,24 +423,15 @@ private:
     // Main fusion update (prop + accel update inside wrapper)
     fusion_.update(dt, w_cal_, a_cal_);
 
-    // -------------------- REPORT ATTITUDE FROM FUSION QUATERNION (NED) --------------------
-    // Get raw quaternion from fusion MEKF.
-    Eigen::Quaternionf q_raw = fusion_.raw().mekf().quaternion_boat();
-    q_raw.normalize();
+    // -------------------- ATTITUDE FROM FUSION (NED) --------------------
+    // Assumption: quaternion_boat() returns BODY->WORLD quaternion (q_bw).
+    Eigen::Quaternionf q_bw = fusion_.raw().mekf().quaternion_boat();
+    q_bw.normalize();
 
-    // Ensure we have q_bw: BODY->WORLD (NED).
-    Eigen::Quaternionf q_bw =
-      #if COMPASS_QUAT_BODY_TO_WORLD
-        q_raw;
-      #else
-        q_raw.conjugate();
-      #endif
-
-    // Heading directly from fused yaw (about +Z_down in NED).
+    // Heading from fused yaw
     heading_deg_ = headingFromQuatBodyToWorldNED_(q_bw);
 
-    // Roll/Pitch for UI: compute world-down expressed in BODY from fused attitude,
-    // then map through your UI semantics.
+    // Roll/pitch for UI: compute world-down expressed in BODY then map to screen semantics.
     {
       const Vector3f down_w(0.0f, 0.0f, 1.0f);                 // NED: +Z is down
       Vector3f down_b = quatRotate_(q_bw.conjugate(), down_w); // WORLD->BODY
@@ -474,8 +442,7 @@ private:
       }
     }
 
-    // -------------------- ROT using fused quaternion --------------------
-    // gyro bias estimator (stillness-gated)
+    // -------------------- ROT using fusion quaternion --------------------
     if (still) {
       const float alpha_b = 1.0f - expf(-dt / ROT_BIAS_TAU_S);
       if (!gyro_bias_ok_) {
@@ -489,8 +456,7 @@ private:
     Vector3f w_use = w_cal_;
     if (gyro_bias_ok_) w_use -= gyro_bias_ema_;
 
-    // Rotate gyro to world with q_bw (BODY->WORLD).
-    Vector3f w_world = quatRotate_(q_bw, w_use);
+    Vector3f w_world = quatRotate_(q_bw, w_use);  // BODY->WORLD
 
     // NED: +Z is down. ROT uses rate about world Z.
     float rot_dpm_meas = w_world.z() * RAD_TO_DEG * 60.0f;
@@ -566,14 +532,13 @@ private:
     nmea_rot(COMPASS_NMEA_TALKER, rot_dpm_filt_, valid);
 #else
     const float t = (micros() - start_us_) * 1e-6f;
-    Serial.printf("t=%.2f HDG:%6.1f R:%6.1f P:%6.1f |m|=%.1f live:%d quatB2W:%d\n",
+    Serial.printf("t=%.2f HDG:%6.1f R:%6.1f P:%6.1f |m|=%.1f live:%d\n",
                   (double)t,
                   (double)heading_deg_,
                   (double)roll_deg_,
                   (double)pitch_deg_,
                   (double)mag_norm_uT_,
-                  (int)fusion_.isLive(),
-                  (int)COMPASS_QUAT_BODY_TO_WORLD);
+                  (int)fusion_.isLive());
 #endif
   }
 };
