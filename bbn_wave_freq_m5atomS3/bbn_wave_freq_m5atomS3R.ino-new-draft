@@ -82,12 +82,12 @@ static constexpr uint32_t DEBUG_SERIAL_MS = 200;
 static constexpr uint32_t NMEA_SERIAL_MS  = 100;
 
 // ROT bias removal (stillness-gated gyro bias estimator)
-static constexpr float ROT_BIAS_TAU_S       = 20.0f;
+static constexpr float ROT_BIAS_TAU_S       = 5.0f;
 static constexpr float ROT_STILL_G_TOL_FRAC = 0.12f;
 static constexpr float ROT_STILL_GYRO_RAD_S = 0.15f;
 
 // Output smoothing (tames twitchy heading)
-static constexpr float HEADING_TAU_S = 1.2f;   // 0.8..2.0 typical
+static constexpr float HEADING_TAU_S = 0.8f;   // 0.8..2.0 typical
 
 using namespace atoms3r_ical;
 using Vector3f = Eigen::Vector3f;
