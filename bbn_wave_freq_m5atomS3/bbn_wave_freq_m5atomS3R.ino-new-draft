@@ -4,12 +4,18 @@
   AtomS3R Tilt-Compensated Compass (+ optional IMU Calibration Wizard)
   (SeaStateFusion version: Kalman3D_Wave + mag init + yaw correction)
 
+  FIX: Report attitude (heading/roll/pitch) from the fusion quaternion (NED world).
+       - heading_deg_ now comes from fused yaw (about +Z_down in NED)
+       - roll_deg_/pitch_deg_ now come from fused DOWN vector (world-down expressed in BODY),
+         mapped through your UI semantics helper.
+
   IMPORTANT knobs you may need to set once:
 
     1) Quaternion direction from fusion mekf:
        If your fusion quaternion accessor returns body->world, set to 1.
        If it returns world->body, set to 0.
 */
+
 #include <Arduino.h>
 
 #ifndef COMPASS_ENABLE_WIZARD
@@ -138,39 +144,19 @@ static inline void uiRollPitchFromDownBody_(
   pitch_deg_out = wrap180_(pitch * RAD_TO_DEG);
 }
 
-// Compute tilt-compensated heading using only DOWN (from accel) + MAG (in body).
-// Heading is clockwise from North (0..360). Assumes BODY fwd axis is +X for heading reference.
-// If your “forward” isn’t +X, change FWD_B below.
-static inline bool headingFromDownAndMag_(
-    const Vector3f& down_b_unit,
-    const Vector3f& mag_b_uT,
-    float& heading_deg_out)
-{
-  if (down_b_unit.squaredNorm() < 1e-6f) return false;
-  if (mag_b_uT.squaredNorm()   < 1e-6f) return false;
+// Convert a BODY->WORLD quaternion (NED world) to heading (deg 0..360)
+// Yaw extracted as ZYX yaw about +Z_down. In NED, positive yaw is clockwise from North.
+static inline float headingFromQuatBodyToWorldNED_(const Eigen::Quaternionf& q_bw) {
+  const float x = q_bw.x();
+  const float y = q_bw.y();
+  const float z = q_bw.z();
+  const float w = q_bw.w();
 
-  Vector3f d = down_b_unit.normalized();
-  Vector3f m = mag_b_uT.normalized();
+  const float siny_cosp = 2.0f * (w*z + x*y);
+  const float cosy_cosp = 1.0f - 2.0f * (y*y + z*z);
+  const float yaw = atan2f(siny_cosp, cosy_cosp);
 
-  // East in BODY: e = d x m
-  Vector3f e = d.cross(m);
-  if (e.squaredNorm() < 1e-6f) return false;
-  e.normalize();
-
-  // North in BODY: n = e x d
-  Vector3f n = e.cross(d);
-  if (n.squaredNorm() < 1e-6f) return false;
-  n.normalize();
-
-  // Heading reference axis in BODY (forward)
-  const Vector3f FWD_B(1.0f, 0.0f, 0.0f);
-
-  const float E = FWD_B.dot(e);
-  const float N = FWD_B.dot(n);
-
-  const float hdg = atan2f(E, N) * RAD_TO_DEG;
-  heading_deg_out = wrap360_(hdg);
-  return true;
+  return wrap360_(yaw * RAD_TO_DEG);
 }
 
 // -------------------- App --------------------
@@ -327,7 +313,7 @@ private:
   Vector3f m_cal_ = Vector3f::Zero();   // uT in BODY
   float    a_raw_norm_ = 0.0f;
 
-  // Display state
+  // Display state (NOW from fusion attitude)
   float roll_deg_ = 0.0f;
   float pitch_deg_ = 0.0f;
   float heading_deg_ = 0.0f;
@@ -448,46 +434,47 @@ private:
     mag_norm_uT_ = m_cal_.norm();
     mag_ok_ = (mag_norm_uT_ > 5.0f && mag_norm_uT_ < 200.0f);
 
-    // Mag pacing (time only)
+    // Mag pacing (time only) -> wrapper decides whether to use it / init ref etc.
     const uint32_t now_ms = millis();
     mag_fresh_ = false;
     if (mag_ok_ && (uint32_t)(now_ms - last_mag_ms_) >= MAG_SAMPLE_SPACING_MS) {
       last_mag_ms_ = now_ms;
       mag_fresh_ = true;
-      fusion_.updateMag(m_cal_);            // wrapper decides whether to use it / init ref etc.
+      fusion_.updateMag(m_cal_);
     }
 
     // Main fusion update (prop + accel update inside wrapper)
     fusion_.update(dt, w_cal_, a_cal_);
 
-    // --- UI roll/pitch & heading from ACC+MAG (independent of quaternion direction) ---
-    // At rest, accel measures specific force ~ -g_world expressed in BODY.
-    // So BODY "down" direction ~= -a_unit.
-    Vector3f down_b = Vector3f::Zero();
+    // -------------------- REPORT ATTITUDE FROM FUSION QUATERNION (NED) --------------------
+    // Get raw quaternion from fusion MEKF.
+    Eigen::Quaternionf q_raw = fusion_.raw().mekf().quaternion_boat();
+    q_raw.normalize();
+
+    // Ensure we have q_bw: BODY->WORLD (NED).
+    Eigen::Quaternionf q_bw =
+      #if COMPASS_QUAT_BODY_TO_WORLD
+        q_raw;
+      #else
+        q_raw.conjugate();
+      #endif
+
+    // Heading directly from fused yaw (about +Z_down in NED).
+    heading_deg_ = headingFromQuatBodyToWorldNED_(q_bw);
+
+    // Roll/Pitch for UI: compute world-down expressed in BODY from fused attitude,
+    // then map through your UI semantics.
     {
-      Vector3f a = a_cal_;
-      const float an = a.norm();
-      if (an > 1e-6f) {
-        a /= an;
-        down_b = -a;                 // world-down in BODY
-        down_b.normalize();
+      const Vector3f down_w(0.0f, 0.0f, 1.0f);                 // NED: +Z is down
+      Vector3f down_b = quatRotate_(q_bw.conjugate(), down_w); // WORLD->BODY
+      const float dn = down_b.norm();
+      if (dn > 1e-6f) {
+        down_b /= dn;
+        uiRollPitchFromDownBody_(down_b, roll_deg_, pitch_deg_);
       }
     }
 
-    if (down_b.squaredNorm() > 1e-6f) {
-      uiRollPitchFromDownBody_(down_b, roll_deg_, pitch_deg_);
-    }
-
-    // Heading from down+mag (tilt compensated)
-    // If mag bad or geometry degenerate, keep last heading.
-    if (mag_ok_ && down_b.squaredNorm() > 1e-6f) {
-      float hdg;
-      if (headingFromDownAndMag_(down_b, m_cal_, hdg)) {
-        heading_deg_ = hdg;
-      }
-    }
-
-    // --- ROT using fusion quaternion (explicit direction switch, NO autodetect) ---
+    // -------------------- ROT using fused quaternion --------------------
     // gyro bias estimator (stillness-gated)
     if (still) {
       const float alpha_b = 1.0f - expf(-dt / ROT_BIAS_TAU_S);
@@ -502,20 +489,8 @@ private:
     Vector3f w_use = w_cal_;
     if (gyro_bias_ok_) w_use -= gyro_bias_ema_;
 
-    Eigen::Quaternionf q = fusion_.raw().mekf().quaternion_boat();
-    q.normalize();
-
-    // body->world rotator
-    auto rot_body_to_world = [&](const Vector3f& v_body) -> Vector3f {
-      // If q is body->world: use q. If q is world->body: body->world is q.conjugate().
-      #if COMPASS_QUAT_BODY_TO_WORLD
-        return quatRotate_(q, v_body);
-      #else
-        return quatRotate_(q.conjugate(), v_body);
-      #endif
-    };
-
-    Vector3f w_world = rot_body_to_world(w_use);
+    // Rotate gyro to world with q_bw (BODY->WORLD).
+    Vector3f w_world = quatRotate_(q_bw, w_use);
 
     // NED: +Z is down. ROT uses rate about world Z.
     float rot_dpm_meas = w_world.z() * RAD_TO_DEG * 60.0f;
