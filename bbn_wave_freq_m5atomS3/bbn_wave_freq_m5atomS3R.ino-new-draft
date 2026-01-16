@@ -1,20 +1,9 @@
-
 /*
   Copyright 2026, Mikhail Grushinskiy
 
   AtomS3R Tilt-Compensated Compass (+ optional IMU Calibration Wizard)
   (SeaStateFusion version: Kalman3D_Wave + mag init + yaw correction)
 
-  FIXED:
-    - Reports ATTITUDE (heading/roll/pitch) from fusion quaternion in NED.
-    - No COMPASS_QUAT_BODY_TO_WORLD knob and no startup verification/autodetect.
-    - DOES NOT pass temp into fusion.update() (temp already handled in calibration).
-    - Heading “too twitchy” mitigation:
-        (1) Increase sigma_m (trust mag less)
-        (2) Add circular low-pass smoothing on reported heading
-
-  Assumptions:
-    - fusion_.raw().mekf().quaternion_boat() returns BODY->WORLD quaternion (q_bw), world frame is NED (+Z down).
 */
 
 #include <Arduino.h>
@@ -92,7 +81,7 @@ static constexpr float HEADING_TAU_S = 1.2f;   // increase for smoother/slower (
 using namespace atoms3r_ical;
 using Vector3f = Eigen::Vector3f;
 
-// -------------------- helpers --------------------
+// helpers
 static inline float clampf_(float x, float lo, float hi) { return x < lo ? lo : (x > hi ? hi : x); }
 
 static inline float wrap360_(float deg) {
@@ -163,7 +152,7 @@ static inline void lpf_heading_deg_(float meas_deg, float dt, float tau, bool& i
   state_deg = wrap360_(state_deg + alpha * err);
 }
 
-// -------------------- App --------------------
+// App
 class FusionApp {
 public:
   FusionApp()
@@ -336,16 +325,16 @@ private:
   void resetFusion_() {
     constexpr bool WANT_LINEAR_BLOCK = true;
 
-    // --- IMU: keep “desktop-ish” scale (not 0.06g) ---
+    // IMU: keep “desktop-ish” scale (not 0.06g)
     const float acc_sigma = 1.51e-3f * g_std;  // ~0.0148 m/s^2
     const float gyr_sigma = 0.00157f;          // rad/s
 
     const Vector3f sigma_a(2.8f * acc_sigma, 2.8f * acc_sigma, 2.8f * acc_sigma); // ~0.041
     const Vector3f sigma_g(2.0f * gyr_sigma, 2.0f * gyr_sigma, 2.0f * gyr_sigma); // ~0.00314
 
-    // --- MAG: increase sigma_m to reduce twitchy yaw (trust mag less) ---
+    // MAG: increase sigma_m to reduce twitchy yaw (trust mag less)
     // BMM150 @ ~80 Hz: rough per-sample RMS ~0.5..0.7 uT; choose conservative and then inflate.
-    const float sigma_m_uT = 1.0f;  // <-- key knob for twitchy heading (0.8..1.5 uT typical)
+    const float sigma_m_uT = 1.0f;  // key knob for twitchy heading (0.8..1.5 uT typical)
     const Vector3f sigma_m(sigma_m_uT, sigma_m_uT, sigma_m_uT);
 
     Fusion::Config fcfg;
@@ -462,7 +451,7 @@ private:
     // Main fusion update (NO temp passed here)
     fusion_.update(dt, w_cal_, a_cal_);
 
-    // -------------------- ATTITUDE FROM FUSION (NED) --------------------
+    // ATTITUDE FROM FUSION (NED)
     Eigen::Quaternionf q_bw = fusion_.raw().mekf().quaternion_boat();
     q_bw.normalize();
 
@@ -483,7 +472,7 @@ private:
       }
     }
 
-    // -------------------- ROT using fusion quaternion --------------------
+    // ROT using fusion quaternion
     if (still) {
       const float alpha_b = 1.0f - expf(-dt / ROT_BIAS_TAU_S);
       if (!gyro_bias_ok_) {
