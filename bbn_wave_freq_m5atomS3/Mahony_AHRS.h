@@ -120,6 +120,130 @@ void mahony_AHRS_update(Mahony_AHRS_Vars* m,
   *roll *= RAD_TO_DEG;
 }
 
+// IMU algorithm update (with magnetometer)
+void mahony_AHRS_update_mag(Mahony_AHRS_Vars* m,
+                            float gx, float gy, float gz, float ax, float ay, float az,
+                            float mx, float my, float mz, float *pitch, float *roll, float *yaw,
+                            float delta_t_sec) {
+  float recipNorm;
+  float q0q0, q0q1, q0q2, q0q3, q1q1, q1q2, q1q3, q2q2, q2q3, q3q3;
+  float hx, hy, hz, bx, bz;
+  float halfvx, halfvy, halfvz, halfwx, halfwy, halfwz;
+  float halfex, halfey, halfez;
+
+  // Use IMU algorithm if magnetometer measurement invalid (avoids NaN in
+  // magnetometer normalisation)
+  if ((mx == 0.0f) && (my == 0.0f) && (mz == 0.0f)) {
+    mahony_AHRS_update(m, gx, gy, gz, ax, ay, az, pitch, roll, yaw, delta_t_sec);
+    return;
+  }
+
+  // Compute feedback only if accelerometer measurement valid (avoids NaN in
+  // accelerometer normalisation)
+  if (!((ax == 0.0f) && (ay == 0.0f) && (az == 0.0f))) {
+    // Normalise accelerometer measurement
+    recipNorm = invSqrt(ax * ax + ay * ay + az * az);
+    ax *= recipNorm;
+    ay *= recipNorm;
+    az *= recipNorm;
+
+    // Normalise magnetometer measurement
+    recipNorm = invSqrt(mx * mx + my * my + mz * mz);
+    mx *= recipNorm;
+    my *= recipNorm;
+    mz *= recipNorm;
+
+    // Auxiliary variables to avoid repeated arithmetic
+    q0q0 = m->q0 * m->q0;
+    q0q1 = m->q0 * m->q1;
+    q0q2 = m->q0 * m->q2;
+    q0q3 = m->q0 * m->q3;
+    q1q1 = m->q1 * m->q1;
+    q1q2 = m->q1 * m->q2;
+    q1q3 = m->q1 * m->q3;
+    q2q2 = m->q2 * m->q2;
+    q2q3 = m->q2 * m->q3;
+    q3q3 = m->q3 * m->q3;
+
+    // Reference direction of Earth's magnetic field
+    hx = 2.0f * (mx * (0.5f - q2q2 - q3q3) + my * (q1q2 - q0q3) +
+                 mz * (q1q3 + q0q2));
+    hy = 2.0f * (mx * (q1q2 + q0q3) + my * (0.5f - q1q1 - q3q3) +
+                 mz * (q2q3 - q0q1));
+    hz = 2.0f * (mx * (q1q3 - q0q2) + my * (q2q3 + q0q1) +
+                 mz * (0.5f - q1q1 - q2q2));
+    bx = sqrtf(hx * hx + hy * hy);
+    bz = hz;
+
+    // Estimated direction of gravity and magnetic field
+    halfvx = q1q3 - q0q2;
+    halfvy = q0q1 + q2q3;
+    halfvz = 0.5f * (q0q0 - q1q1 - q2q2 + q3q3);
+    halfwx = bx * (0.5f - q2q2 - q3q3) + bz * (q1q3 - q0q2);
+    halfwy = bx * (q1q2 - q0q3) + bz * (q0q1 + q2q3);
+    halfwz = bx * (q0q2 + q1q3) + bz * (0.5f - q1q1 - q2q2);
+
+    // Error is sum of cross product between estimated direction and
+    // measured direction of field vectors
+    halfex = (ay * halfvz - az * halfvy) + (my * halfwz - mz * halfwy);
+    halfey = (az * halfvx - ax * halfvz) + (mz * halfwx - mx * halfwz);
+    halfez = (ax * halfvy - ay * halfvx) + (mx * halfwy - my * halfwx);
+
+    // Compute and apply integral feedback if enabled
+    if (m->twoKi > 0.0f) {
+      m->integralFBx += m->twoKi * halfex * delta_t_sec;  // integral error scaled by Ki
+      m->integralFBy += m->twoKi * halfey * delta_t_sec;
+      m->integralFBz += m->twoKi * halfez * delta_t_sec;
+      gx += m->integralFBx;  // apply integral feedback
+      gy += m->integralFBy;
+      gz += m->integralFBz;
+    } else {
+      m->integralFBx = 0.0f;  // prevent integral windup
+      m->integralFBy = 0.0f;
+      m->integralFBz = 0.0f;
+    }
+
+    // Apply proportional feedback
+    gx += m->twoKp * halfex;
+    gy += m->twoKp * halfey;
+    gz += m->twoKp * halfez;
+  }
+
+  // Integrate rate of change of quaternion
+  float half_dt = (0.5f * delta_t_sec);  
+
+  float q_0, q_1, q_2, q_3;
+  q_0 = m->q0;
+  q_1 = m->q1;
+  q_2 = m->q2;
+  q_3 = m->q3;
+  m->q0 += (-q_1 * gx - q_2 * gy - q_3 * gz) * half_dt;
+  m->q1 += (q_0 * gx + q_2 * gz - q_3 * gy) * half_dt;
+  m->q2 += (q_0 * gy - q_1 * gz + q_3 * gx) * half_dt;
+  m->q3 += (q_0 * gz + q_1 * gy - q_2 * gx) * half_dt;
+
+  // Normalise quaternion
+  recipNorm = invSqrt(m->q0 * m->q0 + m->q1 * m->q1 + m->q2 * m->q2 + m->q3 * m->q3);
+  m->q0 *= recipNorm;
+  m->q1 *= recipNorm;
+  m->q2 *= recipNorm;
+  m->q3 *= recipNorm;
+
+  //*roll = atan2f(m->q0 * m->q1 + m->q2 * m->q3, 0.5f - m->q1 * m->q1 - m->q2 * m->q2);
+  //*pitch = asinf(-2.0f * (m->q1 * m->q3 - m->q0 * m->q2));
+  //*yaw = atan2f(m->q1 * m->q2 + m->q0 * m->q3, 0.5f - m->q2 * m->q2 - m->q3 * m->q3);
+  
+  *pitch = asinf(-2 * m->q1 * m->q3 + 2 * m->q0 * m->q2);  // pitch
+  *roll  = atan2f(2 * m->q2 * m->q3 + 2 * m->q0 * m->q1,
+                 -2 * m->q1 * m->q1 - 2 * m->q2 * m->q2 + 1);  // roll
+  *yaw   = atan2f(2 * (m->q1 * m->q2 + m->q0 * m->q3),
+                 m->q0 * m->q0 + m->q1 * m->q1 - m->q2 * m->q2 - m->q3 * m->q3);  // yaw
+  
+  *pitch *= RAD_TO_DEG;
+  *yaw *= RAD_TO_DEG;
+  *roll *= RAD_TO_DEG;
+}
+
 /**
  * Fast inverse square root implementation. Compatible both for 32 and 8 bit microcontrollers.
  * @see http://en.wikipedia.org/wiki/Fast_inverse_square_root
