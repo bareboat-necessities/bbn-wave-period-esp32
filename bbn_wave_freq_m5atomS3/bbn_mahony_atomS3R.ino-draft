@@ -1,17 +1,23 @@
 /*
   Copyright 2026, Mikhail Grushinskiy
 
-  AtomS3R Tilt-Compensated Compass + IMU Calibration Wizard
+  AtomS3R Tilt-Compensated Compass + IMU Calibration Wizard (Mahony)
 
   - Uses AtomS3R_ImuCal.h (blob + runtime apply + axis mapping + clearM5UnifiedImuCalibration)
   - Uses AtomS3R_ImuCalWizard.h (UI + wizard capture/fit/save + Input tap logic)
   - Uses Mahony AHRS (Mahony_AHRS.h) for fused roll/pitch/yaw
-  - Runs accel+gyro at ~240 Hz, mag is slower and gated by time+delta (stale-repeat rejection)
+  - Runs accel+gyro at ~240 Hz, mag is slower and gated by time with "stuck-repeat" rejection
   - Shows Heading (deg, 0..360), Roll/Pitch (deg) on screen and prints to Serial
 
   Taps:
     - 1 tap  : run wizard (save new blob)
     - 3 taps : erase blob (and clear M5Unified calibration)
+
+  Critical fixes vs prior version:
+    1) NO custom acc+mag initializer (it can bake in a constant yaw bias if frame assumptions differ).
+       Mahony starts at identity and converges naturally.
+    2) Mag gating no longer starves yaw correction when still.
+       We accept updates at spacing, but reject only if the mag is "stuck" repeating for many samples.
 
   Notes:
     - Feed calibrated accel (m/s^2) and gyro (rad/s) to Mahony.
@@ -53,9 +59,11 @@ static constexpr float    LOOP_HZ        = 240.0f;
 static constexpr uint32_t LOOP_PERIOD_US = (uint32_t)(1000000.0f / LOOP_HZ);
 
 // Mag ODR is slower; also many builds repeat stale values.
-// Gate by spacing + delta (stale-repeat rejection).
-static constexpr uint32_t MAG_SAMPLE_SPACING_MS = 12;     // ~<=80 Hz mag updates
-static constexpr float    MAG_MIN_DELTA_uT      = 0.02f;  // reject repeats (0.02..0.10 typical)
+// Gate by spacing; reject only if "stuck" repeating for a while.
+static constexpr uint32_t MAG_SAMPLE_SPACING_MS = 12;      // ~<=80 Hz mag updates
+static constexpr float    MAG_MIN_DELTA_uT      = 0.02f;   // "looks stuck" threshold
+static constexpr uint8_t  MAG_STUCK_ALLOW_N     = 10;      // allow this many tiny-delta updates
+static constexpr uint8_t  MAG_STUCK_REJECT_AFTER_N = 20;   // then start rejecting until delta grows
 
 // Display / serial rates
 static constexpr uint32_t UI_REFRESH_MS     = 100;   // 10 Hz UI update
@@ -114,7 +122,7 @@ public:
 
     // Optional graphical compass UI
     if (use_graphics_) {
-      ui_.setReadRotation();     // ensure width/height match ROT_READ
+      ui_.setReadRotation();
       compass_ui_.begin();
       compass_ui_ready_ = compass_ui_.ok();
       if (!compass_ui_ready_) use_graphics_ = false;
@@ -157,7 +165,7 @@ public:
   }
 
   void tick() {
-    // Pace loop to ~240 Hz (light pacing; wizard UI will override timing when active)
+    // Pace loop to ~240 Hz
     const uint32_t now_us = micros();
     int32_t wait_us = (int32_t)(next_tick_us_ - now_us);
     if (wait_us > 0) {
@@ -253,19 +261,18 @@ private:
 
   // Mahony init/reset
   void resetMahony_() {
-    // Default twoKpDef (2*1.0) is usually too soft.
+    // Default twoKpDef (2*1.0) is usually too soft for a snappy compass.
     const float twoKp = 2.0f * 6.0f;      // tune: 2*4 .. 2*12
-    const float twoKi = 2.0f * 0.0002f;   // tune: 0 .. 2*0.002 (set 0 to disable I-term)
+    const float twoKi = 2.0f * 0.0002f;   // tune: 0 .. 2*0.002 (0 disables I-term)
 
     mahony_AHRS_init(&mahony_, twoKp, twoKi);
 
     mahony_.q0 = 1.0f; mahony_.q1 = 0.0f; mahony_.q2 = 0.0f; mahony_.q3 = 0.0f;
     mahony_.integralFBx = mahony_.integralFBy = mahony_.integralFBz = 0.0f;
 
-    ahrs_inited_ = false;
-
     last_mag_uT_.setZero();
     last_mag_ms_ = 0;
+    mag_repeat_count_ = 0;
 
     rot_inited_   = false;
     rot_dpm_filt_ = 0.0f;
@@ -274,45 +281,6 @@ private:
     gyro_bias_ema_.setZero();
 
     Serial.println("[MAHONY] reset");
-  }
-
-  static inline void setMahonyQuatFromRPY_(Mahony_AHRS_Vars* m, float roll, float pitch, float yaw) {
-    // roll/pitch/yaw in radians
-    const float cr = cosf(0.5f*roll),  sr = sinf(0.5f*roll);
-    const float cp = cosf(0.5f*pitch), sp = sinf(0.5f*pitch);
-    const float cy = cosf(0.5f*yaw),   sy = sinf(0.5f*yaw);
-
-    // ZYX: q = q(yaw)*q(pitch)*q(roll)
-    const float qw = cy*cp*cr + sy*sp*sr;
-    const float qx = cy*cp*sr - sy*sp*cr;
-    const float qy = cy*sp*cr + sy*cp*sr;
-    const float qz = sy*cp*cr - cy*sp*sr;
-
-    m->q0 = qw; m->q1 = qx; m->q2 = qy; m->q3 = qz;
-    m->integralFBx = m->integralFBy = m->integralFBz = 0.0f;
-  }
-
-  void initMahonyFromAccMag_(const Vector3f& a, bool mag_ok, const Vector3f& m_uT) {
-    // Roll/pitch from accel direction
-    const float ax = a.x(), ay = a.y(), az = a.z();
-    const float roll  = atan2f(ay, az);
-    const float pitch = atan2f(-ax, sqrtf(ay*ay + az*az));
-
-    float yaw = 0.0f;
-    if (mag_ok) {
-      // Tilt-compensated yaw from mag
-      const float mx = m_uT.x(), my = m_uT.y(), mz = m_uT.z();
-      const float cp = cosf(pitch), sp = sinf(pitch);
-      const float cr = cosf(roll),  sr = sinf(roll);
-
-      const float xh = mx * cp + mz * sp;
-      const float yh = mx * sr * sp + my * cr - mz * sr * cp;
-
-      yaw = atan2f(yh, xh);
-    }
-
-    setMahonyQuatFromRPY_(&mahony_, roll, pitch, yaw);
-    ahrs_inited_ = true;
   }
 
   void updateFilter_(const ImuSample& s) {
@@ -335,33 +303,55 @@ private:
     mag_ok_ = (mn > 5.0f && mn < 200.0f); // broad uT bounds
     mag_norm_uT_ = mn;
 
-    // Stale-repeat rejection + ODR gating
+    // Mag gating:
+    // - enforce spacing
+    // - accept small deltas while still (so yaw keeps correcting)
+    // - reject only if the mag looks "stuck repeating" for many samples
     const uint32_t now_ms = millis();
     bool mag_fresh = false;
+
     if (mag_ok_) {
       const uint32_t dtm = now_ms - last_mag_ms_;
-      const float dm = (m_cal_ - last_mag_uT_).norm();
-      if (dtm >= MAG_SAMPLE_SPACING_MS && dm >= MAG_MIN_DELTA_uT) {
-        mag_fresh = true;
-        last_mag_ms_ = now_ms;
-        last_mag_uT_ = m_cal_;
+      if (dtm >= MAG_SAMPLE_SPACING_MS) {
+        const float dm = (m_cal_ - last_mag_uT_).norm();
+        const bool looks_stuck = (dm < MAG_MIN_DELTA_uT);
+
+        if (!looks_stuck) {
+          mag_repeat_count_ = 0;
+          mag_fresh = true;
+        } else {
+          // allow some repeats (helps yaw settle when device is stationary)
+          if (mag_repeat_count_ < MAG_STUCK_ALLOW_N) {
+            mag_repeat_count_++;
+            mag_fresh = true;
+          } else if (mag_repeat_count_ >= MAG_STUCK_REJECT_AFTER_N) {
+            mag_fresh = false; // now consider it stale/repeated
+          } else {
+            // in-between band: accept every other sample to keep some correction
+            mag_repeat_count_++;
+            mag_fresh = (mag_repeat_count_ & 1) == 0;
+          }
+        }
+
+        if (mag_fresh) {
+          last_mag_ms_ = now_ms;
+          last_mag_uT_ = m_cal_;
+        }
       }
+    } else {
+      mag_repeat_count_ = 0;
     }
+
     mag_fresh_ = mag_fresh;
 
-    // One-time init for fast stable startup
-    if (!ahrs_inited_) {
-      initMahonyFromAccMag_(a_cal_, mag_ok_, m_cal_);
-    }
-
-    // Run Mahony. It normalizes accel/mag internally.
+    // Run Mahony. It normalizes accel/mag internally, so pass calibrated vectors directly.
     float pitch_deg = 0.0f, roll_deg = 0.0f, yaw_deg = 0.0f;
 
     if (mag_ok_ && mag_fresh_) {
       mahony_AHRS_update_mag(&mahony_,
         w_cal_.x(), w_cal_.y(), w_cal_.z(),      // rad/s
-        a_cal_.x(), a_cal_.y(), a_cal_.z(),      // m/s^2 ok
-        m_cal_.x(), m_cal_.y(), m_cal_.z(),      // uT ok
+        a_cal_.x(), a_cal_.y(), a_cal_.z(),      // m/s^2
+        m_cal_.x(), m_cal_.y(), m_cal_.z(),      // uT
         &pitch_deg, &roll_deg, &yaw_deg,
         dt);
     } else {
@@ -372,16 +362,17 @@ private:
         dt);
     }
 
-    // Mahony returns DEGREES already
+    // Mahony returns degrees already
     roll_deg_  = roll_deg;
     pitch_deg_ = pitch_deg;
     yaw_deg_   = yaw_deg;
 
-    // Heading: if direction is mirrored, change to wrap360_(-yaw_deg_)
-    heading_deg_ = wrap360_(yaw_deg_);
+    // IMPORTANT:
+    // Many M5 stacks end up with yaw sign inverted relative to compass heading convention.
+    // Your earlier Mahony example effectively mapped heading = wrap360(-yaw).
+    heading_deg_ = wrap360_(-yaw_deg_);
 
     // ROT (deg/min): gyro projected into world-Z, with stillness-gated bias removal
-    // Update a slow gyro bias estimate ONLY when still (so it doesn't "learn" real turns).
     const float g = ImuCalCfg::g_std;
     const float a_err = fabsf(a_cal_.norm() - g);
     const bool still = (a_err < ROT_STILL_G_TOL_FRAC * g) && (w_cal_.norm() < ROT_STILL_GYRO_RAD_S);
@@ -396,27 +387,23 @@ private:
       }
     }
 
-    // Bias-correct gyro for ROT
     Vector3f w_use = w_cal_;
     if (gyro_bias_ok_) w_use -= gyro_bias_ema_;
 
-    // Mahony quaternion: q0=w, q1=x, q2=y, q3=z (already normalized)
+    // Mahony quaternion: q0=w, q1=x, q2=y, q3=z (already normalized each update)
     const float x = mahony_.q1;
     const float y = mahony_.q2;
     const float z = mahony_.q3;
     const float w = mahony_.q0;
 
-    // Project to world frame using the SAME quaternion convention you already use for yaw/pitch/roll.
     Vector3f w_world = quatRotateBodyToWorld_(x, y, z, w, w_use);
 
-    // In NED, +Z is down. Rate about +Z maps to NMEA ROT sign (if sign is flipped, negate here).
-    float rot_dpm_meas = w_world.z() * RAD_TO_DEG * 60.0f;    // rad/s -> deg/min
+    // If ROT sign is flipped for your consumer, negate here.
+    float rot_dpm_meas = w_world.z() * RAD_TO_DEG * 60.0f;
 
-    // Clamp nonsense spikes (init/glitches)
     rot_dpm_meas = clampf_(rot_dpm_meas, -720.0f, 720.0f);
 
-    // Low-pass ROT
-    const float tau_rot = 1.5f;                               // seconds
+    const float tau_rot = 1.5f;
     const float alpha_r = 1.0f - expf(-dt / tau_rot);
 
     if (!rot_inited_) {
@@ -455,7 +442,6 @@ private:
   }
 
   void updateUI_() {
-    // If we're in the tap-group decision window, keep the pending screen visible.
     if (tap_count_ > 0) return;
 
     const uint32_t now_ms = millis();
@@ -470,12 +456,8 @@ private:
   }
 
   void updateUI_graphics_() {
-    // Ensure the display rotation matches what CompassUI sprites were built for.
     ui_.setReadRotation();
-
-    // Simple tilt warning (optional)
     const bool tiltWarn = (fabsf(roll_deg_) > 35.0f) || (fabsf(pitch_deg_) > 35.0f);
-
     compass_ui_.draw(heading_deg_, mag_ok_, mag_norm_uT_, tiltWarn);
   }
 
@@ -511,15 +493,12 @@ private:
     last_serial_ms_ = now_ms;
 
 #if COMPASS_SERIAL_NMEA
-    float rot_dpm = rot_dpm_filt_;
-    const bool valid = ahrs_inited_;
-
+    const bool valid = true;
     nmea_hdm(COMPASS_NMEA_TALKER, heading_deg_);
     nmea_xdr_pitch_roll(COMPASS_NMEA_TALKER, pitch_deg_, roll_deg_);
-    nmea_rot(COMPASS_NMEA_TALKER, rot_dpm, valid);
+    nmea_rot(COMPASS_NMEA_TALKER, rot_dpm_filt_, valid);
 #else
     const float t = (micros() - start_us_) * 1e-6f;
-
     Serial.printf("t=%.2f ", (double)t);
     Serial.printf("HDG:%6.1f ", (double)heading_deg_);
     Serial.printf("ROLL:%6.1f PITCH:%6.1f ", (double)roll_deg_, (double)pitch_deg_);
@@ -556,9 +535,8 @@ private:
   uint32_t last_ui_ms_ = 0;
   uint32_t last_serial_ms_ = 0;
 
-  // Mahony AHRS
+  // Mahony AHRS state
   Mahony_AHRS_Vars mahony_{};
-  bool ahrs_inited_ = false;
 
   // Latest calibrated values
   Vector3f a_cal_ = Vector3f::Zero();
@@ -578,6 +556,7 @@ private:
   float mag_norm_uT_ = 0.0f;
   Vector3f last_mag_uT_ = Vector3f::Zero();
   uint32_t last_mag_ms_ = 0;
+  uint8_t mag_repeat_count_ = 0;
 };
 
 static CompassApp g_app;
