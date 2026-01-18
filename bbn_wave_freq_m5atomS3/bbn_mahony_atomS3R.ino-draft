@@ -13,15 +13,12 @@
     - 1 tap  : run wizard (save new blob)
     - 3 taps : erase blob (and clear M5Unified calibration)
 
-  Critical fixes vs prior version:
-    1) NO custom acc+mag initializer (it can bake in a constant yaw bias if frame assumptions differ).
-       Mahony starts at identity and converges naturally.
-    2) Mag gating no longer starves yaw correction when still.
-       We accept updates at spacing, but reject only if the mag is "stuck" repeating for many samples.
-
   Notes:
-    - Feed calibrated accel (m/s^2) and gyro (rad/s) to Mahony.
-    - Feed calibrated magnetometer (uT) to Mahony; it normalizes internally.
+    - Feed calibrated gyro (rad/s) to Mahony.
+    - IMPORTANT BUGFIX: Mahony expects *gravity direction*, but IMU accel is *specific force*.
+      At rest, accel ≈ -g. So we feed a_grav = -a_cal.
+    - Also: we compute Euler (roll/pitch/yaw) ourselves from the quaternion using the SAME
+      formula block you used in your working qMEKF version, to match conventions.
 */
 
 #include <Arduino.h>
@@ -60,10 +57,10 @@ static constexpr uint32_t LOOP_PERIOD_US = (uint32_t)(1000000.0f / LOOP_HZ);
 
 // Mag ODR is slower; also many builds repeat stale values.
 // Gate by spacing; reject only if "stuck" repeating for a while.
-static constexpr uint32_t MAG_SAMPLE_SPACING_MS = 12;      // ~<=80 Hz mag updates
-static constexpr float    MAG_MIN_DELTA_uT      = 0.02f;   // "looks stuck" threshold
-static constexpr uint8_t  MAG_STUCK_ALLOW_N     = 10;      // allow this many tiny-delta updates
-static constexpr uint8_t  MAG_STUCK_REJECT_AFTER_N = 20;   // then start rejecting until delta grows
+static constexpr uint32_t MAG_SAMPLE_SPACING_MS    = 12;      // ~<=80 Hz mag updates
+static constexpr float    MAG_MIN_DELTA_uT         = 0.02f;   // "looks stuck" threshold
+static constexpr uint8_t  MAG_STUCK_ALLOW_N        = 10;      // allow this many tiny-delta updates
+static constexpr uint8_t  MAG_STUCK_REJECT_AFTER_N = 20;      // then start rejecting until delta grows
 
 // Display / serial rates
 static constexpr uint32_t UI_REFRESH_MS     = 100;   // 10 Hz UI update
@@ -99,7 +96,6 @@ static inline Vector3f quatRotateBodyToWorld_(float x, float y, float z, float w
   return v_body + w * t + q.cross(t);
 }
 
-
 // App
 class CompassApp {
 public:
@@ -122,7 +118,7 @@ public:
 
     // Optional graphical compass UI
     if (use_graphics_) {
-      ui_.setReadRotation();
+      ui_.setReadRotation();     // ensure width/height match ROT_READ
       compass_ui_.begin();
       compass_ui_ready_ = compass_ui_.ok();
       if (!compass_ui_ready_) use_graphics_ = false;
@@ -165,7 +161,7 @@ public:
   }
 
   void tick() {
-    // Pace loop to ~240 Hz
+    // Pace loop to ~240 Hz (light pacing; wizard UI will override timing when active)
     const uint32_t now_us = micros();
     int32_t wait_us = (int32_t)(next_tick_us_ - now_us);
     if (wait_us > 0) {
@@ -288,9 +284,9 @@ private:
     a_raw_norm_ = s.a.norm();
 
     // Calibrate signals (or pass through if missing)
-    a_cal_ = runtime_.applyAccel(s.a, s.tempC);
-    w_cal_ = runtime_.applyGyro (s.w, s.tempC);
-    m_cal_ = runtime_.applyMag  (s.m);
+    a_cal_ = runtime_.applyAccel(s.a, s.tempC); // specific force (m/s^2)
+    w_cal_ = runtime_.applyGyro (s.w, s.tempC); // rad/s
+    m_cal_ = runtime_.applyMag  (s.m);          // uT
 
     // dt from micros; clamp sane
     const uint32_t now_us = micros();
@@ -344,32 +340,61 @@ private:
 
     mag_fresh_ = mag_fresh;
 
-    // Run Mahony. It normalizes accel/mag internally, so pass calibrated vectors directly.
-    float pitch_deg = 0.0f, roll_deg = 0.0f, yaw_deg = 0.0f;
+    // -------------------------
+    // BUGFIX: Mahony expects gravity direction, but accel is specific force.
+    // At rest: specific_force ≈ -g. So feed a_grav = -a_cal_.
+    // -------------------------
+    Vector3f a_grav = -a_cal_;
 
+    // Run Mahony. It normalizes accel/mag internally.
+    float pitch_dummy = 0.0f, roll_dummy = 0.0f, yaw_dummy = 0.0f;
     if (mag_ok_ && mag_fresh_) {
       mahony_AHRS_update_mag(&mahony_,
         w_cal_.x(), w_cal_.y(), w_cal_.z(),      // rad/s
-        a_cal_.x(), a_cal_.y(), a_cal_.z(),      // m/s^2
+        a_grav.x(), a_grav.y(), a_grav.z(),      // "gravity direction" proxy
         m_cal_.x(), m_cal_.y(), m_cal_.z(),      // uT
-        &pitch_deg, &roll_deg, &yaw_deg,
+        &pitch_dummy, &roll_dummy, &yaw_dummy,
         dt);
     } else {
       mahony_AHRS_update(&mahony_,
         w_cal_.x(), w_cal_.y(), w_cal_.z(),
-        a_cal_.x(), a_cal_.y(), a_cal_.z(),
-        &pitch_deg, &roll_deg, &yaw_deg,
+        a_grav.x(), a_grav.y(), a_grav.z(),
+        &pitch_dummy, &roll_dummy, &yaw_dummy,
         dt);
     }
 
-    // Mahony returns degrees already
-    roll_deg_  = roll_deg;
-    pitch_deg_ = pitch_deg;
-    yaw_deg_   = yaw_deg;
+    // DO NOT trust the Mahony file's Euler outputs: compute using your known-good convention.
+    // Mahony quaternion: q0=w, q1=x, q2=y, q3=z
+    float x = mahony_.q1;
+    float y = mahony_.q2;
+    float z = mahony_.q3;
+    float w = mahony_.q0;
 
-    // IMPORTANT:
-    // Many M5 stacks end up with yaw sign inverted relative to compass heading convention.
-    // Your earlier Mahony example effectively mapped heading = wrap360(-yaw).
+    // Normalize defensively
+    const float nn = x*x + y*y + z*z + w*w;
+    if (nn > 1e-12f) {
+      const float invn = 1.0f / sqrtf(nn);
+      x *= invn; y *= invn; z *= invn; w *= invn;
+    }
+
+    // ZYX yaw-pitch-roll (same formulas as your qMEKF version)
+    const float siny_cosp = 2.0f * (w*z + x*y);
+    const float cosy_cosp = 1.0f - 2.0f * (y*y + z*z);
+    const float yaw = atan2f(siny_cosp, cosy_cosp);
+
+    float sinp = 2.0f * (w*y - z*x);
+    sinp = clampf_(sinp, -1.0f, 1.0f);
+    const float pitch = asinf(sinp);
+
+    const float sinr_cosp = 2.0f * (w*x + y*z);
+    const float cosr_cosp = 1.0f - 2.0f * (x*x + y*y);
+    const float roll = atan2f(sinr_cosp, cosr_cosp);
+
+    roll_deg_  = wrap180_(roll  * RAD_TO_DEG);
+    pitch_deg_ =           pitch * RAD_TO_DEG;
+    yaw_deg_   =           yaw   * RAD_TO_DEG;
+
+    // Compass heading convention (matches your earlier Mahony example)
     heading_deg_ = wrap360_(-yaw_deg_);
 
     // ROT (deg/min): gyro projected into world-Z, with stillness-gated bias removal
@@ -387,22 +412,19 @@ private:
       }
     }
 
+    // Bias-correct gyro for ROT
     Vector3f w_use = w_cal_;
     if (gyro_bias_ok_) w_use -= gyro_bias_ema_;
 
-    // Mahony quaternion: q0=w, q1=x, q2=y, q3=z (already normalized each update)
-    const float x = mahony_.q1;
-    const float y = mahony_.q2;
-    const float z = mahony_.q3;
-    const float w = mahony_.q0;
-
+    // Project to world frame using the SAME quaternion convention.
     Vector3f w_world = quatRotateBodyToWorld_(x, y, z, w, w_use);
 
-    // If ROT sign is flipped for your consumer, negate here.
+    // In NED, +Z is down. Rate about +Z maps to NMEA ROT sign (if sign is flipped, negate here).
     float rot_dpm_meas = w_world.z() * RAD_TO_DEG * 60.0f;
 
     rot_dpm_meas = clampf_(rot_dpm_meas, -720.0f, 720.0f);
 
+    // Low-pass ROT
     const float tau_rot = 1.5f;
     const float alpha_r = 1.0f - expf(-dt / tau_rot);
 
@@ -442,6 +464,7 @@ private:
   }
 
   void updateUI_() {
+    // If we're in the tap-group decision window, keep the pending screen visible.
     if (tap_count_ > 0) return;
 
     const uint32_t now_ms = millis();
@@ -499,6 +522,7 @@ private:
     nmea_rot(COMPASS_NMEA_TALKER, rot_dpm_filt_, valid);
 #else
     const float t = (micros() - start_us_) * 1e-6f;
+
     Serial.printf("t=%.2f ", (double)t);
     Serial.printf("HDG:%6.1f ", (double)heading_deg_);
     Serial.printf("ROLL:%6.1f PITCH:%6.1f ", (double)roll_deg_, (double)pitch_deg_);
