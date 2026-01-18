@@ -4,8 +4,9 @@
   AtomS3R Tilt-Compensated Compass + IMU Calibration Wizard (Mahony)
 
   FIXES vs prior attempt:
-  - Feed accel to Mahony exactly like qMEKF: direction only (normalize to g_std), NO sign flip.
-  - Feed mag as unit direction exactly like qMEKF.
+  - Feed accel to Mahony as direction-only, BUT WITH SIGN that Mahony expects (flat => +Z):
+      a_att = -a_cal_ normalized to g_std
+  - Feed mag as unit direction like qMEKF.
   - Treat Mahony quaternion as WORLD->BODY and conjugate to get BODY->WORLD before:
       * Euler extraction (roll/pitch/yaw)
       * ROT world-projection
@@ -72,7 +73,7 @@ static inline float wrap180_(float deg) {
 }
 
 static inline Vector3f quatRotateBodyToWorld_(float x, float y, float z, float w,
-                                             const Vector3f& v_body) {
+                                              const Vector3f& v_body) {
   // (x,y,z,w) unit quaternion rotating body->world
   Vector3f q(x, y, z);
   Vector3f t = 2.0f * q.cross(v_body);
@@ -302,7 +303,7 @@ private:
     mag_ok_ = (mn > 5.0f && mn < 200.0f);
     mag_norm_uT_ = mn;
 
-    // Mag gating (your “stuck repeat” logic)
+    // Mag gating
     const uint32_t now_ms = millis();
     bool mag_fresh = false;
     if (mag_ok_) {
@@ -336,17 +337,17 @@ private:
     }
     mag_fresh_ = mag_fresh;
 
-    // ---- EXACTLY LIKE qMEKF: accel direction only (normalize to g_std) ----
-    Vector3f a_att = a_cal_;
+    // ---- Mahony accel input FIX: sign so flat => +Z in Mahony convention ----
+    Vector3f a_att = -a_cal_;  // FIX for roll=-180 when flat
     const float an = a_att.norm();
     if (an > 1e-6f) a_att *= (ImuCalCfg::g_std / an);
 
-    // ---- EXACTLY LIKE qMEKF: mag direction (unit vector) ----
+    // ---- Mag direction (unit vector) ----
     Vector3f m_u = Vector3f::Zero();
     if (mag_ok_ && mn > 1e-6f) m_u = m_cal_ / mn;
 
-    // Run Mahony with the same “direction” inputs
-    float pd=0, rd=0, yd=0; // ignore these outputs
+    // Run Mahony (ignore its Euler outputs; we compute from quaternion)
+    float pd=0, rd=0, yd=0;
     if (mag_ok_ && mag_fresh_) {
       mahony_AHRS_update_mag(&mahony_,
         w_cal_.x(), w_cal_.y(), w_cal_.z(),
@@ -363,7 +364,7 @@ private:
     }
 
     // Mahony stores q as (w,x,y,z) but direction may be WORLD->BODY.
-    // Convert to BODY->WORLD by conjugation before using your qMEKF Euler formulas.
+    // Convert to BODY->WORLD by conjugation before using Euler formulas.
     float w = mahony_.q0;
     float x = -mahony_.q1;
     float y = -mahony_.q2;
@@ -376,7 +377,7 @@ private:
       x *= invn; y *= invn; z *= invn; w *= invn;
     }
 
-    // ---- SAME Euler block as your working qMEKF sketch ----
+    // Euler from quaternion (same style as qMEKF)
     const float siny_cosp = 2.0f * (w*z + x*y);
     const float cosy_cosp = 1.0f - 2.0f * (y*y + z*z);
     const float yaw = atan2f(siny_cosp, cosy_cosp);
@@ -389,9 +390,9 @@ private:
     const float cosr_cosp = 1.0f - 2.0f * (x*x + y*y);
     const float roll = atan2f(sinr_cosp, cosr_cosp);
 
-    roll_deg_  = wrap180_(roll  * RAD_TO_DEG);
-    pitch_deg_ =           pitch * RAD_TO_DEG;
-    yaw_deg_   =           yaw   * RAD_TO_DEG;
+    roll_deg_  = wrap180_(roll * RAD_TO_DEG);
+    pitch_deg_ = pitch * RAD_TO_DEG;
+    yaw_deg_   = yaw   * RAD_TO_DEG;
 
     heading_deg_ = wrap360_(yaw_deg_);
 
