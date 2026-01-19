@@ -3,11 +3,6 @@
 
   AtomS3R Tilt-Compensated Compass + IMU Calibration Wizard (Mahony)
 
-  FIXES:
-  - Mahony_AHRS.h implementation integrates quaternion as BODY->WORLD.
-    Therefore: DO NOT CONJUGATE the quaternion in the .ino.
-  - Euler extraction (roll/pitch/yaw) must use BODY->WORLD quaternion.
-  - Accel fed as direction-only. Keep sign such that "flat" => roll≈0, pitch≈0.
 */
 
 #include <Arduino.h>
@@ -366,7 +361,6 @@ private:
         dt);
     }
 
-    // *** CRITICAL FIX ***
     // This Mahony implementation integrates q as BODY->WORLD already.
     // Do NOT conjugate here.
     float w = mahony_.q0;
