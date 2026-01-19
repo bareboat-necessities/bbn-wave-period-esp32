@@ -3,13 +3,11 @@
 
   AtomS3R Tilt-Compensated Compass + IMU Calibration Wizard (Mahony)
 
-  FIXES vs prior attempt:
-  - Feed accel to Mahony as direction-only, BUT WITH SIGN that Mahony expects (flat => +Z):
-      a_att = -a_cal_ normalized to g_std
-  - Feed mag as unit direction like qMEKF.
-  - Treat Mahony quaternion as WORLD->BODY and conjugate to get BODY->WORLD before:
-      * Euler extraction (roll/pitch/yaw)
-      * ROT world-projection
+  FIXES:
+  - Mahony_AHRS.h implementation integrates quaternion as BODY->WORLD.
+    Therefore: DO NOT CONJUGATE the quaternion in the .ino.
+  - Euler extraction (roll/pitch/yaw) must use BODY->WORLD quaternion.
+  - Accel fed as direction-only. Keep sign such that "flat" => roll≈0, pitch≈0.
 */
 
 #include <Arduino.h>
@@ -220,6 +218,9 @@ private:
   float yaw_deg_ = 0.0f;
   float heading_deg_ = 0.0f;
 
+  // ROT filter state
+  float rot_dpm_filt_state_ = 0.0f;
+
   // Mag gating
   bool mag_ok_ = false;
   bool mag_fresh_ = false;
@@ -278,6 +279,7 @@ private:
 
     rot_inited_   = false;
     rot_dpm_filt_ = 0.0f;
+
     gyro_bias_ok_  = false;
     gyro_bias_ema_.setZero();
 
@@ -337,12 +339,13 @@ private:
     }
     mag_fresh_ = mag_fresh;
 
-    // ---- Mahony accel input FIX: sign so flat => +Z in Mahony convention ----
-    Vector3f a_att = -a_cal_;  // FIX for roll=-180 when flat
+    // Accel input to Mahony: direction only. Keep the sign that makes flat => roll,pitch ~ 0.
+    // If flat still shows ~180, switch to a_att = a_cal_.
+    Vector3f a_att = -a_cal_;
     const float an = a_att.norm();
     if (an > 1e-6f) a_att *= (ImuCalCfg::g_std / an);
 
-    // ---- Mag direction (unit vector) ----
+    // Mag direction (unit vector)
     Vector3f m_u = Vector3f::Zero();
     if (mag_ok_ && mn > 1e-6f) m_u = m_cal_ / mn;
 
@@ -363,12 +366,13 @@ private:
         dt);
     }
 
-    // Mahony stores q as (w,x,y,z) but direction may be WORLD->BODY.
-    // Convert to BODY->WORLD by conjugation before using Euler formulas.
+    // *** CRITICAL FIX ***
+    // This Mahony implementation integrates q as BODY->WORLD already.
+    // Do NOT conjugate here.
     float w = mahony_.q0;
-    float x = -mahony_.q1;
-    float y = -mahony_.q2;
-    float z = -mahony_.q3;
+    float x = mahony_.q1;
+    float y = mahony_.q2;
+    float z = mahony_.q3;
 
     // Normalize defensively
     const float nn = x*x + y*y + z*z + w*w;
@@ -377,7 +381,7 @@ private:
       x *= invn; y *= invn; z *= invn; w *= invn;
     }
 
-    // Euler from quaternion (same style as qMEKF)
+    // Euler (ZYX): roll about +X (USB axis), pitch about +Y, yaw about +Z
     const float siny_cosp = 2.0f * (w*z + x*y);
     const float cosy_cosp = 1.0f - 2.0f * (y*y + z*z);
     const float yaw = atan2f(siny_cosp, cosy_cosp);
@@ -390,13 +394,13 @@ private:
     const float cosr_cosp = 1.0f - 2.0f * (x*x + y*y);
     const float roll = atan2f(sinr_cosp, cosr_cosp);
 
-    roll_deg_  = wrap180_(roll * RAD_TO_DEG);
-    pitch_deg_ = pitch * RAD_TO_DEG;
-    yaw_deg_   = yaw   * RAD_TO_DEG;
+    roll_deg_  = wrap180_(roll  * RAD_TO_DEG);
+    pitch_deg_ =           pitch * RAD_TO_DEG;
+    yaw_deg_   =           yaw   * RAD_TO_DEG;
 
     heading_deg_ = wrap360_(yaw_deg_);
 
-    // ROT: stillness-gated gyro bias estimate, then project gyro to world using BODY->WORLD quaternion
+    // ROT (stillness-gated gyro bias estimate, then project gyro to world)
     const float g = ImuCalCfg::g_std;
     const float a_err = fabsf(a_cal_.norm() - g);
     const bool still = (a_err < ROT_STILL_G_TOL_FRAC * g) && (w_cal_.norm() < ROT_STILL_GYRO_RAD_S);
