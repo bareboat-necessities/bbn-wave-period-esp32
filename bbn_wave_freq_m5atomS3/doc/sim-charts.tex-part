@@ -139,12 +139,12 @@ hard-iron bias and slow drift, and $\vct{w}_m$ is per-sample white noise.
 \end{figure}
 \begin{figure}[!t]\centering
   \IncludePGF{w3d_jonswap_medium_tuner.pgf}
-  \caption{Kalman 3D filter frequency and auto-tuner traces -- JONSWAP, medium $H_s$.}
+  \caption{Frequency tracker and auto-tuner traces -- JONSWAP, medium $H_s$.}
   \label{fig:w3d_jonswap_medium_tuner}
 \end{figure}
 \begin{figure}[!t]\centering
   \IncludePGF{w3d_jonswap_medium_dir.pgf}
-  \caption{Kalman 3D filter wave direction -- JONSWAP, medium $H_s$.}
+  \caption{Wave direction -- JONSWAP, medium $H_s$.}
   \label{fig:w3d_jonswap_medium_dir}
 \end{figure}
 
