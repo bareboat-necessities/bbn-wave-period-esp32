@@ -129,12 +129,12 @@ hard-iron bias and slow drift, and $\vct{w}_m$ is per-sample white noise.
 
 \begin{figure}[!t]\centering
   \IncludePGF{w3d_jonswap_medium.pgf}
-  \caption{Kalman 3D filter Euler angle comparison -- JONSWAP, medium $H_s$.}
+  \caption{Euler angle comparison -- JONSWAP, medium $H_s$.}
   \label{fig:w3d_jonswap_medium}
 \end{figure}
 \begin{figure}[!t]\centering
   \IncludePGF{w3d_jonswap_medium_zkin.pgf}
-  \caption{Kalman 3D filter vertical kinematics (displacement, velocity, acceleration) -- JONSWAP, medium $H_s$.}
+  \caption{Vertical kinematics (displacement, velocity, acceleration) -- JONSWAP, medium $H_s$.}
   \label{fig:w3d_jonswap_medium_zkin}
 \end{figure}
 \begin{figure}[!t]\centering
