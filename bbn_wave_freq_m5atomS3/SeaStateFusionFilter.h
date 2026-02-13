@@ -1185,8 +1185,6 @@ public:
         }
         last_mag_time_sec_ = t_;
 
-        if (t_ < cfg_.mag_delay_sec) return;
-
         // Learning path: accumulate only stable acc+mag+gyro samples.
         if (have_last_imu_) {
             float dtm = dt_mag_sec_;
@@ -1195,6 +1193,10 @@ public:
             }
             (void)mag_auto_.addMagSample(dtm, last_acc_body_ned_, mag_body_ned, last_gyro_body_ned_);
         }
+
+        // Respect mag delay for actual mag fusion, but keep learning active
+        // from startup so the first post-delay reference is better conditioned.
+        if (t_ < cfg_.mag_delay_sec) return;
 
         if (!mag_ref_set_) {
             if (cfg_.use_fixed_mag_world_ref) {
