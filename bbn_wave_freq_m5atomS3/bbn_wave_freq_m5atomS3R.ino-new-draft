@@ -88,7 +88,8 @@ static constexpr float ROT_STILL_G_TOL_FRAC = 0.12f;
 static constexpr float ROT_STILL_GYRO_RAD_S = 0.15f;
 
 // Output smoothing (tames twitchy heading)
-static constexpr float HEADING_TAU_S = 0.8f;   // 0.8..2.0 typical
+static constexpr float HEADING_TAU_S = 0.30f;  // faster lock-in, still smooths jitter
+static constexpr float HEADING_FAST_LOCK_ERR_DEG = 120.0f;
 
 using namespace atoms3r_ical;
 using Vector3f = Eigen::Vector3f;
@@ -170,6 +171,14 @@ static inline void lpf_heading_deg_(float meas_deg, float dt, float tau,
   }
   const float alpha = 1.0f - expf(-dt / tau);
   const float err = wrap180_(meas_deg - state_deg);    // shortest arc
+
+  // Startup / recovery fast lock: if we're far away, snap to measurement
+  // to avoid slow "full-circle" convergence.
+  if (fabsf(err) >= HEADING_FAST_LOCK_ERR_DEG) {
+    state_deg = wrap360_(meas_deg);
+    return;
+  }
+
   state_deg = wrap360_(state_deg + alpha * err);
 }
 
