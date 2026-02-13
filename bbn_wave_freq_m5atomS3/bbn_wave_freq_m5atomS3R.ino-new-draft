@@ -87,6 +87,10 @@ static constexpr float ROT_BIAS_TAU_S       = 5.0f;
 static constexpr float ROT_STILL_G_TOL_FRAC = 0.12f;
 static constexpr float ROT_STILL_GYRO_RAD_S = 0.15f;
 
+// Output smoothing (tames twitchy heading)
+static constexpr float HEADING_TAU_S = 0.30f;  // faster lock-in, still smooths jitter
+static constexpr float HEADING_FAST_LOCK_ERR_DEG = 120.0f;
+
 using namespace atoms3r_ical;
 using Vector3f = Eigen::Vector3f;
 
@@ -110,6 +114,72 @@ static inline Vector3f quatRotate_(const Eigen::Quaternionf& q, const Vector3f& 
   const Vector3f qv(q.x(), q.y(), q.z());
   const Vector3f t = 2.0f * qv.cross(v);
   return v + q.w() * t + qv.cross(t);
+}
+
+// --- FIXED magnetic heading ---
+// Compute heading using ONLY gravity direction (down_b in BODY) + mag vector in BODY.
+// This avoids “heading converges to North” caused by using the filter’s yaw-corrected q_bw.
+static inline bool magneticHeadingFromDownAndMagBody_(
+    const Vector3f& down_b_unit,   // world-down expressed in BODY (unit)
+    const Vector3f& mag_b_uT,      // mag in BODY (uT)
+    float& heading_deg_out)
+{
+  // Define your "forward" axis for heading (device nose).
+  // If your “front” isn’t +X, change this.
+  const Vector3f FWD_B(1.0f, 0.0f, 0.0f);
+
+  Vector3f d = down_b_unit;
+  const float dn = d.norm();
+  if (dn < 1e-6f) return false;
+  d /= dn;
+
+  Vector3f m = mag_b_uT;
+  const float mn = m.norm();
+  if (mn < 1e-6f) return false;
+  m /= mn;
+
+  // East in BODY (NED right-hand: down × north = east)
+  Vector3f east_b = d.cross(m);
+  const float en = east_b.norm();
+  if (en < 1e-6f) return false;
+  east_b /= en;
+
+  // North in BODY
+  Vector3f north_b = east_b.cross(d);
+  const float nn = north_b.norm();
+  if (nn < 1e-6f) return false;
+  north_b /= nn;
+
+  // Heading CW from North: atan2(E·FWD, N·FWD)
+  const float e = east_b.dot(FWD_B);
+  const float n = north_b.dot(FWD_B);
+  const float hdg = atan2f(e, n) * RAD_TO_DEG;
+
+  heading_deg_out = wrap360_(hdg);
+  return true;
+}
+
+// Circular low-pass for heading (degrees in [0,360))
+static inline void lpf_heading_deg_(float meas_deg, float dt, float tau,
+                                   bool& inited, float& state_deg)
+{
+  if (!std::isfinite(meas_deg)) return;
+  if (!inited) {
+    state_deg = wrap360_(meas_deg);
+    inited = true;
+    return;
+  }
+  const float alpha = 1.0f - expf(-dt / tau);
+  const float err = wrap180_(meas_deg - state_deg);    // shortest arc
+
+  // Startup / recovery fast lock: if we're far away, snap to measurement
+  // to avoid slow "full-circle" convergence.
+  if (fabsf(err) >= HEADING_FAST_LOCK_ERR_DEG) {
+    state_deg = wrap360_(meas_deg);
+    return;
+  }
+
+  state_deg = wrap360_(state_deg + alpha * err);
 }
 
 // -------------------- App --------------------
