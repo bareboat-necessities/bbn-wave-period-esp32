@@ -87,6 +87,10 @@ static constexpr float ROT_BIAS_TAU_S       = 5.0f;
 static constexpr float ROT_STILL_G_TOL_FRAC = 0.12f;
 static constexpr float ROT_STILL_GYRO_RAD_S = 0.15f;
 
+// If |a| is close to 1 g, derive tilt from accelerometer to keep heading fully
+// independent from gyro sign/convention issues in quaternion propagation.
+static constexpr float HEADING_ACCEL_G_TOL_FRAC = 0.18f;
+
 using namespace atoms3r_ical;
 using Vector3f = Eigen::Vector3f;
 
@@ -110,6 +114,41 @@ static inline Vector3f quatRotate_(const Eigen::Quaternionf& q, const Vector3f& 
   const Vector3f qv(q.x(), q.y(), q.z());
   const Vector3f t = 2.0f * qv.cross(v);
   return v + q.w() * t + qv.cross(t);
+}
+
+// Compute heading from down vector + magnetometer in BODY frame.
+// This avoids heading collapse to a fixed yaw from the fusion quaternion.
+static inline bool magneticHeadingFromDownAndMagBody_(
+    const Vector3f& down_b_unit,
+    const Vector3f& mag_b_uT,
+    float& heading_deg_out)
+{
+  const Vector3f FWD_B(1.0f, 0.0f, 0.0f);
+
+  Vector3f d = down_b_unit;
+  const float dn = d.norm();
+  if (dn < 1e-6f) return false;
+  d /= dn;
+
+  Vector3f m = mag_b_uT;
+  const float mn = m.norm();
+  if (mn < 1e-6f) return false;
+  m /= mn;
+
+  Vector3f east_b = d.cross(m);
+  const float en = east_b.norm();
+  if (en < 1e-6f) return false;
+  east_b /= en;
+
+  Vector3f north_b = east_b.cross(d);
+  const float nn = north_b.norm();
+  if (nn < 1e-6f) return false;
+  north_b /= nn;
+
+  const float e = east_b.dot(FWD_B);
+  const float n = north_b.dot(FWD_B);
+  heading_deg_out = wrap360_(atan2f(e, n) * RAD_TO_DEG);
+  return true;
 }
 
 // -------------------- App --------------------
@@ -405,17 +444,41 @@ private:
     Eigen::Quaternionf q_bw = fusion_.raw().mekf().quaternion_boat();
     q_bw.normalize();
 
-    // Match regular QMEKF behavior exactly: derive ZYX yaw/pitch/roll directly
-    // from q_bw and use yaw as heading.
+    Vector3f down_b(0,0,0);
+    {
+      const float a_norm = a_cal_.norm();
+      const bool accel_trust = fabsf(a_norm - g_std) <= (HEADING_ACCEL_G_TOL_FRAC * g_std);
+
+      if (accel_trust && a_norm > 1e-6f) {
+        // At rest/steady motion, accel gives world-down in BODY directly.
+        down_b = a_cal_ / a_norm;
+      } else {
+        // Fallback for dynamic maneuvers: use attitude estimate for tilt only.
+        const Vector3f down_w(0.0f, 0.0f, 1.0f);
+        down_b = quatRotate_(q_bw.conjugate(), down_w); // WORLD->BODY
+        const float dn = down_b.norm();
+        if (dn > 1e-6f) down_b /= dn;
+      }
+    }
+
+    // Magnetic heading (tilt-compensated) derived only from mag + gravity in BODY.
+    {
+      float hdg_meas = heading_deg_;
+      if (mag_ok_) {
+        float hdg = heading_deg_;
+        if (magneticHeadingFromDownAndMagBody_(down_b, m_cal_, hdg)) {
+          hdg_meas = hdg;
+        }
+      }
+      heading_deg_ = wrap360_(hdg_meas);
+    }
+
+    // Keep roll/pitch from quaternion for attitude display.
     {
       const float x = q_bw.x();
       const float y = q_bw.y();
       const float z = q_bw.z();
       const float w = q_bw.w();
-
-      const float siny_cosp = 2.0f * (w * z + x * y);
-      const float cosy_cosp = 1.0f - 2.0f * (y * y + z * z);
-      const float yaw = atan2f(siny_cosp, cosy_cosp);
 
       float sinp = 2.0f * (w * y - z * x);
       sinp = clampf_(sinp, -1.0f, 1.0f);
@@ -427,7 +490,6 @@ private:
 
       roll_deg_    = wrap180_(roll * RAD_TO_DEG);
       pitch_deg_   = wrap180_(pitch * RAD_TO_DEG);
-      heading_deg_ = wrap360_(yaw * RAD_TO_DEG);
     }
 
     // -------------------- ROT using fusion quaternion --------------------
