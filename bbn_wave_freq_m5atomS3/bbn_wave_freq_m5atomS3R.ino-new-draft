@@ -75,6 +75,7 @@ static constexpr uint32_t LOOP_PERIOD_US = (uint32_t)(1000000.0f / LOOP_HZ);
 
 // Mag pacing only (wrapper gates internally); 12ms ~ 83 Hz
 static constexpr uint32_t MAG_SAMPLE_SPACING_MS = 12;
+static constexpr float    MAG_MIN_DELTA_uT      = 0.02f;
 
 // Display / serial rates
 static constexpr uint32_t UI_REFRESH_MS   = 100;
@@ -112,33 +113,6 @@ static inline Vector3f quatRotate_(const Eigen::Quaternionf& q, const Vector3f& 
   const Vector3f qv(q.x(), q.y(), q.z());
   const Vector3f t = 2.0f * qv.cross(v);
   return v + q.w() * t + qv.cross(t);
-}
-
-// UI semantics roll/pitch from world-down expressed in BODY (unit).
-// Edit only FWD_B / RGT_B if your screen axes differ.
-static inline void uiRollPitchFromDownBody_(
-    const Vector3f& down_b_unit,
-    float& roll_deg_out,
-    float& pitch_deg_out)
-{
-  const Vector3f FWD_B( 1.0f, 0.0f, 0.0f); // USB direction (down the screen)
-  const Vector3f RGT_B( 0.0f, 1.0f, 0.0f); // screen right
-
-  Vector3f f = FWD_B.normalized();
-  Vector3f r = RGT_B.normalized();
-  Vector3f d = f.cross(r);                 // UI “screen normal”
-  if (d.squaredNorm() < 1e-6f) { roll_deg_out = 0.0f; pitch_deg_out = 0.0f; return; }
-  d.normalize();
-
-  const float df = down_b_unit.dot(f);
-  const float dr = down_b_unit.dot(r);
-  const float dd = down_b_unit.dot(d);
-
-  const float roll  = atan2f(dr, dd);
-  const float pitch = atan2f(df, sqrtf(dr*dr + dd*dd));
-
-  roll_deg_out  = wrap180_(roll  * RAD_TO_DEG);
-  pitch_deg_out = wrap180_(pitch * RAD_TO_DEG);
 }
 
 // --- FIXED magnetic heading ---
@@ -351,6 +325,7 @@ private:
   bool     mag_ok_     = false;
   bool     mag_fresh_  = false;
   float    mag_norm_uT_= 0.0f;
+  Vector3f last_mag_uT_ = Vector3f::Zero();
   uint32_t last_mag_ms_= 0;
 
 private:
@@ -361,6 +336,8 @@ private:
   }
 
   void resetFusion_() {
+    // Keep full SeaStateFusion startup behavior: linear block is internally staged
+    // (Cold/TunerWarm disable it; Live enables it) for in-motion initialization.
     constexpr bool WANT_LINEAR_BLOCK = true;
 
     const float acc_sigma = 1.51e-3f * g_std;
@@ -393,10 +370,13 @@ private:
     auto& ff = fusion_.raw();
     ff.enableLinearBlock(WANT_LINEAR_BLOCK);
     ff.enableTuner(true);
+    ff.enableHeaveRSGating(true);
+    ff.enableExtraDriftCorrection(true);
     ff.enableClamp(true);
     ff.setFreqInputCutoffHz(6.0f);
 
     last_mag_ms_ = 0;
+    last_mag_uT_.setZero();
     mag_fresh_ = false;
 
     rot_inited_   = false;
@@ -472,12 +452,19 @@ private:
 
     const uint32_t now_ms = millis();
     mag_fresh_ = false;
-    if (mag_ok_ && (uint32_t)(now_ms - last_mag_ms_) >= MAG_SAMPLE_SPACING_MS) {
-      last_mag_ms_ = now_ms;
-      mag_fresh_ = true;
-      fusion_.updateMag(m_cal_);
+    if (mag_ok_) {
+      const uint32_t dtm = now_ms - last_mag_ms_;
+      const float dm = (m_cal_ - last_mag_uT_).norm();
+      if (dtm >= MAG_SAMPLE_SPACING_MS && dm >= MAG_MIN_DELTA_uT) {
+        last_mag_ms_ = now_ms;
+        last_mag_uT_ = m_cal_;
+        mag_fresh_ = true;
+        fusion_.updateMag(m_cal_);
+      }
     }
 
+    // Kalman3D_Wave uses physical specific force magnitude in measurement_update_acc_only().
+    // Keep calibrated accel as-is (do not normalize to g) to preserve model consistency.
     fusion_.update(dt, w_cal_, a_cal_);
 
     // -------------------- ATTITUDE FROM FUSION (NED) --------------------
@@ -506,11 +493,13 @@ private:
       heading_deg_ = heading_filt_deg_;
     }
 
-    // UI roll/pitch from down_b
+    // Use SeaStateFusion/Kalman3D_Wave native Euler conversion (aerospace NED -> nautical ENU).
+    // This keeps UI attitude aligned with the filter frame conventions.
     {
-      const float dn = down_b.norm();
-      if (dn > 1e-6f) {
-        uiRollPitchFromDownBody_(down_b, roll_deg_, pitch_deg_);
+      const Vector3f eul_deg = fusion_.raw().getEulerNautical();
+      if (eul_deg.allFinite()) {
+        roll_deg_  = wrap180_(eul_deg.x());
+        pitch_deg_ = wrap180_(eul_deg.y());
       }
     }
 
