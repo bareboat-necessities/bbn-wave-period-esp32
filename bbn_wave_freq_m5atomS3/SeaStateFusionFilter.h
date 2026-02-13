@@ -1219,15 +1219,23 @@ public:
                     }
                 }
 
-                // Fallback after timeout to avoid getting stuck forever.
+                // Timeout fallback policy:
+                //  1) If caller provided a valid world-field prior, use it.
+                //  2) Otherwise, DO NOT latch from a single instantaneous mag sample,
+                //     because that can inject large yaw/tilt errors in rough sea states.
                 if (!have_ref_candidate &&
-                    std::isfinite(mag_ref_deadline_sec_) && t_ >= mag_ref_deadline_sec_ &&
-                    mag_body_ned.allFinite() && mag_body_ned.norm() > 1e-3f)
+                    std::isfinite(mag_ref_deadline_sec_) && t_ >= mag_ref_deadline_sec_)
                 {
-                    have_ref_candidate = true;
+                    if (cfg_.mag_world_ref.allFinite() && cfg_.mag_world_ref.norm() > 1e-3f) {
+                        impl_.mekf().set_mag_world_ref(cfg_.mag_world_ref);
+                        mag_ref_set_ = true;
+                    } else {
+                        // Keep waiting; extend deadline to avoid busy re-checking.
+                        mag_ref_deadline_sec_ = t_ + cfg_.mag_ref_timeout_sec;
+                    }
                 }
 
-                if (have_ref_candidate) {
+                if (!mag_ref_set_ && have_ref_candidate) {
                     Eigen::Quaternionf q_tilt = tiltOnlyQuatFromAccel_(acc_for_ref);
                     q_tilt.normalize();
 
