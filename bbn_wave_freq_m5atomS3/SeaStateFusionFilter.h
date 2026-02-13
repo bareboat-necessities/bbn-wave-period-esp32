@@ -953,16 +953,15 @@ private:
         mekf_->set_linear_block_enabled(enable_linear_block_);
     
         if (freeze_acc_bias_until_live_) {
-            // Only enable bias updates if we are NOT locked.
+            // Bias learning may remain locked until magnetometer has stabilized,
+            // but accel measurement noise should still return to nominal in Live.
             const bool allow_bias = !accel_bias_locked_;
             mekf_->set_acc_bias_updates_enabled(allow_bias);
-            // Only restore nominal Racc when bias is allowed to learn.
-            if (allow_bias) {
-                if (warmup_Racc_active_ && Racc_nominal_.allFinite() && Racc_nominal_.maxCoeff() > 0.0f) {
-                    mekf_->set_Racc(Racc_nominal_);
-                }
-                warmup_Racc_active_ = false;
+
+            if (warmup_Racc_active_ && Racc_nominal_.allFinite() && Racc_nominal_.maxCoeff() > 0.0f) {
+                mekf_->set_Racc(Racc_nominal_);
             }
+            warmup_Racc_active_ = false;
         }
         apply_ou_tune_();
         if (enable_linear_block_) apply_RS_tune_();
