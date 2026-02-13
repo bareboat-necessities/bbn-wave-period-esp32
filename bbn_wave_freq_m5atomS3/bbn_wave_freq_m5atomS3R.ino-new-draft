@@ -296,9 +296,6 @@ private:
   bool     gyro_bias_ok_  = false;
   Vector3f gyro_bias_ema_ = Vector3f::Zero();   // rad/s (BODY)
 
-  bool  heading_inited_   = false;
-  float heading_filt_deg_ = 0.0f;
-
   using UI = atoms3r_ical::M5Ui;
   UI ui_{};
   ImuCalStoreNvs store_{};
@@ -393,8 +390,6 @@ private:
     gyro_bias_ok_ = false;
     gyro_bias_ema_.setZero();
 
-    heading_inited_   = false;
-    heading_filt_deg_ = 0.0f;
     heading_deg_      = 0.0f;
   }
 
@@ -480,36 +475,29 @@ private:
     Eigen::Quaternionf q_bw = fusion_.raw().mekf().quaternion_boat();
     q_bw.normalize();
 
-    // world-down expressed in BODY (NED down = +Z)
-    Vector3f down_b(0,0,0);
+    // Match regular QMEKF behavior exactly: derive ZYX yaw/pitch/roll directly
+    // from q_bw and use yaw as heading.
     {
-      const Vector3f down_w(0.0f, 0.0f, 1.0f);
-      down_b = quatRotate_(q_bw.conjugate(), down_w); // WORLD->BODY
-      const float dn = down_b.norm();
-      if (dn > 1e-6f) down_b /= dn;
-    }
+      const float x = q_bw.x();
+      const float y = q_bw.y();
+      const float z = q_bw.z();
+      const float w = q_bw.w();
 
-    // Magnetic heading: use down_b + mag in BODY (DO NOT use q_bw yaw)
-    {
-      float hdg_meas = heading_deg_; // fallback
-      if (mag_ok_) {
-        float hdg;
-        if (magneticHeadingFromDownAndMagBody_(down_b, m_cal_, hdg)) {
-          hdg_meas = hdg;
-        }
-      }
-      lpf_heading_deg_(hdg_meas, dt, HEADING_TAU_S, heading_inited_, heading_filt_deg_);
-      heading_deg_ = heading_filt_deg_;
-    }
+      const float siny_cosp = 2.0f * (w * z + x * y);
+      const float cosy_cosp = 1.0f - 2.0f * (y * y + z * z);
+      const float yaw = atan2f(siny_cosp, cosy_cosp);
 
-    // Use SeaStateFusion/Kalman3D_Wave native Euler conversion (aerospace NED -> nautical ENU).
-    // This keeps UI attitude aligned with the filter frame conventions.
-    {
-      const Vector3f eul_deg = fusion_.raw().getEulerNautical();
-      if (eul_deg.allFinite()) {
-        roll_deg_  = wrap180_(eul_deg.x());
-        pitch_deg_ = wrap180_(eul_deg.y());
-      }
+      float sinp = 2.0f * (w * y - z * x);
+      sinp = clampf_(sinp, -1.0f, 1.0f);
+      const float pitch = asinf(sinp);
+
+      const float sinr_cosp = 2.0f * (w * x + y * z);
+      const float cosr_cosp = 1.0f - 2.0f * (x * x + y * y);
+      const float roll = atan2f(sinr_cosp, cosr_cosp);
+
+      roll_deg_    = wrap180_(roll * RAD_TO_DEG);
+      pitch_deg_   = wrap180_(pitch * RAD_TO_DEG);
+      heading_deg_ = wrap360_(yaw * RAD_TO_DEG);
     }
 
     // -------------------- ROT using fusion quaternion --------------------
@@ -600,14 +588,13 @@ private:
     nmea_rot(COMPASS_NMEA_TALKER, rot_dpm_filt_, valid);
 #else
     const float t = (micros() - start_us_) * 1e-6f;
-    Serial.printf("t=%.2f HDG:%6.1f R:%6.1f P:%6.1f |m|=%.1f live:%d hdg_tau=%.2f\n",
+    Serial.printf("t=%.2f HDG:%6.1f R:%6.1f P:%6.1f |m|=%.1f live:%d\n",
                   (double)t,
                   (double)heading_deg_,
                   (double)roll_deg_,
                   (double)pitch_deg_,
                   (double)mag_norm_uT_,
-                  (int)fusion_.isLive(),
-                  (double)HEADING_TAU_S);
+                  (int)fusion_.isLive());
 #endif
   }
 };
