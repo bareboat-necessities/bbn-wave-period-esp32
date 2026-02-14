@@ -35,7 +35,7 @@
 #include "AtomS3R_ImuCal.h"
 #include "AtomS3R_M5Ui.h"
 #if COMPASS_ENABLE_WIZARD
-  #include "AtomS3R_ImuCalWizard.h"
+  #include "ImuCalWizardRunner.h"
 #endif
 #include "AtomS3R_CompassUI.h"
 #include "NmeaCompass.h"
@@ -154,11 +154,7 @@ static inline bool magneticHeadingFromDownAndMagBody_(
 // -------------------- App --------------------
 class FusionApp {
 public:
-  FusionApp()
-#if COMPASS_ENABLE_WIZARD
-    : wizard_(ui_, store_)
-#endif
-  {}
+  FusionApp() {}
 
   void begin() {
     Serial.begin(115200);
@@ -194,7 +190,7 @@ public:
     if (!have_blob_) {
       Serial.println("[BOOT] No saved calibration. Starting wizard...");
       ImuCalBlobV1 saved{};
-      if (wizard_.runAndSave(saved)) {
+      if (runImuCalWizard(ui_, store_, saved)) {
         Serial.println("[BOOT] Wizard saved calibration.");
         blob_ = saved;
         have_blob_ = true;
@@ -270,7 +266,6 @@ private:
   ImuCalStoreNvs store_{};
 
 #if COMPASS_ENABLE_WIZARD
-  ImuCalWizard wizard_;
   int tap_count_ = 0;
   uint32_t tap_deadline_ms_ = 0;
 #endif
@@ -378,7 +373,7 @@ private:
   void handleRunWizard_() {
     Serial.println("[HOME] RUN WIZARD");
     ImuCalBlobV1 saved{};
-    if (!wizard_.runAndSave(saved)) {
+    if (!runImuCalWizard(ui_, store_, saved)) {
       ui_.notSavedNotice();
       return;
     }
