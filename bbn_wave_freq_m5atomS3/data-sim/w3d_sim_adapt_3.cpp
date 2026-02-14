@@ -427,30 +427,15 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
     
     // mag ref policy
     cfg.mag_delay_sec = MAG_DELAY_SEC;
-    cfg.use_fixed_mag_world_ref = true;    // deterministic yaw lock for repeatable QA runs
+    cfg.use_fixed_mag_world_ref = false;   // learn online; method handles robust fallback
     cfg.mag_world_ref = mag_world_a;
     
     // warmup policy 
     cfg.freeze_acc_bias_until_live = true;
-    cfg.Racc_warmup = 0.2f;
+    cfg.Racc_warmup = 0.5f;
     
     fusion.begin(cfg);
     auto& filter = fusion.raw();
-
-    // Sim knows nominal wave period from filename metadata, so constrain adaptation
-    // around physically plausible values to reduce drift in displacement reconstruction.
-    if (wp.period > 0.0f && std::isfinite(wp.period)) {
-        const float f_nom_hz = 1.0f / wp.period;
-        const float f_min = std::max(0.06f, 0.65f * f_nom_hz);
-        const float f_max = std::min(1.20f, 1.55f * f_nom_hz);
-        filter.setFreqBounds(f_min, f_max);
-
-        const float tau_nom = 0.5f * wp.period;
-        const float tau_min = std::max(0.35f, 0.65f * tau_nom);
-        const float tau_max = std::min(8.0f, 1.55f * tau_nom);
-        filter.setTauBounds(tau_min, tau_max);
-        filter.setAdaptationTimeConstants(3.0f);
-    }
     
     // Optional: attitude-only mode tweaks (via raw() escape hatch)
     if (attitude_only) {
