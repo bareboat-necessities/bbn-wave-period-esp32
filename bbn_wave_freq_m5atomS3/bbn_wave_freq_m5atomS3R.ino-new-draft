@@ -21,7 +21,7 @@
 #include <Arduino.h>
 
 #ifndef COMPASS_ENABLE_WIZARD
-  #define COMPASS_ENABLE_WIZARD 0
+  #define COMPASS_ENABLE_WIZARD 1
 #endif
 
 #include <M5Unified.h>
