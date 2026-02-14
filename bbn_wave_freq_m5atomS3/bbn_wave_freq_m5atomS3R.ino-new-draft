@@ -446,18 +446,23 @@ private:
 
     Vector3f down_b(0,0,0);
     {
+      // Quaternion-based WORLD->BODY down reference.
+      const Vector3f down_w(0.0f, 0.0f, 1.0f);
+      Vector3f down_q_b = quatRotate_(q_bw.conjugate(), down_w);
+      const float dnq = down_q_b.norm();
+      if (dnq > 1e-6f) down_q_b /= dnq;
+
       const float a_norm = a_cal_.norm();
       const bool accel_trust = fabsf(a_norm - g_std) <= (HEADING_ACCEL_G_TOL_FRAC * g_std);
 
       if (accel_trust && a_norm > 1e-6f) {
-        // At rest/steady motion, accel gives world-down in BODY directly.
+        // At rest/steady motion, use accel for tilt but lock polarity to quaternion down.
+        // This prevents a 180/-180 roll flip if accel sign convention differs.
         down_b = a_cal_ / a_norm;
+        if (dnq > 1e-6f && down_b.dot(down_q_b) < 0.0f) down_b = -down_b;
       } else {
         // Fallback for dynamic maneuvers: use attitude estimate for tilt only.
-        const Vector3f down_w(0.0f, 0.0f, 1.0f);
-        down_b = quatRotate_(q_bw.conjugate(), down_w); // WORLD->BODY
-        const float dn = down_b.norm();
-        if (dn > 1e-6f) down_b /= dn;
+        down_b = down_q_b;
       }
     }
 
