@@ -335,18 +335,16 @@ public:
                 // When displacement returns to normal range R_S needs to
                 // be restored to normal value predicted by adaptation
                 // also relatively fast and smooth. 
-                float sigma_disp_vert  = extra_drift_gain_ * getDisplacementScale();
-                float sigma_disp_horiz = sigma_disp_vert * S_factor_;
-        
-                // Never let this pseudo-measurement get *too* confident
+                float sigma_disp_vert = extra_drift_gain_ * getDisplacementScale();
+
+                // Never let this pseudo-measurement get *too* confident.
+                // We only trust the vertical component here because the proxy
+                // p≈-a/ω² is fed from vertical acceleration in this pipeline.
                 const float SIGMA_P_MIN = 0.05f;  // 5 cm
                 const float SIGMA_P_MAX = 5.0f;   // 5 m, safety upper bound
-                sigma_disp_vert  = std::min(std::max(sigma_disp_vert,  SIGMA_P_MIN), SIGMA_P_MAX);
-                sigma_disp_horiz = std::min(std::max(sigma_disp_horiz, SIGMA_P_MIN), SIGMA_P_MAX);
-        
-                Eigen::Vector3f sigma_disp_meas(sigma_disp_horiz, sigma_disp_horiz, sigma_disp_vert);   
-                Eigen::Vector3f acc_in(0, 0, a_z_inertial);
-                updatePositionFromAccOmega(acc_in, omega, sigma_disp_meas);
+                sigma_disp_vert = std::min(std::max(sigma_disp_vert, SIGMA_P_MIN), SIGMA_P_MAX);
+
+                updatePositionFromVerticalAccOmega(a_z_inertial, omega, sigma_disp_vert);
             }
         }
       
@@ -407,18 +405,40 @@ public:
         const Eigen::Vector3f& a, float omega, const Eigen::Vector3f& sigma_disp_meas, float omega_min = (2.0f * M_PI * 0.06f)) 
     {
         if (!std::isfinite(omega)) return;
-    
+
         float abs_omega = std::abs(omega);
         if (abs_omega < omega_min) {
             // Too low frequency: 1/ω² would blow up
             abs_omega = omega_min;
         }
         const float w2 = abs_omega * abs_omega;
-    
+
         // First-order approximation: p ≈ -a/ω² on all axes
         Eigen::Vector3f p_meas = -a / w2;
         if (!p_meas.allFinite()) return;
 
+        mekf_->measurement_update_position_pseudo(p_meas, sigma_disp_meas);
+    }
+
+    // Vertical-only pseudo-position correction from inertial vertical acceleration.
+    // Horizontal axes are set to the current estimate so this update does not inject
+    // artificial XY innovations from an under-observed model.
+    void updatePositionFromVerticalAccOmega(float a_z, float omega, float sigma_disp_z,
+                                            float omega_min = (2.0f * M_PI * 0.06f))
+    {
+        if (!mekf_ || !std::isfinite(a_z) || !std::isfinite(sigma_disp_z) || sigma_disp_z <= 0.0f) return;
+        if (!std::isfinite(omega)) return;
+
+        float abs_omega = std::abs(omega);
+        if (abs_omega < omega_min) abs_omega = omega_min;
+        const float w2 = abs_omega * abs_omega;
+
+        Eigen::Vector3f p_meas = mekf_->get_position();
+        p_meas.z() = -a_z / w2;
+        if (!p_meas.allFinite()) return;
+
+        const float sigma_xy = std::max(10.0f * sigma_disp_z, 2.0f);
+        Eigen::Vector3f sigma_disp_meas(sigma_xy, sigma_xy, sigma_disp_z);
         mekf_->measurement_update_position_pseudo(p_meas, sigma_disp_meas);
     }
 
