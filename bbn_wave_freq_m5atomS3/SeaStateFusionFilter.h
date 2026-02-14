@@ -1103,6 +1103,11 @@ public:
         dt_mag_sec_ = NAN;
         mag_ref_deadline_sec_ = cfg_.mag_delay_sec + cfg_.mag_ref_timeout_sec;
 
+        // Fallback running means (used only if MagAutoTuner is not ready by timeout)
+        fallback_acc_mean_.setZero();
+        fallback_mag_mean_.setZero();
+        fallback_mean_count_ = 0;
+
         // Reset tuner
         if (cfg_.use_custom_mag_tuner_cfg) {
             mag_auto_.setConfig(cfg_.mag_tuner_cfg);    
@@ -1194,6 +1199,22 @@ public:
             (void)mag_auto_.addMagSample(dtm, last_acc_body_ned_, mag_body_ned, last_gyro_body_ned_);
         }
 
+        // Keep robust running means as a timeout fallback (method-level safety net).
+        // This avoids latching world magnetic reference from one instantaneous sample.
+        if (have_last_imu_) {
+            const float an = last_acc_body_ned_.norm();
+            const float mn = mag_body_ned.norm();
+            const float g = 9.80665f;
+            const bool accel_ok = last_acc_body_ned_.allFinite() && (an > 0.85f * g) && (an < 1.15f * g);
+            const bool mag_ok   = mag_body_ned.allFinite() && (mn > 1e-3f);
+            if (accel_ok && mag_ok) {
+                fallback_mean_count_++;
+                const float invN = 1.0f / static_cast<float>(fallback_mean_count_);
+                fallback_acc_mean_ += (last_acc_body_ned_ - fallback_acc_mean_) * invN;
+                fallback_mag_mean_ += (mag_body_ned      - fallback_mag_mean_) * invN;
+            }
+        }
+
         // Respect mag delay for actual mag fusion, but keep learning active
         // from startup so the first post-delay reference is better conditioned.
         if (t_ < cfg_.mag_delay_sec) return;
@@ -1203,13 +1224,21 @@ public:
                 impl_.mekf().set_mag_world_ref(cfg_.mag_world_ref);
                 mag_ref_set_ = true;
             } else {
+                // If a valid world-field prior exists (e.g., WMM), use it immediately
+                // once mag fusion window opens. This avoids prolonged yaw drift while
+                // waiting for learned alignment under rough sea/noisy startup.
+                if (cfg_.mag_world_ref.allFinite() && cfg_.mag_world_ref.norm() > 1e-3f) {
+                    impl_.mekf().set_mag_world_ref(cfg_.mag_world_ref);
+                    mag_ref_set_ = true;
+                }
+
                 Eigen::Vector3f mag_body_for_ref = mag_body_ned;
                 Eigen::Vector3f acc_for_ref = last_acc_body_ned_;
                 bool have_ref_candidate = false;
 
                 // Preferred: learned relation from stable samples only.
                 Eigen::Vector3f acc_mean, mag_raw_mean, mag_unit_mean;
-                if (mag_auto_.getResult(acc_mean, mag_raw_mean, mag_unit_mean)) {
+                if (!mag_ref_set_ && mag_auto_.getResult(acc_mean, mag_raw_mean, mag_unit_mean)) {
                     if (acc_mean.allFinite() && acc_mean.norm() > 1e-3f &&
                         mag_raw_mean.allFinite() && mag_raw_mean.norm() > 1e-3f)
                     {
@@ -1219,15 +1248,29 @@ public:
                     }
                 }
 
-                // Fallback after timeout to avoid getting stuck forever.
+                // Timeout fallback policy:
+                //  1) Prefer caller-provided world-field prior if valid.
+                //  2) Else use robust running means (many samples), never one-shot sample.
                 if (!have_ref_candidate &&
-                    std::isfinite(mag_ref_deadline_sec_) && t_ >= mag_ref_deadline_sec_ &&
-                    mag_body_ned.allFinite() && mag_body_ned.norm() > 1e-3f)
+                    std::isfinite(mag_ref_deadline_sec_) && t_ >= mag_ref_deadline_sec_)
                 {
-                    have_ref_candidate = true;
+                    if (cfg_.mag_world_ref.allFinite() && cfg_.mag_world_ref.norm() > 1e-3f) {
+                        impl_.mekf().set_mag_world_ref(cfg_.mag_world_ref);
+                        mag_ref_set_ = true;
+                    } else if (fallback_mean_count_ >= 25 &&
+                               fallback_acc_mean_.allFinite() && fallback_acc_mean_.norm() > 1e-3f &&
+                               fallback_mag_mean_.allFinite() && fallback_mag_mean_.norm() > 1e-3f)
+                    {
+                        acc_for_ref = fallback_acc_mean_;
+                        mag_body_for_ref = fallback_mag_mean_;
+                        have_ref_candidate = true;
+                    } else {
+                        // Keep waiting; extend deadline to avoid busy re-checking.
+                        mag_ref_deadline_sec_ = t_ + cfg_.mag_ref_timeout_sec;
+                    }
                 }
 
-                if (have_ref_candidate) {
+                if (!mag_ref_set_ && have_ref_candidate) {
                     Eigen::Quaternionf q_tilt = tiltOnlyQuatFromAccel_(acc_for_ref);
                     q_tilt.normalize();
 
@@ -1320,6 +1363,11 @@ private:
     Eigen::Vector3f last_gyro_body_ned_ = Eigen::Vector3f::Zero();
     float last_imu_dt_ = NAN;
     bool  have_last_imu_ = false;
+
+    // Robust running means used only as timeout fallback for mag-world ref init.
+    Eigen::Vector3f fallback_acc_mean_ = Eigen::Vector3f::Zero();
+    Eigen::Vector3f fallback_mag_mean_ = Eigen::Vector3f::Zero();
+    int fallback_mean_count_ = 0;
 
     MagAutoTuner mag_auto_;
 };
