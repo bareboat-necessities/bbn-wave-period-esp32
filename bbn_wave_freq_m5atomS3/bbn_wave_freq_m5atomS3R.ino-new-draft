@@ -473,20 +473,14 @@ private:
       heading_deg_ = wrap360_(hdg_meas);
     }
 
-    // Keep roll/pitch from quaternion for attitude display.
+    // Derive roll/pitch from world-down in BODY so "flat" reads near 0/0
+    // even if quaternion Euler convention/sign differs from display convention.
     {
-      const float x = q_bw.x();
-      const float y = q_bw.y();
-      const float z = q_bw.z();
-      const float w = q_bw.w();
-
-      float sinp = 2.0f * (w * y - z * x);
-      sinp = clampf_(sinp, -1.0f, 1.0f);
-      const float pitch = asinf(sinp);
-
-      const float sinr_cosp = 2.0f * (w * x + y * z);
-      const float cosr_cosp = 1.0f - 2.0f * (x * x + y * y);
-      const float roll = atan2f(sinr_cosp, cosr_cosp);
+      // For NED (+Z down) with BODY axes (+X fwd, +Y right, +Z down):
+      // down_b = [-sin(pitch), sin(roll)cos(pitch), cos(roll)cos(pitch)]
+      // => pitch = asin(-down_b.x), roll = atan2(down_b.y, down_b.z)
+      const float pitch = asinf(clampf_(-down_b.x(), -1.0f, 1.0f));
+      const float roll  = atan2f(down_b.y(), down_b.z());
 
       roll_deg_    = wrap180_(roll * RAD_TO_DEG);
       pitch_deg_   = wrap180_(pitch * RAD_TO_DEG);
