@@ -192,6 +192,7 @@ namespace mono_wedge {
       fixed_ringbuffer& operator=(const fixed_ringbuffer& original) {
         _deallocate();
         _copy_from(original, original.capacity());
+        return *this;
       }
       fixed_ringbuffer(const fixed_ringbuffer& original) {
         _copy_from(original, original.capacity());
@@ -201,6 +202,7 @@ namespace mono_wedge {
       fixed_ringbuffer& operator=(fixed_ringbuffer&& source) {
         _deallocate();
         _move_from(source);
+        return *this;
       }
       fixed_ringbuffer(fixed_ringbuffer&& source) noexcept {
         _move_from(source);
@@ -419,7 +421,7 @@ namespace mono_wedge {
         _ind_bits = 0;
       }
   
-      void _move_from(const fixed_ringbuffer& source) {
+      void _move_from(fixed_ringbuffer& source) {
         _alloc = source._alloc;
         _store = source._store;
         _ind_bits = source._ind_bits;
