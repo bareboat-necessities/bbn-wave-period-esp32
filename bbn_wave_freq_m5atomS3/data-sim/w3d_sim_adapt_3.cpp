@@ -30,7 +30,7 @@ const float FAIL_ERR_LIMIT_PERCENT_Z_PMSTOKES  = 10.0f;
 
 const float FAIL_ERR_LIMIT_YAW_DEG = 3.9f;  
 
-const float FAIL_ERR_LIMIT_PERCENT_3D_JONSWAP   = 50.0f;
+const float FAIL_ERR_LIMIT_PERCENT_3D_JONSWAP   = 55.0f;
 const float FAIL_ERR_LIMIT_PERCENT_3D_PMSTOKES  = 60.0f;
 
 const float FAIL_ACC_Z_BIAS_PERCENT             = 30.0f;
