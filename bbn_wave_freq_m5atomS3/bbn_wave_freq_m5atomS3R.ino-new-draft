@@ -290,6 +290,7 @@ private:
   float pitch_deg_   = 0.0f;
   float heading_deg_ = 0.0f;
   float heave_m_     = 0.0f;
+  float wave_envelope_m_     = 0.0f;
   float wave_hz_     = FREQ_GUESS;
 
   bool     mag_ok_     = false;
@@ -341,7 +342,7 @@ private:
     ff.enableLinearBlock(WANT_LINEAR_BLOCK);
     ff.enableTuner(true);
     ff.enableHeaveRSGating(true);
-    ff.enableExtraDriftCorrection(true);
+    ff.enableExtraDriftCorrection(false);
     ff.enableClamp(true);
     ff.setFreqInputCutoffHz(6.0f);
 
@@ -512,6 +513,7 @@ private:
     // FULL FUSION WAVE STATE
     // MEKF is in NED (+Z down). Report heave as +UP for marine consumers.
     heave_m_ = -fusion_.raw().mekf().get_position().z();
+    wave_envelope_m_ = fusion_.raw().getDisplacementScale();
     wave_hz_ = fusion_.raw().getFreqHz();
   }
 
@@ -595,7 +597,7 @@ private:
                   (double)mag_norm_uT_,
                   (int)fusion_.isLive());
     */
-    Serial.printf("H_m:%6.3f\n", (double)heave_m_);
+    Serial.printf("H_m:%6.3f, wave_envelope_m:%6.3f\n", (double)heave_m_, (double)wave_envelope_m_);
 #endif
   }
 };
