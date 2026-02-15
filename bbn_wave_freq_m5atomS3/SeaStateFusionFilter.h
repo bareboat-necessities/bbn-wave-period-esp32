@@ -337,6 +337,11 @@ public:
                 // also relatively fast and smooth. 
                 float sigma_disp_vert = extra_drift_gain_ * getDisplacementScale();
 
+                // If estimated heave leaves expected envelope, tighten this
+                // pseudo-position correction so z is pulled back faster.
+                const float env_gate = getHeaveEnvelopeGate();
+                sigma_disp_vert *= env_gate;
+
                 // Never let this pseudo-measurement get *too* confident.
                 // We only trust the vertical component here because the proxy
                 // p≈-a/ω² is fed from vertical acceleration in this pipeline.
@@ -607,6 +612,31 @@ public:
 
     inline float getHeaveAbs() const noexcept { if (!mekf_) return NAN; return std::fabs(mekf_->get_position().z()); }
 
+    // Returns confidence gate in (0, 1]:
+    //  - 1.0 when heave is within expected displacement envelope,
+    //  - smoothly decreases when heave exceeds the envelope.
+    inline float getHeaveEnvelopeGate(float min_gate = 0.10f,
+                                      float ratio_soft_start = 1.7f,
+                                      float aggressiveness = 0.9f) const noexcept {
+        if (!std::isfinite(min_gate) || min_gate <= 0.0f || min_gate > 1.0f) min_gate = 0.10f;
+        if (!std::isfinite(ratio_soft_start) || ratio_soft_start <= 0.0f) ratio_soft_start = 1.7f;
+        if (!std::isfinite(aggressiveness) || aggressiveness <= 0.0f) aggressiveness = 0.9f;
+
+        const float disp_scale = getDisplacementScale();
+        const float heave_abs  = getHeaveAbs();
+        if (!std::isfinite(disp_scale) || !std::isfinite(heave_abs) || disp_scale <= 1e-6f) {
+            return 1.0f;
+        }
+
+        const float ratio = heave_abs / disp_scale;
+        if (ratio <= ratio_soft_start) return 1.0f;
+
+        const float r = ratio - 1.0f;
+        float gate = 1.0f / (1.0f + aggressiveness * r * r);
+        if (gate < min_gate) gate = min_gate;
+        return gate;
+    }
+
     inline float getDisplacementScale(bool smoothed = true) const noexcept {
         const float tau = smoothed ? tune_.tau_applied : tau_target_;
         const float sigma = smoothed ? tune_.sigma_applied : sigma_target_;
@@ -776,36 +806,7 @@ private:
         // Base clamp into global RS range
         float RS_base = std::min(std::max(RS_in, min_R_S_), max_R_S_);
 
-        // Expected displacement scale from (σ, τ)
-        const float disp_scale = getDisplacementScale();
-        if (!std::isfinite(disp_scale)) {
-            return RS_base;
-        }
-
-        // Vertical heave magnitude 
-        const float heave_abs = getHeaveAbs();
-        if (!std::isfinite(heave_abs)) {
-            return RS_base;
-        }
-
-        // If we're within scale, don't touch R_S
-        const float ratio = heave_abs / disp_scale;
-        if (ratio <= 1.7f) {
-            return RS_base;
-        }
-
-        // Excess factor above "expected" envelope
-        const float r = ratio - 1.0f;
-
-        // Smooth, aggressive shrinkage:
-        //   gate(r) = 1 / (1 + k * r²), with a floor.
-        //   r = 0  → gate = 1
-        //   r ↑    → gate ↓ smoothly and more aggressively at large r
-        const float k        = 0.9f;   // aggressiveness
-        const float min_gate = 0.10f;  // don't go totally insane
-        float gate = 1.0f / (1.0f + k * r * r);
-        if (gate < min_gate) gate = min_gate;
-
+        const float gate = getHeaveEnvelopeGate();
         float RS_adj = RS_base * gate;
 
         // Ensure we stay in the usual [min_R_S_, max_R_S_] range
