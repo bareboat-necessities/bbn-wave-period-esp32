@@ -93,7 +93,7 @@ static constexpr float HEADING_ACCEL_G_TOL_FRAC = 0.18f;
 using namespace atoms3r_ical;
 using Vector3f = Eigen::Vector3f;
 
-// -------------------- helpers --------------------
+// helpers
 static inline float clampf_(float x, float lo, float hi) { return x < lo ? lo : (x > hi ? hi : x); }
 
 static inline float wrap360_(float deg) {
@@ -150,7 +150,7 @@ static inline bool magneticHeadingFromDownAndMagBody_(
   return true;
 }
 
-// -------------------- App --------------------
+// App
 class FusionApp {
 public:
   FusionApp() {}
@@ -432,7 +432,7 @@ private:
     // Keep calibrated accel as-is (do not normalize to g) to preserve model consistency.
     fusion_.update(dt, w_cal_, a_cal_);
 
-    // -------------------- ATTITUDE FROM FUSION (NED) --------------------
+    // ATTITUDE FROM FUSION (NED)
     Eigen::Quaternionf q_bw = fusion_.raw().mekf().quaternion_boat();
     q_bw.normalize();
 
@@ -483,7 +483,7 @@ private:
       pitch_deg_   = wrap180_(pitch * RAD_TO_DEG);
     }
 
-    // -------------------- ROT using fusion quaternion --------------------
+    // ROT using fusion quaternion
     if (still) {
       const float alpha_b = 1.0f - expf(-dt / ROT_BIAS_TAU_S);
       if (!gyro_bias_ok_) {
