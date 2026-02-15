@@ -473,6 +473,11 @@ private:
 
     // Kalman3D_Wave uses physical specific force magnitude in measurement_update_acc_only().
     // Keep calibrated accel as-is (do not normalize to g) to preserve model consistency.
+    //
+    // If the IMU stream appears stale for a sustained window, keep propagation running
+    // but temporarily disable extra drift pseudo-position correction. This avoids pulling
+    // heave toward a fixed stale attractor while still allowing attitude/bias dynamics.
+    fusion_.raw().enableExtraDriftCorrection(!imu_stale);
     fusion_.update(dt, w_cal_, a_cal_);
 
     // ATTITUDE FROM FUSION (NED)
