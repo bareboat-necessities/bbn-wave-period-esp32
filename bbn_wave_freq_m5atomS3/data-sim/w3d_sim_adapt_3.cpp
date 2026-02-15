@@ -452,7 +452,6 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
         filter.enableHeaveRSGating(true);
         filter.enableExtraDriftCorrection(false);    // disabled
         filter.enableClamp(true);
-        filter.enableLinearBlock(false);
     }
     
     WaveDataCSVReader reader(filename);
