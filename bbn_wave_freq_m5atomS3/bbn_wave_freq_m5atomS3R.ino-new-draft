@@ -438,10 +438,7 @@ private:
   }
 
   void updateFilter_(const ImuSample& s) {
-    if (isLikelyStaleImuFrame_(s)) {
-      mag_fresh_ = false;
-      return;
-    }
+    const bool imu_stale = isLikelyStaleImuFrame_(s);
 
     a_raw_norm_ = s.a.norm();
 
@@ -463,7 +460,7 @@ private:
 
     const uint32_t now_ms = millis();
     mag_fresh_ = false;
-    if (mag_ok_) {
+    if (mag_ok_ && !imu_stale) {
       const uint32_t dtm = now_ms - last_mag_ms_;
       const float dm = (m_cal_ - last_mag_uT_).norm();
       if (dtm >= MAG_SAMPLE_SPACING_MS && dm >= MAG_MIN_DELTA_uT) {
