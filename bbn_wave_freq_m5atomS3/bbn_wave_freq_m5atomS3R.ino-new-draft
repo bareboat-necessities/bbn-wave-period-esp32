@@ -157,11 +157,12 @@ public:
   FusionApp() {}
 
   void begin() {
+    delay(50);
     Serial.begin(115200);
-    delay(150);
-    Serial.println();
-    Serial.printf("[BOOT] AtomS3R Compass (SeaStateFusion) wizard=%d\n", (int)SEA_STATE_ENABLE_WIZARD);
-    Serial.printf("[BOOT] mag_delay_sec = %.2f\n", (double)MAG_DELAY_SEC);
+    delay(100);
+    //Serial.println();
+    //Serial.printf("[BOOT] AtomS3R Compass (SeaStateFusion) wizard=%d\n", (int)SEA_STATE_ENABLE_WIZARD);
+    //Serial.printf("[BOOT] mag_delay_sec = %.2f\n", (double)MAG_DELAY_SEC);
 
     auto cfg = M5.config();
     M5.begin(cfg);
@@ -198,16 +199,13 @@ public:
       } else {
         Serial.println("[BOOT] Wizard did not save calibration. Running with raw values.");
       }
-    } else {
-      Serial.println("[BOOT] Found saved calibration.");
     }
-#else
-    if (!have_blob_) Serial.println("[BOOT] No saved calibration. Wizard disabled.");
-    else             Serial.println("[BOOT] Found saved calibration.");
 #endif
 
     resetFusion_();
     drawHomeStatic_();
+
+    delay(100);
 
     start_us_       = micros();
     next_tick_us_   = micros();
@@ -597,7 +595,7 @@ private:
                   (double)mag_norm_uT_,
                   (int)fusion_.isLive());
     */
-    Serial.printf("Heave:%6.3f\n", (double)heave_m_);
+    Serial.printf("H_m:%6.3f\n", (double)heave_m_);
 #endif
   }
 };
