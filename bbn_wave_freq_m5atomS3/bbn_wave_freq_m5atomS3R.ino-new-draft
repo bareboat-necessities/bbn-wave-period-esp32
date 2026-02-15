@@ -1,7 +1,7 @@
 /*
   Copyright 2026, Mikhail Grushinskiy
 
-  AtomS3R Tilt-Compensated Compass (+ optional IMU Calibration Wizard)
+  AtomS3R SeaStateFusion (+ optional IMU Calibration Wizard)
   (SeaStateFusion version: Kalman3D_Wave + mag init + yaw correction)
 
   IMPORTANT FIX:
@@ -20,8 +20,8 @@
 
 #include <Arduino.h>
 
-#ifndef COMPASS_ENABLE_WIZARD
-  #define COMPASS_ENABLE_WIZARD 1
+#ifndef SEA_STATE_ENABLE_WIZARD
+  #define SEA_STATE_ENABLE_WIZARD 1
 #endif
 
 #include <M5Unified.h>
@@ -34,23 +34,23 @@
 
 #include "AtomS3R_ImuCal.h"
 #include "AtomS3R_M5Ui.h"
-#if COMPASS_ENABLE_WIZARD
+#if SEA_STATE_ENABLE_WIZARD
   #include "ImuCalWizardRunner.h"
 #endif
 #include "AtomS3R_CompassUI.h"
 #include "NmeaCompass.h"
 
 // UI / serial defaults
-#ifndef COMPASS_UI_DEFAULT_GRAPHICS
-  #define COMPASS_UI_DEFAULT_GRAPHICS 1
+#ifndef SEA_STATE_UI_DEFAULT_GRAPHICS
+  #define SEA_STATE_UI_DEFAULT_GRAPHICS 1
 #endif
 
-#ifndef COMPASS_SERIAL_NMEA
-  #define COMPASS_SERIAL_NMEA 1
+#ifndef SEA_STATE_SERIAL_NMEA
+  #define SEA_STATE_SERIAL_NMEA 0
 #endif
 
-#ifndef COMPASS_NMEA_TALKER
-  #define COMPASS_NMEA_TALKER "II"
+#ifndef SEA_STATE_NMEA_TALKER
+  #define SEA_STATE_NMEA_TALKER "II"
 #endif
 
 // SeaStateFusion requirements
@@ -79,7 +79,7 @@ static constexpr float    MAG_MIN_DELTA_uT      = 0.02f;
 
 // Display / serial rates
 static constexpr uint32_t UI_REFRESH_MS   = 100;
-static constexpr uint32_t DEBUG_SERIAL_MS = 200;
+static constexpr uint32_t DEBUG_SERIAL_MS = 100;
 static constexpr uint32_t NMEA_SERIAL_MS  = 100;
 
 // ROT bias removal (stillness-gated gyro bias estimator)
@@ -94,7 +94,7 @@ static constexpr float HEADING_ACCEL_G_TOL_FRAC = 0.18f;
 using namespace atoms3r_ical;
 using Vector3f = Eigen::Vector3f;
 
-// -------------------- helpers --------------------
+// helpers
 static inline float clampf_(float x, float lo, float hi) { return x < lo ? lo : (x > hi ? hi : x); }
 
 static inline float wrap360_(float deg) {
@@ -151,7 +151,7 @@ static inline bool magneticHeadingFromDownAndMagBody_(
   return true;
 }
 
-// -------------------- App --------------------
+// App
 class FusionApp {
 public:
   FusionApp() {}
@@ -160,7 +160,7 @@ public:
     Serial.begin(115200);
     delay(150);
     Serial.println();
-    Serial.printf("[BOOT] AtomS3R Compass (SeaStateFusion) wizard=%d\n", (int)COMPASS_ENABLE_WIZARD);
+    Serial.printf("[BOOT] AtomS3R Compass (SeaStateFusion) wizard=%d\n", (int)SEA_STATE_ENABLE_WIZARD);
     Serial.printf("[BOOT] mag_delay_sec = %.2f\n", (double)MAG_DELAY_SEC);
 
     auto cfg = M5.config();
@@ -186,7 +186,7 @@ public:
 
     reloadBlobAndRuntime_();
 
-#if COMPASS_ENABLE_WIZARD
+#if SEA_STATE_ENABLE_WIZARD
     if (!have_blob_) {
       Serial.println("[BOOT] No saved calibration. Starting wizard...");
       ImuCalBlobV1 saved{};
@@ -223,7 +223,7 @@ public:
     }
     next_tick_us_ += LOOP_PERIOD_US;
 
-#if COMPASS_ENABLE_WIZARD
+#if SEA_STATE_ENABLE_WIZARD
     Input::update();
 
     if (Input::tapPressed()) {
@@ -252,7 +252,7 @@ public:
   }
 
 private:
-  bool use_graphics_ = (COMPASS_UI_DEFAULT_GRAPHICS != 0);
+  bool use_graphics_ = (SEA_STATE_UI_DEFAULT_GRAPHICS != 0);
   CompassUI compass_ui_{};
   bool compass_ui_ready_ = false;
 
@@ -265,7 +265,7 @@ private:
   UI ui_{};
   ImuCalStoreNvs store_{};
 
-#if COMPASS_ENABLE_WIZARD
+#if SEA_STATE_ENABLE_WIZARD
   int tap_count_ = 0;
   uint32_t tap_deadline_ms_ = 0;
 #endif
@@ -359,7 +359,7 @@ private:
     heading_deg_      = 0.0f;
   }
 
-#if COMPASS_ENABLE_WIZARD
+#if SEA_STATE_ENABLE_WIZARD
   void handleErase_() {
     Serial.println("[HOME] ERASE");
     if (!ui_.eraseConfirm()) {
@@ -437,7 +437,7 @@ private:
     // Keep calibrated accel as-is (do not normalize to g) to preserve model consistency.
     fusion_.update(dt, w_cal_, a_cal_);
 
-    // -------------------- ATTITUDE FROM FUSION (NED) --------------------
+    // ATTITUDE FROM FUSION (NED)
     Eigen::Quaternionf q_bw = fusion_.raw().mekf().quaternion_boat();
     q_bw.normalize();
 
@@ -488,7 +488,7 @@ private:
       pitch_deg_   = wrap180_(pitch * RAD_TO_DEG);
     }
 
-    // -------------------- ROT using fusion quaternion --------------------
+    // ROT using fusion quaternion
     if (still) {
       const float alpha_b = 1.0f - expf(-dt / ROT_BIAS_TAU_S);
       if (!gyro_bias_ok_) {
@@ -511,7 +511,7 @@ private:
     if (!rot_inited_) { rot_inited_ = true; rot_dpm_filt_ = rot_dpm_meas; }
     else              { rot_dpm_filt_ += alpha_r * (rot_dpm_meas - rot_dpm_filt_); }
 
-    // -------------------- FULL FUSION WAVE STATE --------------------
+    // FULL FUSION WAVE STATE
     // MEKF is in NED (+Z down). Report heave as +UP for marine consumers.
     heave_m_ = -fusion_.raw().mekf().get_position().z();
     wave_hz_ = fusion_.raw().getFreqHz();
@@ -524,19 +524,19 @@ private:
     M5.Display.printf("A:%d G:%d M:%d\n",
                       (int)runtime_.acc.ok, (int)runtime_.gyr.ok, (int)runtime_.mag.ok);
 
-#if COMPASS_ENABLE_WIZARD
+#if SEA_STATE_ENABLE_WIZARD
     ui_.line("Tap: calibrate");
     ui_.line("Tap x3: erase");
 #else
     ui_.line("Wizard: DISABLED");
-    ui_.line("Set COMPASS_ENABLE_WIZARD=1");
+    ui_.line("Set SEA_STATE_ENABLE_WIZARD=1");
 #endif
     ui_.line("");
     ui_.line("Fusion: FULL");
   }
 
   void updateUI_() {
-#if COMPASS_ENABLE_WIZARD
+#if SEA_STATE_ENABLE_WIZARD
     if (tap_count_ > 0) return;
 #endif
     const uint32_t now_ms = millis();
@@ -570,22 +570,23 @@ private:
   void streamSerial_() {
     const uint32_t now_ms = millis();
 
-#if COMPASS_SERIAL_NMEA
+#if SEA_STATE_SERIAL_NMEA
     if (now_ms - last_serial_ms_ < NMEA_SERIAL_MS) return;
 #else
     if (now_ms - last_serial_ms_ < DEBUG_SERIAL_MS) return;
 #endif
     last_serial_ms_ = now_ms;
 
-#if COMPASS_SERIAL_NMEA
+#if SEA_STATE_SERIAL_NMEA
     const bool valid = fusion_.isLive();
-    nmea_hdm(COMPASS_NMEA_TALKER, heading_deg_);
-    nmea_xdr_pitch_roll(COMPASS_NMEA_TALKER, pitch_deg_, roll_deg_);
-    nmea_xdr_heave(COMPASS_NMEA_TALKER, heave_m_);
-    nmea_xdr_freq(COMPASS_NMEA_TALKER, wave_hz_);
-    nmea_rot(COMPASS_NMEA_TALKER, rot_dpm_filt_, valid);
+    nmea_hdm(SEA_STATE_NMEA_TALKER, heading_deg_);
+    nmea_xdr_pitch_roll(SEA_STATE_NMEA_TALKER, pitch_deg_, roll_deg_);
+    nmea_xdr_heave(SEA_STATE_NMEA_TALKER, heave_m_);
+    nmea_xdr_freq(SEA_STATE_NMEA_TALKER, wave_hz_);
+    nmea_rot(SEA_STATE_NMEA_TALKER, rot_dpm_filt_, valid);
 #else
     const float t = (micros() - start_us_) * 1e-6f;
+    /*
     Serial.printf("t=%.2f HDG:%6.1f R:%6.1f P:%6.1f H:%6.3f F:%5.3f |m|=%.1f live:%d\n",
                   (double)t,
                   (double)heading_deg_,
@@ -595,6 +596,8 @@ private:
                   (double)wave_hz_,
                   (double)mag_norm_uT_,
                   (int)fusion_.isLive());
+    */
+    Serial.printf("Heave:%6.3f\n", (double)heave_m_);
 #endif
   }
 };
