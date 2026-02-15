@@ -340,12 +340,15 @@ public:
                 // If estimated heave leaves expected envelope, tighten this
                 // pseudo-position correction so z is pulled back faster.
                 const float env_gate = getHeaveEnvelopeGate();
-                sigma_disp_vert *= env_gate;
+                // Strong suppression when estimated heave escapes the expected
+                // envelope. Squaring keeps near-envelope behavior smooth but
+                // rapidly tightens the pseudo-measurement when Z runs away.
+                sigma_disp_vert *= (env_gate * env_gate);
 
                 // Never let this pseudo-measurement get *too* confident.
                 // We only trust the vertical component here because the proxy
                 // p≈-a/ω² is fed from vertical acceleration in this pipeline.
-                const float SIGMA_P_MIN = 0.05f;  // 5 cm
+                const float SIGMA_P_MIN = 0.01f;  // 1 cm (strong runaway clamp)
                 const float SIGMA_P_MAX = 5.0f;   // 5 m, safety upper bound
                 sigma_disp_vert = std::min(std::max(sigma_disp_vert, SIGMA_P_MIN), SIGMA_P_MAX);
 
@@ -615,12 +618,12 @@ public:
     // Returns confidence gate in (0, 1]:
     //  - 1.0 when heave is within expected displacement envelope,
     //  - smoothly decreases when heave exceeds the envelope.
-    inline float getHeaveEnvelopeGate(float min_gate = 0.10f,
-                                      float ratio_soft_start = 1.7f,
-                                      float aggressiveness = 0.9f) const noexcept {
-        if (!std::isfinite(min_gate) || min_gate <= 0.0f || min_gate > 1.0f) min_gate = 0.10f;
-        if (!std::isfinite(ratio_soft_start) || ratio_soft_start <= 0.0f) ratio_soft_start = 1.7f;
-        if (!std::isfinite(aggressiveness) || aggressiveness <= 0.0f) aggressiveness = 0.9f;
+    inline float getHeaveEnvelopeGate(float min_gate = 0.01f,
+                                      float ratio_soft_start = 1.10f,
+                                      float aggressiveness = 10.0f) const noexcept {
+        if (!std::isfinite(min_gate) || min_gate <= 0.0f || min_gate > 1.0f) min_gate = 0.01f;
+        if (!std::isfinite(ratio_soft_start) || ratio_soft_start <= 0.0f) ratio_soft_start = 1.10f;
+        if (!std::isfinite(aggressiveness) || aggressiveness <= 0.0f) aggressiveness = 10.0f;
 
         const float disp_scale = getDisplacementScale();
         const float heave_abs  = getHeaveAbs();
@@ -631,8 +634,10 @@ public:
         const float ratio = heave_abs / disp_scale;
         if (ratio <= ratio_soft_start) return 1.0f;
 
-        const float r = ratio - 1.0f;
-        float gate = 1.0f / (1.0f + aggressiveness * r * r);
+        // Normalize overrun relative to where soft gating starts so the curve
+        // gets steep quickly once we are outside the expected envelope.
+        const float over = (ratio - ratio_soft_start) / ratio_soft_start;
+        float gate = std::exp(-aggressiveness * over * over);
         if (gate < min_gate) gate = min_gate;
         return gate;
     }
