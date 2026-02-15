@@ -770,10 +770,11 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
 
         const float magb_rx = rms_magb_x.rms(), magb_ry = rms_magb_y.rms(), magb_rz = rms_magb_z.rms();
         const float magb_r3 = vec_rms(magb_rx, magb_ry, magb_rz);
+#ifdef DETAILED_SUMMARY        
         std::cout << "Bias error RMS (mag, uT): "
                   << "X=" << magb_rx << " Y=" << magb_ry << " Z=" << magb_rz
                   << " |3D|=" << magb_r3 << "\n";        
-
+#endif
         auto pct_of_max = [](float rms, float maxv) -> float {
             return (maxv > 1e-12f && std::isfinite(rms)) ? (100.f * rms / maxv) : NAN;
         };
@@ -785,9 +786,11 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
         std::cout << "Max TRUE bias in window (gyro, rad/s): "
                   << "X=" << gyr_true_max_x << " Y=" << gyr_true_max_y << " Z=" << gyr_true_max_z
                   << " |3D|=" << gyr_true_max_3d << "\n";
+#ifdef DETAILED_SUMMARY         
         std::cout << "Max TRUE bias in window (mag, uT): "
                   << "X=" << mag_true_max_x << " Y=" << mag_true_max_y << " Z=" << mag_true_max_z
                   << " |3D|=" << mag_true_max_3d << "\n";
+#endif
         
         // cache 3D percentages for bias error
         float accb_r3_pct = pct_of_max(accb_r3, acc_true_max_3d);
@@ -805,11 +808,13 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
                   << "Y=" << pct_of_max(gyrb_ry, gyr_true_max_y) << "% "
                   << "Z=" << pct_of_max(gyrb_rz, gyr_true_max_z) << "% "
                   << "|3D|=" << gyrb_r3_pct << "%\n";
+#ifdef DETAILED_SUMMARY        
         std::cout << "Bias error RMS (% of max TRUE bias) (mag): "
                   << "X=" << pct_of_max(magb_rx, mag_true_max_x) << "% "
                   << "Y=" << pct_of_max(magb_ry, mag_true_max_y) << "% "
                   << "Z=" << pct_of_max(magb_rz, mag_true_max_z) << "% "
                   << "|3D|=" << magb_r3_pct << "%\n";
+#endif
 
         // Extended diagnostic summary
         float tau_target   = filter.getTauTarget();
