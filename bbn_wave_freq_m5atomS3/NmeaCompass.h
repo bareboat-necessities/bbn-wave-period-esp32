@@ -44,3 +44,19 @@ static inline void nmea_xdr_pitch_roll(const char* talker2, float pitch_deg, flo
            talker2, (double)roll_deg);
   nmea_send(s);
 }
+
+// $--XDR,D,x.x,M,DRT1*hh  (heave / vertical displacement, meters)
+static inline void nmea_xdr_heave(const char* talker2, float heave_m) {
+  char s[82];
+  snprintf(s, sizeof(s), "$%sXDR,D,%.4f,M,DRT1",
+           talker2, (double)heave_m);
+  nmea_send(s);
+}
+
+// $--XDR,F,x.x,H,FRT1*hh  (dominant wave frequency, Hz)
+static inline void nmea_xdr_freq(const char* talker2, float freq_hz) {
+  char s[82];
+  snprintf(s, sizeof(s), "$%sXDR,F,%.4f,H,FRT1",
+           talker2, (double)freq_hz);
+  nmea_send(s);
+}
