@@ -25,14 +25,16 @@
 
 const float g_std = 9.80665f;     // standard gravity acceleration m/s²
 
-const float FAIL_ERR_LIMIT_PERCENT_3D_JONSWAP   = 50.0f;
-const float FAIL_ERR_LIMIT_PERCENT_3D_PMSTOKES  = 60.0f;
-
 const float FAIL_ERR_LIMIT_PERCENT_Z_JONSWAP   = 10.0f;
 const float FAIL_ERR_LIMIT_PERCENT_Z_PMSTOKES  = 10.0f;
 
-const float FAIL_ERR_LIMIT_BIAS_3D_PERCENT = 300.0f;
 const float FAIL_ERR_LIMIT_YAW_DEG = 3.9f;  
+
+const float FAIL_ERR_LIMIT_PERCENT_3D_JONSWAP   = 50.0f;
+const float FAIL_ERR_LIMIT_PERCENT_3D_PMSTOKES  = 60.0f;
+
+const float FAIL_ACC_Z_BIAS_PERCENT             = 30.0f;
+const float FAIL_ERR_LIMIT_BIAS_3D_PERCENT      = 300.0f;
 
 constexpr float RMS_WINDOW_SEC = 60.0f;  // RMS window
 
@@ -918,6 +920,15 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
                       << " deg). Failing.\n";
             std::exit(EXIT_FAILURE);
         }
+
+        float accb_z_pct = pct_of_max(accb_rz, acc_true_max_z);
+        if (std::isfinite(accb_z_pct) && accb_z_pct > FAIL_ACC_Z_BIAS_PERCENT) {
+            std::cerr << "ERROR: accel Z bias error RMS above limit ("
+                      << accb_z_pct << "% > " << FAIL_ACC_Z_BIAS_PERCENT
+                      << "% of max TRUE Z bias). Failing.\n";
+            std::exit(EXIT_FAILURE);            
+        }
+        
         // 3D bias error fail gates at % of max TRUE bias
         if (std::isfinite(accb_r3_pct) && accb_r3_pct > FAIL_ERR_LIMIT_BIAS_3D_PERCENT) {
             std::cerr << "ERROR: 3D accel bias error RMS above limit ("
