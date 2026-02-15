@@ -291,6 +291,8 @@ private:
   float roll_deg_    = 0.0f;
   float pitch_deg_   = 0.0f;
   float heading_deg_ = 0.0f;
+  float heave_m_     = 0.0f;
+  float wave_hz_     = FREQ_GUESS;
 
   bool     mag_ok_     = false;
   bool     mag_fresh_  = false;
@@ -508,6 +510,11 @@ private:
     const float alpha_r = 1.0f - expf(-dt / tau_rot);
     if (!rot_inited_) { rot_inited_ = true; rot_dpm_filt_ = rot_dpm_meas; }
     else              { rot_dpm_filt_ += alpha_r * (rot_dpm_meas - rot_dpm_filt_); }
+
+    // -------------------- FULL FUSION WAVE STATE --------------------
+    // MEKF is in NED (+Z down). Report heave as +UP for marine consumers.
+    heave_m_ = -fusion_.raw().mekf().get_position().z();
+    wave_hz_ = fusion_.raw().getFreqHz();
   }
 
   void drawHomeStatic_() {
@@ -525,6 +532,7 @@ private:
     ui_.line("Set COMPASS_ENABLE_WIZARD=1");
 #endif
     ui_.line("");
+    ui_.line("Fusion: FULL");
   }
 
   void updateUI_() {
@@ -551,6 +559,8 @@ private:
     M5.Display.printf("HDG: %6.1f deg\n", (double)heading_deg_);
     M5.Display.printf("ROL: %6.1f deg\n", (double)roll_deg_);
     M5.Display.printf("PIT: %6.1f deg\n", (double)pitch_deg_);
+    M5.Display.printf("HEV: %6.3f m\n", (double)heave_m_);
+    M5.Display.printf("FRQ: %6.3f Hz\n", (double)wave_hz_);
     M5.Display.printf("MAG: %s %s\n", mag_ok_ ? "OK " : "BAD", mag_fresh_ ? "NEW" : "OLD");
     M5.Display.printf("|m|: %6.1f uT\n", (double)mag_norm_uT_);
     M5.Display.printf("|aR|:%5.2f |aC|:%5.2f\n", (double)a_raw_norm_, (double)a_cal_.norm());
@@ -571,14 +581,18 @@ private:
     const bool valid = fusion_.isLive();
     nmea_hdm(COMPASS_NMEA_TALKER, heading_deg_);
     nmea_xdr_pitch_roll(COMPASS_NMEA_TALKER, pitch_deg_, roll_deg_);
+    nmea_xdr_heave(COMPASS_NMEA_TALKER, heave_m_);
+    nmea_xdr_freq(COMPASS_NMEA_TALKER, wave_hz_);
     nmea_rot(COMPASS_NMEA_TALKER, rot_dpm_filt_, valid);
 #else
     const float t = (micros() - start_us_) * 1e-6f;
-    Serial.printf("t=%.2f HDG:%6.1f R:%6.1f P:%6.1f |m|=%.1f live:%d\n",
+    Serial.printf("t=%.2f HDG:%6.1f R:%6.1f P:%6.1f H:%6.3f F:%5.3f |m|=%.1f live:%d\n",
                   (double)t,
                   (double)heading_deg_,
                   (double)roll_deg_,
                   (double)pitch_deg_,
+                  (double)heave_m_,
+                  (double)wave_hz_,
                   (double)mag_norm_uT_,
                   (int)fusion_.isLive());
 #endif
