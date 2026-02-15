@@ -4,7 +4,6 @@
   AtomS3R Tilt-Compensated Compass (+ optional IMU Calibration Wizard)
   (SeaStateFusion version: Kalman3D_Wave + mag init + yaw correction)
 
-  IMPORTANT FIX:
     - Magnetic heading is computed from MAG + GRAVITY (tilt compensation),
       NOT from fusion yaw and NOT from rotating mag by full q_bw.
     - We use down_b (world-down expressed in BODY) from fusion quaternion,
