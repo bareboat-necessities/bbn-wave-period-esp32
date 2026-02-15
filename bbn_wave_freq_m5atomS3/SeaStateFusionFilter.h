@@ -242,41 +242,34 @@ public:
             cos_tilt = std::max(-1.0f, std::min(1.0f, cos_tilt));
             const float tilt_deg = std::acos(cos_tilt) * 57.295779513f;
         
-            constexpr float TILT_RESET_DEG = 65.0f;
+            constexpr float TILT_RESET_DEG = 70.0f;
+            constexpr float TILT_RESET_HOLD_SEC = 0.35f;
+            constexpr float TILT_RESET_COOLDOWN_SEC = 3.0f;
+
+            if (tilt_reset_cooldown_sec_ > 0.0f) {
+                tilt_reset_cooldown_sec_ = std::max(0.0f, tilt_reset_cooldown_sec_ - dt);
+            }
+
             if (tilt_deg > TILT_RESET_DEG) {
-                // Re-lock attitude to gravity
+                tilt_over_limit_sec_ += dt;
+            } else {
+                // decay quickly on recovery so brief transients do not trigger resets
+                tilt_over_limit_sec_ = std::max(0.0f, tilt_over_limit_sec_ - 2.0f * dt);
+            }
+
+            if (tilt_over_limit_sec_ >= TILT_RESET_HOLD_SEC && tilt_reset_cooldown_sec_ <= 0.0f) {
+                // Re-lock attitude to gravity.
                 mekf_->initialize_from_acc(acc);
-            
-                // Return to Cold stage (this disables linear block + applies warmup bias policy)
-                enterCold_();
-            
-                // Reset *all* slow/statistical machinery (not just some of it)
-                tracker_policy_       = TrackingPolicy{};
-                freq_input_lpf_       = FreqInputLPF{};
-                freq_stillness_       = StillnessAdapter{};
-                freq_input_lpf_.setCutoff(max_freq_hz_);
-                freq_stillness_.setTargetFreqHz(min_freq_hz_);
-              
-                tuner_.reset();
-            
-                freq_fast_smoother_   = FirstOrderIIRSmoother<float>(FREQ_SMOOTHER_DT, 3.5f);
-                freq_slow_smoother_   = FirstOrderIIRSmoother<float>(FREQ_SMOOTHER_DT, 10.0f);
-            
-                freq_hz_      = FREQ_GUESS;
-                freq_hz_slow_ = FREQ_GUESS;
-                f_raw         = FREQ_GUESS;
-            
-                // Optional but recommended: reset direction state too
-                dir_filter_      = KalmanWaveDirection(2.0f * static_cast<float>(M_PI) * FREQ_GUESS);
-                // dir_sign_ is not re-assigned here because WaveDirectionDetector has const members
-                // and is not assignable; if you want a logical reset, add a reset() method to
-                // WaveDirectionDetector and call it instead.
-                dir_sign_state_  = UNCERTAIN;
-            
-                // Optional: avoid immediate adapt burst after reset
-                last_adapt_time_sec_ = time_;
-            
-                // Done: do NOT also set startup_stage_ manually here
+
+                // Only force full Cold re-entry while not yet fully live. In Live, keep
+                // linear states running to avoid long "frozen heave" plateaus.
+                if (startup_stage_ != StartupStage::Live) {
+                    enterCold_();
+                    resetTrackingState_();
+                }
+
+                tilt_over_limit_sec_ = 0.0f;
+                tilt_reset_cooldown_sec_ = TILT_RESET_COOLDOWN_SEC;
             }
         }    
         // vertical (up positive)
@@ -339,7 +332,13 @@ public:
 
                 // If estimated heave leaves expected envelope, tighten this
                 // pseudo-position correction so z is pulled back faster.
-                const float env_gate = getHeaveEnvelopeGate();
+                // Keep this gate fairly soft to avoid hard-locking the estimate
+                // onto a stale narrow-band proxy when sensor stream quality drops.
+                const float env_gate = getHeaveEnvelopeGate(
+                    0.25f,  // keep at least 25% correction authority
+                    3.25f,  // start tapering only when |heave| is well above envelope
+                    2.0f    // gentler roll-off
+                );
                 // Strong suppression when estimated heave escapes the expected
                 // envelope while keeping correction gentle enough in energetic
                 // seas where instantaneous |heave| naturally exceeds ~1σ.
@@ -348,7 +347,11 @@ public:
                 // Never let this pseudo-measurement get *too* confident.
                 // We only trust the vertical component here because the proxy
                 // p≈-a/ω² is fed from vertical acceleration in this pipeline.
-                const float SIGMA_P_MIN = 0.01f;  // 1 cm (strong runaway clamp)
+                // Scale the minimum pseudo-position sigma with expected sea displacement.
+                // A fixed tiny floor (e.g. 1 cm) can over-constrain the state and make
+                // heave appear numerically "stuck" when the input stream is stale.
+                const float sigma_floor_from_env = 0.20f * getDisplacementScale();
+                const float SIGMA_P_MIN = std::max(0.05f, sigma_floor_from_env);
                 const float SIGMA_P_MAX = 5.0f;   // 5 m, safety upper bound
                 sigma_disp_vert = std::min(std::max(sigma_disp_vert, SIGMA_P_MIN), SIGMA_P_MAX);
 
@@ -951,6 +954,34 @@ private:
             last_adapt_time_sec_ = time_;
         }
     }
+
+    void resetTrackingState_() {
+        // Reset *all* slow/statistical machinery (not just some of it)
+        tracker_policy_       = TrackingPolicy{};
+        freq_input_lpf_       = FreqInputLPF{};
+        freq_stillness_       = StillnessAdapter{};
+        freq_input_lpf_.setCutoff(max_freq_hz_);
+        freq_stillness_.setTargetFreqHz(min_freq_hz_);
+
+        tuner_.reset();
+
+        freq_fast_smoother_   = FirstOrderIIRSmoother<float>(FREQ_SMOOTHER_DT, 3.5f);
+        freq_slow_smoother_   = FirstOrderIIRSmoother<float>(FREQ_SMOOTHER_DT, 10.0f);
+
+        freq_hz_      = FREQ_GUESS;
+        freq_hz_slow_ = FREQ_GUESS;
+        f_raw         = FREQ_GUESS;
+
+        // Optional but recommended: reset direction state too
+        dir_filter_      = KalmanWaveDirection(2.0f * static_cast<float>(M_PI) * FREQ_GUESS);
+        // dir_sign_ is not re-assigned here because WaveDirectionDetector has const members
+        // and is not assignable; if you want a logical reset, add a reset() method to
+        // WaveDirectionDetector and call it instead.
+        dir_sign_state_  = UNCERTAIN;
+
+        // Optional: avoid immediate adapt burst after reset
+        last_adapt_time_sec_ = time_;
+    }
     
     void enterCold_() {
         startup_stage_   = StartupStage::Cold;
@@ -1012,6 +1043,10 @@ private:
     double last_adapt_time_sec_;
 
     float first_mag_update_time_ = NAN;
+
+    // Tilt-reset gate persistence/cooldown to avoid false transient resets.
+    float tilt_over_limit_sec_ = 0.0f;
+    float tilt_reset_cooldown_sec_ = 0.0f;
 
     float freq_hz_       = FREQ_GUESS; // fast branch
     float freq_hz_slow_  = FREQ_GUESS; // slow branch
