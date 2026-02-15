@@ -446,6 +446,13 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
         filter.mekf().set_initial_acc_bias_std(0.0f);
         filter.mekf().set_Q_bacc_rw(Vector3f::Zero());
         filter.mekf().set_Racc(Vector3f::Constant(0.5f));
+    } else {
+        filter.enableLinearBlock(true);
+        filter.enableTuner(true);
+        filter.enableHeaveRSGating(true);
+        filter.enableExtraDriftCorrection(false);    // disabled
+        filter.enableClamp(true);
+        filter.enableLinearBlock(false);
     }
     
     WaveDataCSVReader reader(filename);
