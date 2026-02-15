@@ -341,9 +341,9 @@ public:
                 // pseudo-position correction so z is pulled back faster.
                 const float env_gate = getHeaveEnvelopeGate();
                 // Strong suppression when estimated heave escapes the expected
-                // envelope. Squaring keeps near-envelope behavior smooth but
-                // rapidly tightens the pseudo-measurement when Z runs away.
-                sigma_disp_vert *= (env_gate * env_gate);
+                // envelope while keeping correction gentle enough in energetic
+                // seas where instantaneous |heave| naturally exceeds ~1σ.
+                sigma_disp_vert *= env_gate;
 
                 // Never let this pseudo-measurement get *too* confident.
                 // We only trust the vertical component here because the proxy
@@ -618,12 +618,12 @@ public:
     // Returns confidence gate in (0, 1]:
     //  - 1.0 when heave is within expected displacement envelope,
     //  - smoothly decreases when heave exceeds the envelope.
-    inline float getHeaveEnvelopeGate(float min_gate = 0.01f,
-                                      float ratio_soft_start = 1.10f,
-                                      float aggressiveness = 10.0f) const noexcept {
-        if (!std::isfinite(min_gate) || min_gate <= 0.0f || min_gate > 1.0f) min_gate = 0.01f;
-        if (!std::isfinite(ratio_soft_start) || ratio_soft_start <= 0.0f) ratio_soft_start = 1.10f;
-        if (!std::isfinite(aggressiveness) || aggressiveness <= 0.0f) aggressiveness = 10.0f;
+    inline float getHeaveEnvelopeGate(float min_gate = 0.10f,
+                                      float ratio_soft_start = 2.50f,
+                                      float aggressiveness = 4.0f) const noexcept {
+        if (!std::isfinite(min_gate) || min_gate <= 0.0f || min_gate > 1.0f) min_gate = 0.10f;
+        if (!std::isfinite(ratio_soft_start) || ratio_soft_start <= 0.0f) ratio_soft_start = 2.50f;
+        if (!std::isfinite(aggressiveness) || aggressiveness <= 0.0f) aggressiveness = 4.0f;
 
         const float disp_scale = getDisplacementScale();
         const float heave_abs  = getHeaveAbs();
