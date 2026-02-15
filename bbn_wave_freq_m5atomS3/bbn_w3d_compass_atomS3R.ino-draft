@@ -338,8 +338,8 @@ private:
     auto& ff = fusion_.raw();
     ff.enableLinearBlock(WANT_LINEAR_BLOCK);
     ff.enableTuner(true);
-    ff.enableHeaveRSGating(true);
-    ff.enableExtraDriftCorrection(true);
+    ff.enableHeaveRSGating(false);
+    ff.enableExtraDriftCorrection(false);
     ff.enableClamp(true);
     ff.setFreqInputCutoffHz(6.0f);
 
