@@ -23,6 +23,13 @@ jobs:
         extra-arduino-cli-args: "--warnings default --build-property compiler.libraries.ldflags=-Wl,--allow-multiple-definition --build-property compiler.cpp.extra_flag=-mvector --build-property compiler.cpp.extra_flag=-funroll-loops --build-property compiler.cpp.extra_flag=-fno-finite-math-only"
         set-build-path: true
 
+    - name: Find versions
+      run: |
+        find /home/runner -name esptool\*
+        find /home/runner -name boot_app0.bin
+        ls -la /home/runner/
+        ls -l /home/runner/.arduino15/packages/esp32/tools/esptool_py/*
+          
     - name: Make merged .bin
       run: >
         $HOME/.arduino15/packages/esp32/tools/esptool_py/4.9.dev3/esptool
