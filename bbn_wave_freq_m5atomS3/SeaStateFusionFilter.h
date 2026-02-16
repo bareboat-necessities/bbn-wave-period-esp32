@@ -448,6 +448,15 @@ public:
         return env_gate_threshold_scale_;
     }
 
+    // Delay envelope-driven corrections after entering Live so the envelope
+    // scale has time to converge and does not start too low.
+    void setEnvelopeCorrectionWarmupSec(float warmup_sec) {
+        if (std::isfinite(warmup_sec) && warmup_sec >= 0.0f) {
+            env_correction_warmup_sec_ = warmup_sec;
+        }
+    }
+
+
     // Enable/disable use of the extended linear block [v,p,S,a_w] in Kalman3D_Wave.
     //
     // When flag == false:
@@ -748,10 +757,18 @@ private:
             return;
         }
 
+        // Early in Live stage, displacement scale can be underestimated while
+        // tuner outputs settle; skip envelope correction during this warmup.
+        if (startup_stage_t_ < env_correction_warmup_sec_) {
+            apply_RS_tune_();
+            return;
+        }
+
         const float gate_scale = std::max(env_gate_threshold_scale_, 1e-3f);
         const float gate = scale * gate_scale;
         const float err = std::max(0.0f, std::fabs(pz) - gate);
         const float err_ratio = err / std::max(scale, 1e-3f);
+
 
         float rs_scale = 1.0f;
         if (enable_env_rs_correction_ && err > 0.001f) {
@@ -995,6 +1012,7 @@ private:
     float env_rs_gain_ = 3.0f;
     float env_rs_min_scale_ = 0.25f;
     float env_gate_threshold_scale_ = 1.3f;
+    float env_correction_warmup_sec_ = 12.0f;
 
     // Controls whether the extended linear block [v,p,S,a_w] of Kalman3D_Wave
     // is ever enabled. When false, the underlying filter runs as a pure
