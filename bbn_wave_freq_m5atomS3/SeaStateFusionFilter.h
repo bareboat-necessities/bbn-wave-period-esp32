@@ -1016,7 +1016,7 @@ private:
     bool enable_tuner_ = true;
 
     bool enable_env_state_correction_ = false;
-    bool enable_env_rs_correction_ = true;
+    bool enable_env_rs_correction_ = false;
 
     float env_sigma0_m_ = 0.5f;
     float env_state_gain_ = 3.0f;
