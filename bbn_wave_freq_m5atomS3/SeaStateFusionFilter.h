@@ -734,11 +734,12 @@ private:
         const float s = (std::isfinite(rs_scale) && rs_scale > 0.0f)
                         ? std::min(rs_scale, 1.0f)
                         : 1.0f;
-        const float RSb = std::min(std::max(tune_.RS_applied, min_R_S_), max_R_S_) * s;
+        const float RSb = std::min(std::max(tune_.RS_applied, min_R_S_), max_R_S_);
+        const float rs_xy = RSb * s * R_S_xy_factor_;
         mekf_->set_RS_noise(Eigen::Vector3f(
-            RSb * R_S_xy_factor_,
-            RSb * R_S_xy_factor_,
-            RSb
+            rs_xy,
+            rs_xy,
+            RSb * s
         ));
     }
 
