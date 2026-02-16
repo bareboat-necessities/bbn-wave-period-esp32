@@ -720,25 +720,34 @@ private:
         );
         const float gate_safe = std::max(std::min(gate, 1.0f), HEAVE_ENV_MIN_GATE);
 
-        // Map gate -> scale with an explicit control point, avoiding ad-hoc
-        // inverse-square behavior:
-        //   scale(1)  = 1
-        //   scale(g*) = HEAVE_RS_MAX_SCALE, with g* = HEAVE_RS_FULL_INFLATION_GATE
-        //   scale(g)  = clamp(HEAVE_RS_MAX_SCALE^r, 1, HEAVE_RS_MAX_SCALE)
+        // Map gate -> scale with an explicit control point.
+        // IMPORTANT: Smaller R_S means *stronger* drift correction of S=∫p dt.
+        // When heave exceeds the envelope (gate drops), we should trust the
+        // zero-integral pseudo-measurement more to pull runaway displacement
+        // back, not less.
+        //
+        // Build an inflation-shaped curve first and then invert it:
+        //   inflate(1)  = 1
+        //   inflate(g*) = HEAVE_RS_MAX_SCALE, with g* = HEAVE_RS_FULL_INFLATION_GATE
+        //   inflate(g)  = clamp(HEAVE_RS_MAX_SCALE^r, 1, HEAVE_RS_MAX_SCALE)
+        //   scale(g)    = 1 / inflate(g)    ∈ [1/HEAVE_RS_MAX_SCALE, 1]
         // where r = ln(1/g) / ln(1/g*).
+        // This preserves the existing gate geometry while flipping behavior to
+        // a stabilizing response under runaway heave.
         // This gives a monotone, dimensionless curve tied to a meaningful
         // confidence level g* rather than a "last resort" magic gate.
         const float full_gate = std::max(std::min(HEAVE_RS_FULL_INFLATION_GATE, 0.999f), HEAVE_ENV_MIN_GATE + 1e-4f);
         const float log_ref = std::log(1.0f / full_gate);
         const float log_now = std::log(1.0f / gate_safe);
         const float ratio = (log_ref > 1e-6f) ? (log_now / log_ref) : 0.0f;
-        const float scale_unclamped = std::pow(HEAVE_RS_MAX_SCALE, ratio);
-        const float scale = std::min(std::max(scale_unclamped, 1.0f), HEAVE_RS_MAX_SCALE);
+        const float inflate_unclamped = std::pow(HEAVE_RS_MAX_SCALE, ratio);
+        const float inflate = std::min(std::max(inflate_unclamped, 1.0f), HEAVE_RS_MAX_SCALE);
+        const float scale = 1.0f / inflate;
         float RS_adj = RS_base * scale;
 
-        // R_S is pseudo-measurement noise: inflate it when heave is outside
+        // R_S is pseudo-measurement noise: deflate it when heave is outside
         // the expected envelope so the linear branch trusts the displacement
-        // pseudo-update less (instead of over-constraining motion).
+        // pseudo-update *more* and arrests integral runaway.
 
         // Ensure we stay in the usual [min_R_S_, max_R_S_] range
         RS_adj = std::min(std::max(RS_adj, min_R_S_), max_R_S_);
