@@ -85,6 +85,11 @@ constexpr float MAG_DELAY_SEC            = 8.0f;
 // Frequency smoother dt (SeaStateFusionFilter is designed for 240 Hz)
 constexpr float FREQ_SMOOTHER_DT = 1.0f / 240.0f;
 
+// Shared envelope-gate shape for both position pseudo-measurement and R_S gating.
+constexpr float HEAVE_ENV_MIN_GATE = 0.08f;
+constexpr float HEAVE_ENV_SOFT_START = 1.75f;
+constexpr float HEAVE_ENV_AGGRESSIVENESS = 6.0f;
+
 struct TuneState {
     float tau_applied   = 1.1f;    // s
     float sigma_applied = 1e-2f;    // m/s²
@@ -302,62 +307,6 @@ public:
     
         const float omega = 2.0f * static_cast<float>(M_PI) * freq_hz_;
     
-        if (enable_extra_drift_correction_) {
-            const float f_for_drift     = freq_hz_;
-            const float f_min_for_drift = 0.15f;              // > MIN_FREQ_HZ, tuned
-            const float sigma_a         = tune_.sigma_applied;
-        
-            // Only use extra drift when clearly in wave regime
-            const float SIGMA_A_MIN_FOR_DRIFT = 0.25f;        // ~2.5% g; tune on bench
-        
-            const bool wavey_enough =
-                std::isfinite(f_for_drift) &&
-                f_for_drift > f_min_for_drift &&
-                std::isfinite(sigma_a) &&
-                sigma_a > SIGMA_A_MIN_FOR_DRIFT &&
-                !freq_stillness_.isStill() &&
-                (startup_stage_ == StartupStage::Live);
-        
-            if (wavey_enough) {
-                // Vertical displacement std ~ k * σ_a * τ²
-                // 
-                // σ_a * τ² is decent estimate of amplitude
-                // For noisy or biased sensors this can be used
-                // to drop R_S when displacement estimate from
-                // filter exceeds it. This drop needs to be relatively smooth and fast.
-                // When displacement returns to normal range R_S needs to
-                // be restored to normal value predicted by adaptation
-                // also relatively fast and smooth. 
-                float sigma_disp_vert = extra_drift_gain_ * getDisplacementScale();
-
-                // If estimated heave leaves expected envelope, tighten this
-                // pseudo-position correction so z is pulled back faster.
-                // Keep this gate fairly soft to avoid hard-locking the estimate
-                // onto a stale narrow-band proxy when sensor stream quality drops.
-                const float env_gate = getHeaveEnvelopeGate(
-                    0.25f,  // keep at least 25% correction authority
-                    3.25f,  // start tapering only when |heave| is well above envelope
-                    2.0f    // gentler roll-off
-                );
-                // Strong suppression when estimated heave escapes the expected
-                // envelope while keeping correction gentle enough in energetic
-                // seas where instantaneous |heave| naturally exceeds ~1σ.
-                sigma_disp_vert *= env_gate;
-
-                // Never let this pseudo-measurement get *too* confident.
-                // We only trust the vertical component here because the proxy
-                // p≈-a/ω² is fed from vertical acceleration in this pipeline.
-                // Scale the minimum pseudo-position sigma with expected sea displacement.
-                // A fixed tiny floor (e.g. 1 cm) can over-constrain the state and make
-                // heave appear numerically "stuck" when the input stream is stale.
-                const float sigma_floor_from_env = 0.20f * getDisplacementScale();
-                const float SIGMA_P_MIN = std::max(0.05f, sigma_floor_from_env);
-                const float SIGMA_P_MAX = 5.0f;   // 5 m, safety upper bound
-                sigma_disp_vert = std::min(std::max(sigma_disp_vert, SIGMA_P_MIN), SIGMA_P_MAX);
-
-                updatePositionFromVerticalAccOmega(a_z_inertial, omega, sigma_disp_vert);
-            }
-        }
       
         // Direction filters run on BODY accel, "sign" uses vertical acceleration
         dir_filter_.update(a_x_body, a_y_body, omega, dt);
@@ -399,58 +348,6 @@ public:
                 }
             }
         }
-    }
-
-    // Convenience wrapper: infer p_meas from inertial acceleration and
-    // angular frequency ω [rad/s] via p ≈ -a/ω² on all 3 axes.
-    //
-    // a: inertial acceleration (NED), m/s²
-    // omega  : angular frequency, rad/s (use 2π f from frequency tracker)
-    // sigma_disp_meas: per-axis std of the resulting displacement measurement [m]
-    // omega_min: minimum |ω| to avoid insane amplification at very low freq
-    // 
-    // This correction assumes very narrowband regime. 
-    // Use it as very soft correction with very high sigma_disp_meas or when
-    // you know that the sea state is close to harrowband harmonic. 
-    void updatePositionFromAccOmega(
-        const Eigen::Vector3f& a, float omega, const Eigen::Vector3f& sigma_disp_meas, float omega_min = (2.0f * M_PI * 0.06f)) 
-    {
-        if (!std::isfinite(omega)) return;
-
-        float abs_omega = std::abs(omega);
-        if (abs_omega < omega_min) {
-            // Too low frequency: 1/ω² would blow up
-            abs_omega = omega_min;
-        }
-        const float w2 = abs_omega * abs_omega;
-
-        // First-order approximation: p ≈ -a/ω² on all axes
-        Eigen::Vector3f p_meas = -a / w2;
-        if (!p_meas.allFinite()) return;
-
-        mekf_->measurement_update_position_pseudo(p_meas, sigma_disp_meas);
-    }
-
-    // Vertical-only pseudo-position correction from inertial vertical acceleration.
-    // Horizontal axes are set to the current estimate so this update does not inject
-    // artificial XY innovations from an under-observed model.
-    void updatePositionFromVerticalAccOmega(float a_z, float omega, float sigma_disp_z,
-                                            float omega_min = (2.0f * M_PI * 0.06f))
-    {
-        if (!mekf_ || !std::isfinite(a_z) || !std::isfinite(sigma_disp_z) || sigma_disp_z <= 0.0f) return;
-        if (!std::isfinite(omega)) return;
-
-        float abs_omega = std::abs(omega);
-        if (abs_omega < omega_min) abs_omega = omega_min;
-        const float w2 = abs_omega * abs_omega;
-
-        Eigen::Vector3f p_meas = mekf_->get_position();
-        p_meas.z() = -a_z / w2;
-        if (!p_meas.allFinite()) return;
-
-        const float sigma_xy = std::max(10.0f * sigma_disp_z, 2.0f);
-        Eigen::Vector3f sigma_disp_meas(sigma_xy, sigma_xy, sigma_disp_z);
-        mekf_->measurement_update_position_pseudo(p_meas, sigma_disp_meas);
     }
 
     void setWithMag(bool with_mag) {
@@ -509,9 +406,6 @@ public:
     }
     void enableHeaveRSGating(bool flag = true) {
         enable_heave_RS_gating_ = flag;
-    }
-    void enableExtraDriftCorrection(bool flag = true) {
-        enable_extra_drift_correction_ = flag;
     }
 
     // Enable/disable use of the extended linear block [v,p,S,a_w] in Kalman3D_Wave.
@@ -584,13 +478,6 @@ public:
         }
     }
 
-    // Scale factor for extra drift correction: σ_p ≈ k * σ_a * τ²
-    void setExtraDriftGain(float k) {
-        if (std::isfinite(k) && k > 0.0f) {
-            extra_drift_gain_ = k;
-        }
-    }
-
     void setFreezeAccBiasUntilLive(bool en) { freeze_acc_bias_until_live_ = en; }
     void setWarmupRacc(float r) { if (std::isfinite(r) && r > 0.0f) Racc_warmup_ = r; }
 
@@ -639,8 +526,14 @@ public:
 
         // Normalize overrun relative to where soft gating starts so the curve
         // gets steep quickly once we are outside the expected envelope.
+        // Use a quadratic→cubic hybrid penalty:
+        //   penalty = over^2 * (1 + over)
+        // It behaves ~quadratic near threshold (stable Kalman adaptation)
+        // and transitions toward cubic growth for large runaways.
         const float over = (ratio - ratio_soft_start) / ratio_soft_start;
-        float gate = std::exp(-aggressiveness * over * over);
+        const float over2 = over * over;
+        const float penalty = over2 * (1.0f + over);
+        float gate = std::exp(-aggressiveness * penalty);
         if (gate < min_gate) gate = min_gate;
         return gate;
     }
@@ -814,7 +707,11 @@ private:
         // Base clamp into global RS range
         float RS_base = std::min(std::max(RS_in, min_R_S_), max_R_S_);
 
-        const float gate = getHeaveEnvelopeGate();
+        const float gate = getHeaveEnvelopeGate(
+            HEAVE_ENV_MIN_GATE,
+            HEAVE_ENV_SOFT_START,
+            HEAVE_ENV_AGGRESSIVENESS
+        );
         float RS_adj = RS_base * gate;
 
         // Ensure we stay in the usual [min_R_S_, max_R_S_] range
@@ -1056,18 +953,13 @@ private:
 
     bool enable_clamp_ = true;
     bool enable_tuner_ = true;
-    bool enable_heave_RS_gating_ = false; 
-    bool enable_extra_drift_correction_ = false;
+    bool enable_heave_RS_gating_ = true;  
 
     // Controls whether the extended linear block [v,p,S,a_w] of Kalman3D_Wave
     // is ever enabled. When false, the underlying filter runs as a pure
     // attitude/bias QMEKF (linear states frozen, no OU, no S pseudo-measurements),
     // while all frequency tracking / tuner / direction logic still operates.
     bool enable_linear_block_ = true;
-
-    // Dimensionless gain for extra drift correction (vertical).
-    // Rough guideline: 0.2–1.0. Start modest and adjust by looking at heave drift vs noise.
-    float extra_drift_gain_ = 0.5f;
 
     // Tunable adaptation parameters (initialized from global constexpr defaults)
     float min_freq_hz_            = MIN_FREQ_HZ;

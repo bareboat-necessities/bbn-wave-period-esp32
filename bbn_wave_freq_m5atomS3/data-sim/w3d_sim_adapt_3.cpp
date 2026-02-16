@@ -450,7 +450,6 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
         filter.enableLinearBlock(true);
         filter.enableTuner(true);
         filter.enableHeaveRSGating(true);
-        filter.enableExtraDriftCorrection(false);    // disabled
         filter.enableClamp(true);
     }
     
