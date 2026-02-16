@@ -440,6 +440,19 @@ public:
         }
     }
 
+    // Scale factor for the envelope gate used to trigger drift correction.
+    // 1.0 means correction starts at |z| > envelope, 1.3 means |z| must exceed
+    // 130% of the envelope before correction kicks in.
+    void setEnvelopeGateThresholdScale(float scale) {
+        if (std::isfinite(scale) && scale > 0.0f) {
+            env_gate_threshold_scale_ = scale;
+        }
+    }
+
+    float getEnvelopeGateThresholdScale() const noexcept {
+        return env_gate_threshold_scale_;
+    }
+
     // Enable/disable use of the extended linear block [v,p,S,a_w] in Kalman3D_Wave.
     //
     // When flag == false:
@@ -739,7 +752,9 @@ private:
             return;
         }
 
-        const float err = std::max(0.0f, std::fabs(pz) - scale);
+        const float gate_scale = std::max(env_gate_threshold_scale_, 1e-3f);
+        const float gate = scale * gate_scale;
+        const float err = std::max(0.0f, std::fabs(pz) - gate);
 
         float rs_scale = 1.0f;
         if (enable_env_rs_correction_) {
@@ -975,6 +990,7 @@ private:
     float env_state_gain_ = 3.0f;
     float env_rs_gain_ = 3.0f;
     float env_rs_min_scale_ = 0.25f;
+    float env_gate_threshold_scale_ = 1.3f;
 
     // Controls whether the extended linear block [v,p,S,a_w] of Kalman3D_Wave
     // is ever enabled. When false, the underlying filter runs as a pure
