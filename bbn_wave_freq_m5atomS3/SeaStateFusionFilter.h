@@ -394,7 +394,7 @@ public:
         return acc_noise_floor_sigma_;
     }
 
-    // Configure engine-reject LPF on vertical accel for tracker input
+    // Configure LPF on vertical accel for tracker input
     void setFreqInputCutoffHz(float fc) {
         freq_input_lpf_.setCutoff(fc);
     }
@@ -422,11 +422,6 @@ public:
         if (std::isfinite(gain) && gain >= 0.0f) {
             env_state_gain_ = gain;
         }
-    }
-
-    // Kept for backward compatibility (maps to state-correction params).
-    void setEnvelopeCorrectionParams(float sigma0_m, float gain) {
-        setEnvelopeStateCorrectionParams(sigma0_m, gain);
     }
 
     // R_S modulation while outside envelope:
