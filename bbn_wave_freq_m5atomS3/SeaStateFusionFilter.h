@@ -89,8 +89,8 @@ constexpr float FREQ_SMOOTHER_DT = 1.0f / 240.0f;
 constexpr float HEAVE_ENV_MIN_GATE = 0.08f;
 constexpr float HEAVE_ENV_SOFT_START = 1.75f;
 constexpr float HEAVE_ENV_AGGRESSIVENESS = 6.0f;
-constexpr float HEAVE_RS_MIN_SCALE = 0.2f;
-constexpr float HEAVE_RS_LAST_RESORT_GATE = 0.30f;
+constexpr float HEAVE_RS_MAX_INFLATION = 4.0f;
+constexpr float HEAVE_RS_INFLATION_CURVATURE = 2.0f;
 
 struct TuneState {
     float tau_applied   = 1.1f;    // s
@@ -707,19 +707,32 @@ private:
 
     float adjustRSWithHeave(float RS_in) const noexcept {
         // Base clamp into global RS range
-        float RS_base = std::min(std::max(RS_in, min_R_S_), max_R_S_);
+        const float RS_base = std::min(std::max(RS_in, min_R_S_), max_R_S_);
 
         const float gate = getHeaveEnvelopeGate(
             HEAVE_ENV_MIN_GATE,
             HEAVE_ENV_SOFT_START,
             HEAVE_ENV_AGGRESSIVENESS
         );
-        const float gate_last_resort = gate * gate;
-        float RS_adj = RS_base * gate_last_resort;
 
-        // R_S drift correction is a last-resort path: when triggered we apply
-        // aggressive attenuation, but keep a floor to avoid hard collapse.
-        RS_adj = std::max(RS_adj, RS_base * HEAVE_RS_MIN_SCALE);
+        // Monotonic smooth inflation law for pseudo-measurement noise:
+        //   scale(g) = 1 + k * u^p,
+        //   u = clamp((1 - g) / (1 - g_min), 0, 1)
+        // where g is heave envelope gate, g_min is its floor,
+        // k = HEAVE_RS_MAX_INFLATION and p = HEAVE_RS_INFLATION_CURVATURE.
+        //
+        // Properties:
+        //   • g = 1   => scale = 1      (no correction in nominal regime)
+        //   • g = g_min => scale = 1 + k (bounded maximum inflation)
+        //   • scale is C1-smooth and monotone for p >= 1.
+        //
+        // This avoids hard threshold jumps and gives mathematically controlled
+        // attenuation of pseudo-update trust as envelope confidence degrades.
+        const float denom = std::max(1e-6f, 1.0f - HEAVE_ENV_MIN_GATE);
+        const float u = std::min(std::max((1.0f - gate) / denom, 0.0f), 1.0f);
+        const float scale = 1.0f + HEAVE_RS_MAX_INFLATION * std::pow(u, HEAVE_RS_INFLATION_CURVATURE);
+
+        float RS_adj = RS_base * scale;
 
         // Ensure we stay in the usual [min_R_S_, max_R_S_] range
         RS_adj = std::min(std::max(RS_adj, min_R_S_), max_R_S_);
@@ -745,15 +758,7 @@ private:
 
         float RSb = RS_base;
         if (enable_heave_RS_gating_) {
-            const float heave_gate = getHeaveEnvelopeGate(
-                HEAVE_ENV_MIN_GATE,
-                HEAVE_ENV_SOFT_START,
-                HEAVE_ENV_AGGRESSIVENESS
-            );
-            const bool last_resort = freq_stillness_.isStill() || (heave_gate <= HEAVE_RS_LAST_RESORT_GATE);
-            if (last_resort) {
-                RSb = adjustRSWithHeave(RS_base);
-            }
+            RSb = adjustRSWithHeave(RS_base);
         }
     
         mekf_->set_RS_noise(Eigen::Vector3f(
