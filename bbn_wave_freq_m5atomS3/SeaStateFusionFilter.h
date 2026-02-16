@@ -91,7 +91,7 @@ constexpr float HEAVE_ENV_SOFT_START = 2.50f;
 constexpr float HEAVE_ENV_AGGRESSIVENESS = 4.0f;
 
 // Envelope-driven state projection (disabled by default).
-constexpr float HEAVE_PROJ_GATE_TRIGGER = 0.90f;
+constexpr float HEAVE_PROJ_GATE_TRIGGER = 1.10f;
 constexpr float HEAVE_PROJ_MIN_SZ = 0.35f;
 constexpr float HEAVE_PROJ_MIN_SXY = 0.80f;
 constexpr float HEAVE_PROJ_MAX_SHRINK_PER_SEC = 0.20f;
