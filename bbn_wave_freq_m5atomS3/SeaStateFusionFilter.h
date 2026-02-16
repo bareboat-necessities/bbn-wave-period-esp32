@@ -90,6 +90,14 @@ constexpr float HEAVE_ENV_MIN_GATE = 0.08f;
 constexpr float HEAVE_ENV_SOFT_START = 1.75f;
 constexpr float HEAVE_ENV_AGGRESSIVENESS = 6.0f;
 constexpr float HEAVE_RS_MAX_SCALE = 5.0f;
+// Exponent for inversion of heave RS gating.
+// 1.0  => full inverse (very aggressive deflation under overrun),
+// 0.0  => disabled inversion.
+// Keep this moderate to avoid over-constraining large but valid sea states.
+constexpr float HEAVE_RS_INVERT_EXP = 0.35f;
+// Allow temporary RS floor reduction under severe envelope overrun so
+// gating is not neutralized by nominal min_R_S_ clamping.
+constexpr float HEAVE_RS_EMERGENCY_MIN_FACTOR = 1.0f / HEAVE_RS_MAX_SCALE;
 // Control point for R_S inflation curve:
 // when envelope confidence gate reaches this level, we apply full
 // HEAVE_RS_MAX_SCALE inflation. Above this gate inflation is partial;
@@ -309,6 +317,12 @@ public:
         // Tuner gets vertical accel
         if (enable_tuner_) {
             update_tuner(dt, a_vert_up, f_after_still);
+        }
+
+        // Keep envelope-based R_S gating responsive in Live mode instead of
+        // waiting for slow adaptation cadence.
+        if (startup_stage_ == StartupStage::Live && enable_linear_block_) {
+            apply_RS_tune_();
         }
     
         const float omega = 2.0f * static_cast<float>(M_PI) * freq_hz_;
@@ -710,8 +724,9 @@ private:
     };
 
     float adjustRSWithHeave(float RS_in) const noexcept {
-        // Base clamp into global RS range
-        const float RS_base = std::min(std::max(RS_in, min_R_S_), max_R_S_);
+        // Keep nominal tuning intact but avoid pre-clamping to min_R_S_: if we
+        // clamp too early, envelope gating can be neutralized in runaways.
+        const float RS_base = std::min(std::max(RS_in, 1e-6f), max_R_S_);
 
         const float gate = getHeaveEnvelopeGate(
             HEAVE_ENV_MIN_GATE,
@@ -730,27 +745,32 @@ private:
         //   inflate(1)  = 1
         //   inflate(g*) = HEAVE_RS_MAX_SCALE, with g* = HEAVE_RS_FULL_INFLATION_GATE
         //   inflate(g)  = clamp(HEAVE_RS_MAX_SCALE^r, 1, HEAVE_RS_MAX_SCALE)
-        //   scale(g)    = 1 / inflate(g)    ∈ [1/HEAVE_RS_MAX_SCALE, 1]
+        //   scale(g)    = inflate(g)^{-k}, k=HEAVE_RS_INVERT_EXP ∈ [0,1]
         // where r = ln(1/g) / ln(1/g*).
         // This preserves the existing gate geometry while flipping behavior to
         // a stabilizing response under runaway heave.
-        // This gives a monotone, dimensionless curve tied to a meaningful
-        // confidence level g* rather than a "last resort" magic gate.
         const float full_gate = std::max(std::min(HEAVE_RS_FULL_INFLATION_GATE, 0.999f), HEAVE_ENV_MIN_GATE + 1e-4f);
         const float log_ref = std::log(1.0f / full_gate);
         const float log_now = std::log(1.0f / gate_safe);
         const float ratio = (log_ref > 1e-6f) ? (log_now / log_ref) : 0.0f;
         const float inflate_unclamped = std::pow(HEAVE_RS_MAX_SCALE, ratio);
         const float inflate = std::min(std::max(inflate_unclamped, 1.0f), HEAVE_RS_MAX_SCALE);
-        const float scale = 1.0f / inflate;
+
+        // Soft-inverted response:
+        //   scale = inflate^{-k}, k in [0,1]
+        // k=1 reproduces full inverse, k<1 keeps some protection against
+        // over-constraining true low-frequency heave in high sea states.
+        const float k = std::min(std::max(HEAVE_RS_INVERT_EXP, 0.0f), 1.0f);
+        const float scale = std::pow(inflate, -k);
         float RS_adj = RS_base * scale;
 
-        // R_S is pseudo-measurement noise: deflate it when heave is outside
-        // the expected envelope so the linear branch trusts the displacement
-        // pseudo-update *more* and arrests integral runaway.
+        // Use an emergency floor below nominal min_R_S_ while envelope-gated,
+        // otherwise the nominal clamp can erase most of the gating authority.
+        const float emergency_factor = std::min(std::max(HEAVE_RS_EMERGENCY_MIN_FACTOR, 1e-3f), 1.0f);
+        const float min_RS_emergency = std::max(1e-6f, min_R_S_ * emergency_factor);
 
-        // Ensure we stay in the usual [min_R_S_, max_R_S_] range
-        RS_adj = std::min(std::max(RS_adj, min_R_S_), max_R_S_);
+        // Keep upper bound unchanged; lower bound becomes emergency floor.
+        RS_adj = std::min(std::max(RS_adj, min_RS_emergency), max_R_S_);
         return RS_adj;
     }
 
