@@ -94,7 +94,7 @@ constexpr float HEAVE_RS_MAX_SCALE = 5.0f;
 // 1.0  => full inverse (very aggressive deflation under overrun),
 // 0.0  => disabled inversion.
 // Keep this moderate to avoid over-constraining large but valid sea states.
-constexpr float HEAVE_RS_INVERT_EXP = 0.35f;
+constexpr float HEAVE_RS_INVERT_EXP = 0.8f;
 // Allow temporary RS floor reduction under severe envelope overrun so
 // gating is not neutralized by nominal min_R_S_ clamping.
 constexpr float HEAVE_RS_EMERGENCY_MIN_FACTOR = 1.0f / HEAVE_RS_MAX_SCALE;
