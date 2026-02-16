@@ -755,22 +755,30 @@ private:
         const float gate_scale = std::max(env_gate_threshold_scale_, 1e-3f);
         const float gate = scale * gate_scale;
         const float err = std::max(0.0f, std::fabs(pz) - gate);
+        const float err_ratio = err / std::max(scale, 1e-3f);
 
         float rs_scale = 1.0f;
         if (enable_env_rs_correction_) {
-            rs_scale = 1.0f / (1.0f + env_rs_gain_ * err);
+            // Use normalized overrun so correction gain stays consistent across sea states.
+            rs_scale = 1.0f / (1.0f + env_rs_gain_ * err_ratio);
             rs_scale = std::min(std::max(rs_scale, env_rs_min_scale_), 1.0f);
         }
         apply_RS_tune_(rs_scale);
 
         if (enable_env_state_correction_ && err > 0.0f) {
-            const float z_ref = sgnf_(pz) * scale;
-            const float sigma = env_sigma0_m_ / (1.0f + env_state_gain_ * err);
-            const float sigma_z = std::max(1e-3f, sigma);
-            const Eigen::Vector3f p_pred = mekf_->get_position();
-            const Eigen::Vector3f p_meas(p_pred.x(), p_pred.y(), z_ref);
-            const Eigen::Vector3f sigmas(1e9f, 1e9f, sigma_z);
-            mekf_->measurement_update_position_pseudo(p_meas, sigmas);
+            // Only pull back while moving farther outside the gate; avoid fighting natural return.
+            const float vz = mekf_->get_velocity().z();
+            const bool moving_outward = (pz * vz) > 0.0f;
+            if (moving_outward) {
+                // Correct to the gate boundary (not the full envelope) to avoid over-clipping heave.
+                const float z_ref = sgnf_(pz) * gate;
+                const float sigma = env_sigma0_m_ / (1.0f + env_state_gain_ * err_ratio);
+                const float sigma_z = std::max(5e-2f, sigma);
+                const Eigen::Vector3f p_pred = mekf_->get_position();
+                const Eigen::Vector3f p_meas(p_pred.x(), p_pred.y(), z_ref);
+                const Eigen::Vector3f sigmas(1e9f, 1e9f, sigma_z);
+                mekf_->measurement_update_position_pseudo(p_meas, sigmas);
+            }
         }
     }
 
