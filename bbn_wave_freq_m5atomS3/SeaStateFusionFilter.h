@@ -89,6 +89,9 @@ constexpr float FREQ_SMOOTHER_DT = 1.0f / 240.0f;
 constexpr float HEAVE_ENV_MIN_GATE = 0.08f;
 constexpr float HEAVE_ENV_SOFT_START = 1.75f;
 constexpr float HEAVE_ENV_AGGRESSIVENESS = 6.0f;
+constexpr float HEAVE_RS_MIN_SCALE = 0.2f;
+constexpr float HEAVE_RS_LAST_RESORT_GATE = 0.30f;
+constexpr float HEAVE_RS_MIN_STILL_SEC = 6.0f;
 
 struct TuneState {
     float tau_applied   = 1.1f;    // s
@@ -712,7 +715,12 @@ private:
             HEAVE_ENV_SOFT_START,
             HEAVE_ENV_AGGRESSIVENESS
         );
-        float RS_adj = RS_base * gate;
+        const float gate_last_resort = gate * gate;
+        float RS_adj = RS_base * gate_last_resort;
+
+        // R_S drift correction is a last-resort path: when triggered we apply
+        // aggressive attenuation, but keep a floor to avoid hard collapse.
+        RS_adj = std::max(RS_adj, RS_base * HEAVE_RS_MIN_SCALE);
 
         // Ensure we stay in the usual [min_R_S_, max_R_S_] range
         RS_adj = std::min(std::max(RS_adj, min_R_S_), max_R_S_);
@@ -734,9 +742,22 @@ private:
     void apply_RS_tune_() {
         if (!mekf_) return;
     
-        const float RSb = enable_heave_RS_gating_
-            ? adjustRSWithHeave(tune_.RS_applied)
-            : std::min(std::max(tune_.RS_applied, min_R_S_), max_R_S_);
+        const float RS_base = std::min(std::max(tune_.RS_applied, min_R_S_), max_R_S_);
+
+        float RSb = RS_base;
+        if (enable_heave_RS_gating_) {
+            const float heave_gate = getHeaveEnvelopeGate(
+                HEAVE_ENV_MIN_GATE,
+                HEAVE_ENV_SOFT_START,
+                HEAVE_ENV_AGGRESSIVENESS
+            );
+            const bool last_resort = freq_stillness_.isStill()
+                && (freq_stillness_.getStillTime() >= HEAVE_RS_MIN_STILL_SEC)
+                && (heave_gate <= HEAVE_RS_LAST_RESORT_GATE);
+            if (last_resort) {
+                RSb = adjustRSWithHeave(RS_base);
+            }
+        }
     
         mekf_->set_RS_noise(Eigen::Vector3f(
             RSb * R_S_xy_factor_,
