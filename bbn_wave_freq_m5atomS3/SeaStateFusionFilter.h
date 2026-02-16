@@ -747,7 +747,7 @@ private:
         ));
     }
 
-    void applyEnvelopeDriftCorrection_(float /*dt*/) {
+    void applyEnvelopeDriftCorrection_(float dt) {
         if (!mekf_) return;
 
         const float scale = std::max(getDisplacementScale(), 0.3f);
@@ -769,6 +769,12 @@ private:
         const float err = std::max(0.0f, std::fabs(pz) - gate);
         const float err_ratio = err / std::max(scale, 1e-3f);
 
+        if (err > 0.001f && std::isfinite(dt) && dt > 0.0f) {
+            env_outside_time_sec_ += dt;
+        } else {
+            env_outside_time_sec_ = 0.0f;
+        }
+
 
         float rs_scale = 1.0f;
         if (enable_env_rs_correction_ && err > 0.001f) {
@@ -782,11 +788,16 @@ private:
             // Only pull back while moving farther outside the gate; avoid fighting natural return.
             const float vz = mekf_->get_velocity().z();
             const bool moving_outward = (pz * vz) > 0.0f;
-            if (moving_outward) {
-                // Correct to the gate boundary (not the full envelope) to avoid over-clipping heave.
-                const float z_ref = sgnf_(pz) * gate;
-                const float sigma = env_sigma0_m_ / (1.0f + env_state_gain_ * err_ratio);
-                const float sigma_z = std::max(5e-2f, sigma);
+            const bool outside_persistent = env_outside_time_sec_ >= env_state_dwell_sec_;
+            if (moving_outward && outside_persistent) {
+                // Blend correction target toward the gate (instead of snapping directly to it)
+                // to reduce waveform clipping and heave RMS inflation.
+                const float pull = 1.0f - 1.0f / (1.0f + env_state_gain_ * err_ratio);
+                const float pull_clamped = std::min(std::max(pull, 0.0f), env_state_max_pull_);
+                const float z_gate = sgnf_(pz) * gate;
+                const float z_ref = pz + (z_gate - pz) * pull_clamped;
+                const float sigma = env_sigma0_m_ / (1.0f + 0.5f * env_state_gain_ * err_ratio);
+                const float sigma_z = std::max(1.5e-1f, sigma);
                 const Eigen::Vector3f p_pred = mekf_->get_position();
                 const Eigen::Vector3f p_meas(p_pred.x(), p_pred.y(), z_ref);
                 const Eigen::Vector3f sigmas(1e9f, 1e9f, sigma_z);
@@ -1004,11 +1015,14 @@ private:
     bool enable_clamp_ = true;
     bool enable_tuner_ = true;
 
-    bool enable_env_state_correction_ = true;
+    bool enable_env_state_correction_ = false;
     bool enable_env_rs_correction_ = true;
 
     float env_sigma0_m_ = 0.5f;
     float env_state_gain_ = 3.0f;
+    float env_state_dwell_sec_ = 0.8f;
+    float env_state_max_pull_ = 0.4f;
+    float env_outside_time_sec_ = 0.0f;
     float env_rs_gain_ = 3.0f;
     float env_rs_min_scale_ = 0.25f;
     float env_gate_threshold_scale_ = 1.8f;
