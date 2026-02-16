@@ -89,6 +89,8 @@ constexpr float FREQ_SMOOTHER_DT = 1.0f / 240.0f;
 constexpr float HEAVE_ENV_MIN_GATE = 0.08f;
 constexpr float HEAVE_ENV_SOFT_START = 1.75f;
 constexpr float HEAVE_ENV_AGGRESSIVENESS = 6.0f;
+constexpr float HEAVE_RS_MIN_SCALE = 0.7f;
+constexpr float HEAVE_RS_LAST_RESORT_GATE = 0.35f;
 
 struct TuneState {
     float tau_applied   = 1.1f;    // s
@@ -714,6 +716,10 @@ private:
         );
         float RS_adj = RS_base * gate;
 
+        // R_S drift correction is a last-resort path: never let heave-gating
+        // over-strengthen pseudo-measurements by more than a bounded factor.
+        RS_adj = std::max(RS_adj, RS_base * HEAVE_RS_MIN_SCALE);
+
         // Ensure we stay in the usual [min_R_S_, max_R_S_] range
         RS_adj = std::min(std::max(RS_adj, min_R_S_), max_R_S_);
         return RS_adj;
@@ -734,9 +740,20 @@ private:
     void apply_RS_tune_() {
         if (!mekf_) return;
     
-        const float RSb = enable_heave_RS_gating_
-            ? adjustRSWithHeave(tune_.RS_applied)
-            : std::min(std::max(tune_.RS_applied, min_R_S_), max_R_S_);
+        const float RS_base = std::min(std::max(tune_.RS_applied, min_R_S_), max_R_S_);
+
+        float RSb = RS_base;
+        if (enable_heave_RS_gating_) {
+            const float heave_gate = getHeaveEnvelopeGate(
+                HEAVE_ENV_MIN_GATE,
+                HEAVE_ENV_SOFT_START,
+                HEAVE_ENV_AGGRESSIVENESS
+            );
+            const bool last_resort = freq_stillness_.isStill() || (heave_gate <= HEAVE_RS_LAST_RESORT_GATE);
+            if (last_resort) {
+                RSb = adjustRSWithHeave(RS_base);
+            }
+        }
     
         mekf_->set_RS_noise(Eigen::Vector3f(
             RSb * R_S_xy_factor_,
