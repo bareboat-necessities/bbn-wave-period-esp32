@@ -89,7 +89,7 @@ constexpr float FREQ_SMOOTHER_DT = 1.0f / 240.0f;
 constexpr float HEAVE_ENV_MIN_GATE = 0.08f;
 constexpr float HEAVE_ENV_SOFT_START = 1.75f;
 constexpr float HEAVE_ENV_AGGRESSIVENESS = 6.0f;
-constexpr float HEAVE_RS_MIN_SCALE = 0.2f;
+constexpr float HEAVE_RS_MAX_SCALE = 5.0f;
 constexpr float HEAVE_RS_LAST_RESORT_GATE = 0.30f;
 
 struct TuneState {
@@ -714,12 +714,13 @@ private:
             HEAVE_ENV_SOFT_START,
             HEAVE_ENV_AGGRESSIVENESS
         );
-        const float gate_last_resort = gate * gate;
-        float RS_adj = RS_base * gate_last_resort;
+        const float gate_safe = std::max(gate, HEAVE_ENV_MIN_GATE);
+        const float inv_gate2 = 1.0f / (gate_safe * gate_safe);
+        float RS_adj = RS_base * std::min(inv_gate2, HEAVE_RS_MAX_SCALE);
 
-        // R_S drift correction is a last-resort path: when triggered we apply
-        // aggressive attenuation, but keep a floor to avoid hard collapse.
-        RS_adj = std::max(RS_adj, RS_base * HEAVE_RS_MIN_SCALE);
+        // R_S is pseudo-measurement noise: inflate it when heave is outside
+        // the expected envelope so the linear branch trusts the displacement
+        // pseudo-update less (instead of over-constraining motion).
 
         // Ensure we stay in the usual [min_R_S_, max_R_S_] range
         RS_adj = std::min(std::max(RS_adj, min_R_S_), max_R_S_);
