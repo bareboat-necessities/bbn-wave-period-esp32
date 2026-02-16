@@ -73,7 +73,7 @@ constexpr float MAX_FREQ_HZ = 6.0f;
 constexpr float MIN_TAU_S   = 0.02f;
 constexpr float MAX_TAU_S   = 3.0f;
 constexpr float MAX_SIGMA_A = 6.0f;
-constexpr float MIN_R_S     = 0.5f;
+constexpr float MIN_R_S     = 0.4f;
 constexpr float MAX_R_S     = 35.0f;
 
 constexpr float ADAPT_TAU_SEC            = 1.5f;
@@ -89,12 +89,12 @@ constexpr float FREQ_SMOOTHER_DT = 1.0f / 240.0f;
 constexpr float HEAVE_ENV_MIN_GATE = 0.08f;
 constexpr float HEAVE_ENV_SOFT_START = 1.75f;
 constexpr float HEAVE_ENV_AGGRESSIVENESS = 6.0f;
-constexpr float HEAVE_RS_MAX_SCALE = 5.0f;
+constexpr float HEAVE_RS_MAX_SCALE = 35.0f;
 // Exponent for inversion of heave RS gating.
 // 1.0  => full inverse (very aggressive deflation under overrun),
 // 0.0  => disabled inversion.
 // Keep this moderate to avoid over-constraining large but valid sea states.
-constexpr float HEAVE_RS_INVERT_EXP = 0.8f;
+constexpr float HEAVE_RS_INVERT_EXP = 1.1f;
 // Allow temporary RS floor reduction under severe envelope overrun so
 // gating is not neutralized by nominal min_R_S_ clamping.
 constexpr float HEAVE_RS_EMERGENCY_MIN_FACTOR = 1.0f / HEAVE_RS_MAX_SCALE;
@@ -788,14 +788,13 @@ private:
 
     void apply_RS_tune_() {
         if (!mekf_) return;
-    
-        const float RS_base = std::min(std::max(tune_.RS_applied, min_R_S_), max_R_S_);
-
+        const float RS_base = std::min(std::max(tune_.RS_applied, 1e-6f), max_R_S_); // DO NOT clamp to min_R_S_ here
         float RSb = RS_base;
         if (enable_heave_RS_gating_) {
-            RSb = adjustRSWithHeave(RS_base);
+            RSb = adjustRSWithHeave(RS_base);   // does emergency floor itself
+        } else {
+            RSb = std::min(std::max(RSb, min_R_S_), max_R_S_);
         }
-    
         mekf_->set_RS_noise(Eigen::Vector3f(
             RSb * R_S_xy_factor_,
             RSb * R_S_xy_factor_,
