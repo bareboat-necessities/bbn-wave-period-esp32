@@ -303,21 +303,7 @@ public:
         // Keep linear-block R_S tuning responsive in Live mode instead of
         // waiting for slow adaptation cadence.
         if (startup_stage_ == StartupStage::Live && enable_linear_block_) {
-            apply_RS_tune_();
-
-            const float scale = getDisplacementScale();
-            const float pz = mekf_->get_position().z();
-            if (std::isfinite(scale) && std::isfinite(pz) && scale > 0.0f) {
-                const float err = std::max(0.0f, std::fabs(pz) - scale);
-                if (err > 0.0f) {
-                    const float z_ref = sgnf_(pz) * scale;
-                    const float sigma = env_sigma0_m_ / (1.0f + env_gain_ * err);
-                    const float sigma_z = std::max(1e-3f, sigma);
-                    const Eigen::Vector3f p_meas(0.0f, 0.0f, z_ref);
-                    const Eigen::Vector3f sigmas(1e9f, 1e9f, sigma_z);
-                    mekf_->measurement_update_position_pseudo(p_meas, sigmas);
-                }
-            }
+            applyEnvelopeDriftCorrection_(dt);
         }
     
         const float omega = 2.0f * static_cast<float>(M_PI) * freq_hz_;
@@ -420,12 +406,37 @@ public:
         enable_tuner_ = flag;
     }
 
-    void setEnvelopeCorrectionParams(float sigma0_m, float gain) {
+    void setEnvelopeStateCorrectionEnabled(bool en) {
+        enable_env_state_correction_ = en;
+    }
+
+    void setEnvelopeRSCorrectionEnabled(bool en) {
+        enable_env_rs_correction_ = en;
+    }
+
+    // State restoring-force pseudo-measurement parameters.
+    void setEnvelopeStateCorrectionParams(float sigma0_m, float gain) {
         if (std::isfinite(sigma0_m) && sigma0_m > 0.0f) {
             env_sigma0_m_ = sigma0_m;
         }
         if (std::isfinite(gain) && gain >= 0.0f) {
-            env_gain_ = gain;
+            env_state_gain_ = gain;
+        }
+    }
+
+    // Kept for backward compatibility (maps to state-correction params).
+    void setEnvelopeCorrectionParams(float sigma0_m, float gain) {
+        setEnvelopeStateCorrectionParams(sigma0_m, gain);
+    }
+
+    // R_S modulation while outside envelope:
+    //   R_S_eff = R_S_base * clamp(1/(1 + gain*err), min_scale, 1)
+    void setEnvelopeRSCorrectionParams(float gain, float min_scale) {
+        if (std::isfinite(gain) && gain >= 0.0f) {
+            env_rs_gain_ = gain;
+        }
+        if (std::isfinite(min_scale)) {
+            env_rs_min_scale_ = std::min(std::max(min_scale, 1e-3f), 1.0f);
         }
     }
 
@@ -705,14 +716,46 @@ private:
         mekf_->set_aw_stationary_std(Eigen::Vector3f(sH, sH, sZ));
     }
 
-    void apply_RS_tune_() {
+    void apply_RS_tune_(float rs_scale = 1.0f) {
         if (!mekf_) return;
-        const float RSb = std::min(std::max(tune_.RS_applied, min_R_S_), max_R_S_);
+        const float s = (std::isfinite(rs_scale) && rs_scale > 0.0f)
+                        ? std::min(rs_scale, 1.0f)
+                        : 1.0f;
+        const float RSb = std::min(std::max(tune_.RS_applied, min_R_S_), max_R_S_) * s;
         mekf_->set_RS_noise(Eigen::Vector3f(
             RSb * R_S_xy_factor_,
             RSb * R_S_xy_factor_,
             RSb
         ));
+    }
+
+    void applyEnvelopeDriftCorrection_(float /*dt*/) {
+        if (!mekf_) return;
+
+        const float scale = getDisplacementScale();
+        const float pz = mekf_->get_position().z();
+        if (!std::isfinite(scale) || !std::isfinite(pz) || scale <= 0.0f) {
+            apply_RS_tune_();
+            return;
+        }
+
+        const float err = std::max(0.0f, std::fabs(pz) - scale);
+
+        float rs_scale = 1.0f;
+        if (enable_env_rs_correction_) {
+            rs_scale = 1.0f / (1.0f + env_rs_gain_ * err);
+            rs_scale = std::min(std::max(rs_scale, env_rs_min_scale_), 1.0f);
+        }
+        apply_RS_tune_(rs_scale);
+
+        if (enable_env_state_correction_ && err > 0.0f) {
+            const float z_ref = sgnf_(pz) * scale;
+            const float sigma = env_sigma0_m_ / (1.0f + env_state_gain_ * err);
+            const float sigma_z = std::max(1e-3f, sigma);
+            const Eigen::Vector3f p_meas(0.0f, 0.0f, z_ref);
+            const Eigen::Vector3f sigmas(1e9f, 1e9f, sigma_z);
+            mekf_->measurement_update_position_pseudo(p_meas, sigmas);
+        }
     }
 
     void update_tuner(float dt, float a_vert_inertial, float freq_hz_for_tuner) {
@@ -924,8 +967,13 @@ private:
     bool enable_clamp_ = true;
     bool enable_tuner_ = true;
 
+    bool enable_env_state_correction_ = true;
+    bool enable_env_rs_correction_ = true;
+
     float env_sigma0_m_ = 0.5f;
-    float env_gain_ = 3.0f;
+    float env_state_gain_ = 3.0f;
+    float env_rs_gain_ = 3.0f;
+    float env_rs_min_scale_ = 0.25f;
 
     // Controls whether the extended linear block [v,p,S,a_w] of Kalman3D_Wave
     // is ever enabled. When false, the underlying filter runs as a pure
