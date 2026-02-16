@@ -430,6 +430,7 @@ public:
         enable_envelope_projection_ = flag;
     }
 
+
     void setEnvelopeProjectionCfg(const Kalman3D_Wave<float>::EnvelopeProjectionCfg& cfg) {
         envelope_projection_cfg_ = cfg;
     }

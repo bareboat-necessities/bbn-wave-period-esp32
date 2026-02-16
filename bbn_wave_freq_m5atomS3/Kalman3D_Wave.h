@@ -2039,8 +2039,11 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::apply_env
     };
 
     if (gate >= gate_trigger) {
-        envelope_proj_prev_sz_ = rate_limit(envelope_proj_prev_sz_, T(1));
-        envelope_proj_prev_sxy_ = rate_limit(envelope_proj_prev_sxy_, T(1));
+        // No projection when confidence is inside the trigger envelope.
+        // Reset cached shrink factors immediately so in-envelope motion is
+        // unaffected by prior out-of-envelope events.
+        envelope_proj_prev_sz_ = T(1);
+        envelope_proj_prev_sxy_ = T(1);
         last_env_proj_diag_.gate = gate;
         last_env_proj_diag_.s_z = envelope_proj_prev_sz_;
         last_env_proj_diag_.s_xy = envelope_proj_prev_sxy_;
