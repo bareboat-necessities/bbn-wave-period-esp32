@@ -85,13 +85,7 @@ constexpr float MAG_DELAY_SEC            = 8.0f;
 // Frequency smoother dt (SeaStateFusionFilter is designed for 240 Hz)
 constexpr float FREQ_SMOOTHER_DT = 1.0f / 240.0f;
 
-// Shared envelope-gate shape for heave envelope confidence.
-constexpr float HEAVE_ENV_MIN_GATE = 0.08f;
-constexpr float HEAVE_ENV_SOFT_START = 2.50f;
-constexpr float HEAVE_ENV_AGGRESSIVENESS = 4.0f;
-
 // Envelope-driven state projection (disabled by default).
-constexpr float HEAVE_PROJ_GATE_TRIGGER = 1.10f;
 constexpr float HEAVE_PROJ_MIN_SZ = 0.35f;
 constexpr float HEAVE_PROJ_MIN_SXY = 0.80f;
 constexpr float HEAVE_PROJ_MAX_SHRINK_PER_SEC = 0.20f;
@@ -317,12 +311,11 @@ public:
             apply_RS_tune_();
 
             if (enable_envelope_projection_) {
-                const float gate = getHeaveEnvelopeGate(
-                    HEAVE_ENV_MIN_GATE,
-                    HEAVE_ENV_SOFT_START,
-                    HEAVE_ENV_AGGRESSIVENESS
-                );
-                mekf_->apply_envelope_projection(gate, dt, envelope_projection_cfg_);
+                const float over = getHeaveEnvelopeOverrun();
+                if (over > 0.0f) {
+                    const float strength = std::min(1.0f, over);
+                    mekf_->apply_envelope_projection(strength, dt, envelope_projection_cfg_);
+                }
             }
         }
     
@@ -532,37 +525,14 @@ public:
 
     inline float getHeaveAbs() const noexcept { if (!mekf_) return NAN; return std::fabs(mekf_->get_position().z()); }
 
-    // Returns confidence gate in (0, 1]:
-    //  - 1.0 when heave is within expected displacement envelope,
-    //  - smoothly decreases when heave exceeds the envelope.
-    inline float getHeaveEnvelopeGate(float min_gate = 0.10f,
-                                      float ratio_soft_start = 2.50f,
-                                      float aggressiveness = 4.0f) const noexcept {
-        if (!std::isfinite(min_gate) || min_gate <= 0.0f || min_gate > 1.0f) min_gate = 0.10f;
-        if (!std::isfinite(ratio_soft_start) || ratio_soft_start <= 0.0f) ratio_soft_start = 2.50f;
-        if (!std::isfinite(aggressiveness) || aggressiveness <= 0.0f) aggressiveness = 4.0f;
-
-        const float disp_scale = getDisplacementScale();
-        const float heave_abs  = getHeaveAbs();
-        if (!std::isfinite(disp_scale) || !std::isfinite(heave_abs) || disp_scale <= 1e-6f) {
-            return 1.0f;
-        }
-
-        const float ratio = heave_abs / disp_scale;
-        if (ratio <= ratio_soft_start) return 1.0f;
-
-        // Normalize overrun relative to where soft gating starts so the curve
-        // gets steep quickly once we are outside the expected envelope.
-        // Use a quadratic→cubic hybrid penalty:
-        //   penalty = over^2 * (1 + over)
-        // It behaves ~quadratic near threshold (stable Kalman adaptation)
-        // and transitions toward cubic growth for large runaways.
-        const float over = (ratio - ratio_soft_start) / ratio_soft_start;
-        const float over2 = over * over;
-        const float penalty = over2 * (1.0f + over);
-        float gate = std::exp(-aggressiveness * penalty);
-        if (gate < min_gate) gate = min_gate;
-        return gate;
+    // Returns normalized envelope overrun:
+    //   overrun = max(0, |heave| / displacement_scale - 1)
+    inline float getHeaveEnvelopeOverrun() const noexcept {
+        const float scale = getDisplacementScale();
+        const float zabs = getHeaveAbs();
+        if (!std::isfinite(scale) || !std::isfinite(zabs) || scale <= 1e-6f) return 0.0f;
+        const float ratio = zabs / scale;
+        return (ratio > 1.0f) ? (ratio - 1.0f) : 0.0f;
     }
 
     inline float getDisplacementScale(bool smoothed = true) const noexcept {
@@ -963,12 +933,14 @@ private:
     bool enable_envelope_projection_ = false;
     Kalman3D_Wave<float>::EnvelopeProjectionCfg envelope_projection_cfg_ = [] {
         Kalman3D_Wave<float>::EnvelopeProjectionCfg cfg;
-        cfg.gate_trigger = HEAVE_PROJ_GATE_TRIGGER;
         cfg.s_min_z = HEAVE_PROJ_MIN_SZ;
         cfg.s_min_xy = HEAVE_PROJ_MIN_SXY;
         cfg.max_shrink_per_sec = HEAVE_PROJ_MAX_SHRINK_PER_SEC;
+        cfg.project_pz = false;
+        cfg.project_vz = false;
         cfg.project_pxy = false;
         cfg.project_vxy = false;
+        cfg.project_Sz = true;
         cfg.project_Sxy = true;
         return cfg;
     }();

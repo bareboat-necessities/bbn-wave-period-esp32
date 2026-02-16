@@ -254,8 +254,8 @@ class Kalman3D_Wave {
         float s_exp_xy = 0.25f;
         float max_shrink_per_sec = 0.20f;
 
-        bool project_pz = true;
-        bool project_vz = true;
+        bool project_pz = false;
+        bool project_vz = false;
         bool project_Sz = true;
         bool project_awz = false;
         bool project_Sxy = true;
@@ -344,8 +344,8 @@ class Kalman3D_Wave {
     // This does a full 3x3 Joseph update on the position block and its cross-covariances.
     void measurement_update_position_pseudo(const Vector3& p_meas, const Vector3& sigma_meas);
 
-    // Projection safety correction driven by heave envelope gate.
-    void apply_envelope_projection(float gate, float dt, const EnvelopeProjectionCfg& cfg);
+    // Projection safety correction driven by outside-envelope strength.
+    void apply_envelope_projection(float strength, float dt, const EnvelopeProjectionCfg& cfg);
 
     // Accessors
     [[nodiscard]] Eigen::Quaternion<T> quaternion() const { return qref.conjugate(); }
@@ -2006,10 +2006,10 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
               
 template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::apply_envelope_projection(
-    float gate_in, float dt_in, const EnvelopeProjectionCfg& cfg)
+    float strength_in, float dt_in, const EnvelopeProjectionCfg& cfg)
 {
     last_env_proj_diag_.active = false;
-    last_env_proj_diag_.gate = T(1);
+    last_env_proj_diag_.gate = T(0);
     last_env_proj_diag_.s_z = envelope_proj_prev_sz_;
     last_env_proj_diag_.s_xy = envelope_proj_prev_sxy_;
     last_env_proj_diag_.cross_norm_before = T(0);
@@ -2018,17 +2018,17 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::apply_env
 
     if (!cfg.enabled || !linear_block_enabled_) return;
 
-    T gate = static_cast<T>(gate_in);
-    if (!std::isfinite(gate)) gate = T(1);
-    gate = std::max(T(0), std::min(gate, T(1)));
+    T strength = static_cast<T>(strength_in);
+    if (!std::isfinite(strength)) strength = T(0);
+    strength = std::max(T(0), std::min(strength, T(1)));
+    if (strength <= T(0)) {
+        last_env_proj_diag_.gate = strength;
+        return;
+    }
 
     T dt = static_cast<T>(dt_in);
     if (!std::isfinite(dt) || dt <= T(0)) dt = last_dt_;
     if (!std::isfinite(dt) || dt <= T(0)) dt = T(1) / T(240);
-
-    T gate_trigger = static_cast<T>(cfg.gate_trigger);
-    if (!std::isfinite(gate_trigger)) gate_trigger = T(0.98);
-    gate_trigger = std::max(T(0), std::min(gate_trigger, T(1)));
 
     const T max_step = std::max(T(0), static_cast<T>(cfg.max_shrink_per_sec)) * dt;
 
@@ -2038,18 +2038,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::apply_env
         return raw;
     };
 
-    if (gate >= gate_trigger) {
-        // No projection when confidence is inside the trigger envelope.
-        // Reset cached shrink factors immediately so in-envelope motion is
-        // unaffected by prior out-of-envelope events.
-        envelope_proj_prev_sz_ = T(1);
-        envelope_proj_prev_sxy_ = T(1);
-        last_env_proj_diag_.gate = gate;
-        last_env_proj_diag_.s_z = envelope_proj_prev_sz_;
-        last_env_proj_diag_.s_xy = envelope_proj_prev_sxy_;
-        return;
-    }
-
     auto safe_pow = [](T b, T e) -> T {
         if (!std::isfinite(b) || !std::isfinite(e)) return T(1);
         return std::pow(std::max(b, T(1e-6)), e);
@@ -2058,8 +2046,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::apply_env
     const T s_min_z = std::max(T(1e-3), static_cast<T>(cfg.s_min_z));
     const T s_min_xy = std::max(T(1e-3), static_cast<T>(cfg.s_min_xy));
 
-    const T s_z_raw = std::min(T(1), std::max(s_min_z, safe_pow(gate, static_cast<T>(cfg.s_exp_z))));
-    const T s_xy_raw = std::min(T(1), std::max(s_min_xy, safe_pow(gate, static_cast<T>(cfg.s_exp_xy))));
+    const T s_z_raw = std::min(T(1), std::max(s_min_z, T(1) - strength * (T(1) - s_min_z)));
+    const T s_xy_raw = std::min(T(1), std::max(s_min_xy, T(1) - strength * (T(1) - s_min_xy)));
 
     const T s_z = rate_limit(envelope_proj_prev_sz_, s_z_raw);
     const T s_xy = rate_limit(envelope_proj_prev_sxy_, s_xy_raw);
@@ -2139,7 +2127,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::apply_env
 
     envelope_proj_trigger_count_++;
     last_env_proj_diag_.active = true;
-    last_env_proj_diag_.gate = gate;
+    last_env_proj_diag_.gate = strength;
     last_env_proj_diag_.s_z = s_z;
     last_env_proj_diag_.s_xy = s_xy;
     last_env_proj_diag_.cross_norm_before = std::sqrt(norm_before);
