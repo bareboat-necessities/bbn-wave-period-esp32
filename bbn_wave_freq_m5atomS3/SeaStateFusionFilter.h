@@ -90,7 +90,11 @@ constexpr float HEAVE_ENV_MIN_GATE = 0.08f;
 constexpr float HEAVE_ENV_SOFT_START = 1.75f;
 constexpr float HEAVE_ENV_AGGRESSIVENESS = 6.0f;
 constexpr float HEAVE_RS_MAX_SCALE = 5.0f;
-constexpr float HEAVE_RS_LAST_RESORT_GATE = 0.30f;
+// Control point for R_S inflation curve:
+// when envelope confidence gate reaches this level, we apply full
+// HEAVE_RS_MAX_SCALE inflation. Above this gate inflation is partial;
+// below it inflation saturates at max.
+constexpr float HEAVE_RS_FULL_INFLATION_GATE = 0.30f;
 
 struct TuneState {
     float tau_applied   = 1.1f;    // s
@@ -714,9 +718,23 @@ private:
             HEAVE_ENV_SOFT_START,
             HEAVE_ENV_AGGRESSIVENESS
         );
-        const float gate_safe = std::max(gate, HEAVE_ENV_MIN_GATE);
-        const float inv_gate2 = 1.0f / (gate_safe * gate_safe);
-        float RS_adj = RS_base * std::min(inv_gate2, HEAVE_RS_MAX_SCALE);
+        const float gate_safe = std::max(std::min(gate, 1.0f), HEAVE_ENV_MIN_GATE);
+
+        // Map gate -> scale with an explicit control point, avoiding ad-hoc
+        // inverse-square behavior:
+        //   scale(1)  = 1
+        //   scale(g*) = HEAVE_RS_MAX_SCALE, with g* = HEAVE_RS_FULL_INFLATION_GATE
+        //   scale(g)  = clamp(HEAVE_RS_MAX_SCALE^r, 1, HEAVE_RS_MAX_SCALE)
+        // where r = ln(1/g) / ln(1/g*).
+        // This gives a monotone, dimensionless curve tied to a meaningful
+        // confidence level g* rather than a "last resort" magic gate.
+        const float full_gate = std::max(std::min(HEAVE_RS_FULL_INFLATION_GATE, 0.999f), HEAVE_ENV_MIN_GATE + 1e-4f);
+        const float log_ref = std::log(1.0f / full_gate);
+        const float log_now = std::log(1.0f / gate_safe);
+        const float ratio = (log_ref > 1e-6f) ? (log_now / log_ref) : 0.0f;
+        const float scale_unclamped = std::pow(HEAVE_RS_MAX_SCALE, ratio);
+        const float scale = std::min(std::max(scale_unclamped, 1.0f), HEAVE_RS_MAX_SCALE);
+        float RS_adj = RS_base * scale;
 
         // R_S is pseudo-measurement noise: inflate it when heave is outside
         // the expected envelope so the linear branch trusts the displacement
