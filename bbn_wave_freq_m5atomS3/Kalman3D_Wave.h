@@ -244,44 +244,8 @@ class Kalman3D_Wave {
         bool accepted = false;         // update actually applied?
     };
 
-    struct EnvelopeProjectionCfg {
-        bool enabled = true;
-
-        float gate_trigger = 0.98f;
-        float s_min_z = 0.35f;
-        float s_min_xy = 0.80f;
-        float s_exp_z = 1.0f;
-        float s_exp_xy = 0.25f;
-        float max_shrink_per_sec = 0.20f;
-
-        bool project_pz = false;
-        bool project_vz = false;
-        bool project_Sz = true;
-        bool project_awz = false;
-        bool project_Sxy = true;
-        bool project_awxy = false;
-
-        bool project_pxy = false;
-        bool project_vxy = false;
-
-        float cov_inflate_inv_s_power = 1.0f;
-        float cross_cov_scale_power = 1.0f;
-        float min_variance = 1e-9f;
-    };
-
-    struct EnvelopeProjectionDiag {
-        bool active = false;
-        T gate = T(1);
-        T s_z = T(1);
-        T s_xy = T(1);
-        T cross_norm_before = T(0);
-        T cross_norm_after = T(0);
-        unsigned long trigger_count = 0;
-    };
-
     const MeasDiag3& lastAccDiag() const noexcept { return last_acc_diag_; }
     const MeasDiag3& lastMagDiag() const noexcept { return last_mag_diag_; }
-    const EnvelopeProjectionDiag& lastEnvelopeProjectionDiag() const noexcept { return last_env_proj_diag_; }
 
     // Constructor signatures preserved, additional defaults for linear process noise
     Kalman3D_Wave(Vector3 const& sigma_a, Vector3 const& sigma_g, Vector3 const& sigma_m,
@@ -343,9 +307,6 @@ class Kalman3D_Wave {
     //   p_meas ≈ p (meters), with per-axis std sigma_meas.
     // This does a full 3x3 Joseph update on the position block and its cross-covariances.
     void measurement_update_position_pseudo(const Vector3& p_meas, const Vector3& sigma_meas);
-
-    // Projection safety correction driven by outside-envelope strength.
-    void apply_envelope_projection(float strength, float dt, const EnvelopeProjectionCfg& cfg);
 
     // Accessors
     [[nodiscard]] Eigen::Quaternion<T> quaternion() const { return qref.conjugate(); }
@@ -693,11 +654,7 @@ class Kalman3D_Wave {
 				
     MeasDiag3 last_acc_diag_;
     MeasDiag3 last_mag_diag_;
-    EnvelopeProjectionDiag last_env_proj_diag_;
-    T envelope_proj_prev_sz_ = T(1);
-    T envelope_proj_prev_sxy_ = T(1);
-    unsigned long envelope_proj_trigger_count_ = 0;
-				
+			
     EIGEN_STRONG_INLINE void symmetrize_Pext_() {
         for (int i = 0; i < NX; ++i) {
             for (int j = i + 1; j < NX; ++j) {
@@ -2004,136 +1961,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
     applyQuaternionCorrectionFromErrorState();
 }              
               
-template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::apply_envelope_projection(
-    float strength_in, float dt_in, const EnvelopeProjectionCfg& cfg)
-{
-    last_env_proj_diag_.active = false;
-    last_env_proj_diag_.gate = T(0);
-    last_env_proj_diag_.s_z = envelope_proj_prev_sz_;
-    last_env_proj_diag_.s_xy = envelope_proj_prev_sxy_;
-    last_env_proj_diag_.cross_norm_before = T(0);
-    last_env_proj_diag_.cross_norm_after = T(0);
-    last_env_proj_diag_.trigger_count = envelope_proj_trigger_count_;
-
-    if (!cfg.enabled || !linear_block_enabled_) return;
-
-    T strength = static_cast<T>(strength_in);
-    if (!std::isfinite(strength)) strength = T(0);
-    strength = std::max(T(0), std::min(strength, T(1)));
-    if (strength <= T(0)) {
-        last_env_proj_diag_.gate = strength;
-        return;
-    }
-
-    T dt = static_cast<T>(dt_in);
-    if (!std::isfinite(dt) || dt <= T(0)) dt = last_dt_;
-    if (!std::isfinite(dt) || dt <= T(0)) dt = T(1) / T(240);
-
-    const T max_step = std::max(T(0), static_cast<T>(cfg.max_shrink_per_sec)) * dt;
-
-    const auto rate_limit = [max_step](T prev, T raw) -> T {
-        if (raw < prev) return std::max(prev - max_step, raw);
-        if (raw > prev) return std::min(prev + max_step, raw);
-        return raw;
-    };
-
-    auto safe_pow = [](T b, T e) -> T {
-        if (!std::isfinite(b) || !std::isfinite(e)) return T(1);
-        return std::pow(std::max(b, T(1e-6)), e);
-    };
-
-    const T s_min_z = std::max(T(1e-3), static_cast<T>(cfg.s_min_z));
-    const T s_min_xy = std::max(T(1e-3), static_cast<T>(cfg.s_min_xy));
-
-    const T s_z_raw = std::min(T(1), std::max(s_min_z, T(1) - strength * (T(1) - s_min_z)));
-    const T s_xy_raw = std::min(T(1), std::max(s_min_xy, T(1) - strength * (T(1) - s_min_xy)));
-
-    const T s_z = rate_limit(envelope_proj_prev_sz_, s_z_raw);
-    const T s_xy = rate_limit(envelope_proj_prev_sxy_, s_xy_raw);
-    envelope_proj_prev_sz_ = s_z;
-    envelope_proj_prev_sxy_ = s_xy;
-
-    Matrix<T, NX, 1> D = Matrix<T, NX, 1>::Ones();
-
-    auto apply_state_scale = [&](int idx, T s) {
-        if (s < T(1)) {
-            xext(idx) *= s;
-            D(idx) = std::min(D(idx), s);
-        }
-    };
-
-    if (cfg.project_vz)  apply_state_scale(OFF_V + 2, s_z);
-    if (cfg.project_pz)  apply_state_scale(OFF_P + 2, s_z);
-    if (cfg.project_Sz)  apply_state_scale(OFF_S + 2, s_z);
-    if (cfg.project_awz) apply_state_scale(OFF_AW + 2, s_z);
-
-    if (cfg.project_vxy) {
-        apply_state_scale(OFF_V + 0, s_xy);
-        apply_state_scale(OFF_V + 1, s_xy);
-    }
-    if (cfg.project_pxy) {
-        apply_state_scale(OFF_P + 0, s_xy);
-        apply_state_scale(OFF_P + 1, s_xy);
-    }
-    if (cfg.project_Sxy) {
-        apply_state_scale(OFF_S + 0, s_xy);
-        apply_state_scale(OFF_S + 1, s_xy);
-    }
-    if (cfg.project_awxy) {
-        apply_state_scale(OFF_AW + 0, s_xy);
-        apply_state_scale(OFF_AW + 1, s_xy);
-    }
-
-    const T inflate_pow = std::max(T(0), static_cast<T>(cfg.cov_inflate_inv_s_power));
-    const T min_variance = std::max(T(1e-12), static_cast<T>(cfg.min_variance));
-
-    for (int i = 0; i < NX; ++i) {
-        const T k = D(i);
-        if (k >= T(0.999999)) continue;
-        Pext.row(i) *= k;
-        Pext.col(i) *= k;
-        const T inflate = T(1) / safe_pow(k, inflate_pow);
-        Pext(i,i) = std::max(min_variance, Pext(i,i) * inflate);
-    }
-
-    bool zset[12] = {false};
-    if (cfg.project_vz)  zset[2] = true;
-    if (cfg.project_pz)  zset[5] = true;
-    if (cfg.project_Sz)  zset[8] = true;
-    if (cfg.project_awz) zset[11] = true;
-
-    const T cross_scale = safe_pow(s_z, std::max(T(0), static_cast<T>(cfg.cross_cov_scale_power)));
-
-    T norm_before = T(0);
-    T norm_after = T(0);
-    for (int li = 0; li < 12; ++li) {
-        if (!zset[li]) continue;
-        const int i = OFF_V + li;
-        for (int lj = 0; lj < 12; ++lj) {
-            if (zset[lj]) continue;
-            const int j = OFF_V + lj;
-            const T v0 = Pext(i,j);
-            norm_before += v0 * v0;
-            const T v1 = v0 * cross_scale;
-            Pext(i,j) = v1;
-            Pext(j,i) = v1;
-            norm_after += v1 * v1;
-        }
-    }
-
-    symmetrize_Pext_();
-    project_psd<T, NX>(Pext, min_variance);
-
-    envelope_proj_trigger_count_++;
-    last_env_proj_diag_.active = true;
-    last_env_proj_diag_.gate = strength;
-    last_env_proj_diag_.s_z = s_z;
-    last_env_proj_diag_.s_xy = s_xy;
-    last_env_proj_diag_.cross_norm_before = std::sqrt(norm_before);
-    last_env_proj_diag_.cross_norm_after = std::sqrt(norm_after);
-    last_env_proj_diag_.trigger_count = envelope_proj_trigger_count_;
-}
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::PhiAxis4x1_analytic(

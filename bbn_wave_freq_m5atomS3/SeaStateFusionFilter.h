@@ -85,11 +85,6 @@ constexpr float MAG_DELAY_SEC            = 8.0f;
 // Frequency smoother dt (SeaStateFusionFilter is designed for 240 Hz)
 constexpr float FREQ_SMOOTHER_DT = 1.0f / 240.0f;
 
-// Envelope-driven state projection (disabled by default).
-constexpr float HEAVE_PROJ_MIN_SZ = 0.35f;
-constexpr float HEAVE_PROJ_MIN_SXY = 0.80f;
-constexpr float HEAVE_PROJ_MAX_SHRINK_PER_SEC = 0.20f;
-
 struct TuneState {
     float tau_applied   = 1.1f;    // s
     float sigma_applied = 1e-2f;    // m/s²
@@ -310,11 +305,17 @@ public:
         if (startup_stage_ == StartupStage::Live && enable_linear_block_) {
             apply_RS_tune_();
 
-            if (enable_envelope_projection_) {
-                const float over = getHeaveEnvelopeOverrun();
-                if (over > 0.0f) {
-                    const float strength = std::min(1.0f, over);
-                    mekf_->apply_envelope_projection(strength, dt, envelope_projection_cfg_);
+            const float scale = getDisplacementScale();
+            const float pz = mekf_->get_position().z();
+            if (std::isfinite(scale) && std::isfinite(pz) && scale > 0.0f) {
+                const float err = std::max(0.0f, std::fabs(pz) - scale);
+                if (err > 0.0f) {
+                    const float z_ref = sgnf_(pz) * scale;
+                    const float sigma = env_sigma0_m_ / (1.0f + env_gain_ * err);
+                    const float sigma_z = std::max(1e-3f, sigma);
+                    const Eigen::Vector3f p_meas(0.0f, 0.0f, z_ref);
+                    const Eigen::Vector3f sigmas(1e9f, 1e9f, sigma_z);
+                    mekf_->measurement_update_position_pseudo(p_meas, sigmas);
                 }
             }
         }
@@ -419,13 +420,13 @@ public:
         enable_tuner_ = flag;
     }
 
-    void enableEnvelopeProjection(bool flag = true) {
-        enable_envelope_projection_ = flag;
-    }
-
-
-    void setEnvelopeProjectionCfg(const Kalman3D_Wave<float>::EnvelopeProjectionCfg& cfg) {
-        envelope_projection_cfg_ = cfg;
+    void setEnvelopeCorrectionParams(float sigma0_m, float gain) {
+        if (std::isfinite(sigma0_m) && sigma0_m > 0.0f) {
+            env_sigma0_m_ = sigma0_m;
+        }
+        if (std::isfinite(gain) && gain >= 0.0f) {
+            env_gain_ = gain;
+        }
     }
 
     // Enable/disable use of the extended linear block [v,p,S,a_w] in Kalman3D_Wave.
@@ -525,16 +526,6 @@ public:
 
     inline float getHeaveAbs() const noexcept { if (!mekf_) return NAN; return std::fabs(mekf_->get_position().z()); }
 
-    // Returns normalized envelope overrun:
-    //   overrun = max(0, |heave| / displacement_scale - 1)
-    inline float getHeaveEnvelopeOverrun() const noexcept {
-        const float scale = getDisplacementScale();
-        const float zabs = getHeaveAbs();
-        if (!std::isfinite(scale) || !std::isfinite(zabs) || scale <= 1e-6f) return 0.0f;
-        const float ratio = zabs / scale;
-        return (ratio > 1.0f) ? (ratio - 1.0f) : 0.0f;
-    }
-
     inline float getDisplacementScale(bool smoothed = true) const noexcept {
         const float tau = smoothed ? tune_.tau_applied : tau_target_;
         const float sigma = smoothed ? tune_.sigma_applied : sigma_target_;
@@ -592,6 +583,8 @@ public:
     inline const WaveDirectionDetector<float>& dir_sign() const noexcept { return dir_sign_; }
 
 private:
+    static inline float sgnf_(float x) noexcept { return (x >= 0.0f) ? 1.0f : -1.0f; }
+
     // Simple first-order low-pass filter for vertical accel → tracker input
     struct FreqInputLPF {
         float state       = 0.0f;
@@ -930,20 +923,9 @@ private:
 
     bool enable_clamp_ = true;
     bool enable_tuner_ = true;
-    bool enable_envelope_projection_ = false;
-    Kalman3D_Wave<float>::EnvelopeProjectionCfg envelope_projection_cfg_ = [] {
-        Kalman3D_Wave<float>::EnvelopeProjectionCfg cfg;
-        cfg.s_min_z = HEAVE_PROJ_MIN_SZ;
-        cfg.s_min_xy = HEAVE_PROJ_MIN_SXY;
-        cfg.max_shrink_per_sec = HEAVE_PROJ_MAX_SHRINK_PER_SEC;
-        cfg.project_pz = false;
-        cfg.project_vz = false;
-        cfg.project_pxy = false;
-        cfg.project_vxy = false;
-        cfg.project_Sz = true;
-        cfg.project_Sxy = true;
-        return cfg;
-    }();
+
+    float env_sigma0_m_ = 0.5f;
+    float env_gain_ = 3.0f;
 
     // Controls whether the extended linear block [v,p,S,a_w] of Kalman3D_Wave
     // is ever enabled. When false, the underlying filter runs as a pure
