@@ -449,7 +449,7 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
     } else {
         filter.enableLinearBlock(true);
         filter.enableTuner(true);
-        filter.enableHeaveRSGating(true);
+        filter.enableEnvelopeProjection(true);
         filter.enableClamp(true);
     }
     

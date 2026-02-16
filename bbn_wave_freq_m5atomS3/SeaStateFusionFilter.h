@@ -85,24 +85,16 @@ constexpr float MAG_DELAY_SEC            = 8.0f;
 // Frequency smoother dt (SeaStateFusionFilter is designed for 240 Hz)
 constexpr float FREQ_SMOOTHER_DT = 1.0f / 240.0f;
 
-// Shared envelope-gate shape for both position pseudo-measurement and R_S gating.
+// Shared envelope-gate shape for heave envelope confidence.
 constexpr float HEAVE_ENV_MIN_GATE = 0.08f;
 constexpr float HEAVE_ENV_SOFT_START = 1.75f;
 constexpr float HEAVE_ENV_AGGRESSIVENESS = 6.0f;
-constexpr float HEAVE_RS_MAX_SCALE = 35.0f;
-// Exponent for inversion of heave RS gating.
-// 1.0  => full inverse (very aggressive deflation under overrun),
-// 0.0  => disabled inversion.
-// Keep this moderate to avoid over-constraining large but valid sea states.
-constexpr float HEAVE_RS_INVERT_EXP = 0.9f;
-// Allow temporary RS floor reduction under severe envelope overrun so
-// gating is not neutralized by nominal min_R_S_ clamping.
-constexpr float HEAVE_RS_EMERGENCY_MIN_FACTOR = 1.0f / HEAVE_RS_MAX_SCALE;
-// Control point for R_S inflation curve:
-// when envelope confidence gate reaches this level, we apply full
-// HEAVE_RS_MAX_SCALE inflation. Above this gate inflation is partial;
-// below it inflation saturates at max.
-constexpr float HEAVE_RS_FULL_INFLATION_GATE = 0.30f;
+
+// Envelope-driven state projection (disabled by default).
+constexpr float HEAVE_PROJ_GATE_TRIGGER = 0.98f;
+constexpr float HEAVE_PROJ_MIN_SZ = 0.35f;
+constexpr float HEAVE_PROJ_MIN_SXY = 0.80f;
+constexpr float HEAVE_PROJ_MAX_SHRINK_PER_SEC = 0.20f;
 
 struct TuneState {
     float tau_applied   = 1.1f;    // s
@@ -319,10 +311,19 @@ public:
             update_tuner(dt, a_vert_up, f_after_still);
         }
 
-        // Keep envelope-based R_S gating responsive in Live mode instead of
+        // Keep linear-block R_S tuning responsive in Live mode instead of
         // waiting for slow adaptation cadence.
         if (startup_stage_ == StartupStage::Live && enable_linear_block_) {
             apply_RS_tune_();
+
+            if (enable_envelope_projection_) {
+                const float gate = getHeaveEnvelopeGate(
+                    HEAVE_ENV_MIN_GATE,
+                    HEAVE_ENV_SOFT_START,
+                    HEAVE_ENV_AGGRESSIVENESS
+                );
+                mekf_->apply_envelope_projection(gate, dt, envelope_projection_cfg_);
+            }
         }
     
         const float omega = 2.0f * static_cast<float>(M_PI) * freq_hz_;
@@ -424,8 +425,13 @@ public:
     void enableTuner(bool flag = true) {
         enable_tuner_ = flag;
     }
-    void enableHeaveRSGating(bool flag = true) {
-        enable_heave_RS_gating_ = flag;
+
+    void enableEnvelopeProjection(bool flag = true) {
+        enable_envelope_projection_ = flag;
+    }
+
+    void setEnvelopeProjectionCfg(const Kalman3D_Wave<float>::EnvelopeProjectionCfg& cfg) {
+        envelope_projection_cfg_ = cfg;
     }
 
     // Enable/disable use of the extended linear block [v,p,S,a_w] in Kalman3D_Wave.
@@ -723,57 +729,6 @@ private:
         float getEnergyEma()  const { return energy_ema; }
     };
 
-    float adjustRSWithHeave(float RS_in) const noexcept {
-        // Keep nominal tuning intact but avoid pre-clamping to min_R_S_: if we
-        // clamp too early, envelope gating can be neutralized in runaways.
-        const float RS_base = std::min(std::max(RS_in, 1e-6f), max_R_S_);
-
-        const float gate = getHeaveEnvelopeGate(
-            HEAVE_ENV_MIN_GATE,
-            HEAVE_ENV_SOFT_START,
-            HEAVE_ENV_AGGRESSIVENESS
-        );
-        const float gate_safe = std::max(std::min(gate, 1.0f), HEAVE_ENV_MIN_GATE);
-
-        // Map gate -> scale with an explicit control point.
-        // IMPORTANT: Smaller R_S means *stronger* drift correction of S=∫p dt.
-        // When heave exceeds the envelope (gate drops), we should trust the
-        // zero-integral pseudo-measurement more to pull runaway displacement
-        // back, not less.
-        //
-        // Build an inflation-shaped curve first and then invert it:
-        //   inflate(1)  = 1
-        //   inflate(g*) = HEAVE_RS_MAX_SCALE, with g* = HEAVE_RS_FULL_INFLATION_GATE
-        //   inflate(g)  = clamp(HEAVE_RS_MAX_SCALE^r, 1, HEAVE_RS_MAX_SCALE)
-        //   scale(g)    = inflate(g)^{-k}, k=HEAVE_RS_INVERT_EXP ∈ [0,1]
-        // where r = ln(1/g) / ln(1/g*).
-        // This preserves the existing gate geometry while flipping behavior to
-        // a stabilizing response under runaway heave.
-        const float full_gate = std::max(std::min(HEAVE_RS_FULL_INFLATION_GATE, 0.999f), HEAVE_ENV_MIN_GATE + 1e-4f);
-        const float log_ref = std::log(1.0f / full_gate);
-        const float log_now = std::log(1.0f / gate_safe);
-        const float ratio = (log_ref > 1e-6f) ? (log_now / log_ref) : 0.0f;
-        const float inflate_unclamped = std::pow(HEAVE_RS_MAX_SCALE, ratio);
-        const float inflate = std::min(std::max(inflate_unclamped, 1.0f), HEAVE_RS_MAX_SCALE);
-
-        // Soft-inverted response:
-        //   scale = inflate^{-k}, k in [0,1]
-        // k=1 reproduces full inverse, k<1 keeps some protection against
-        // over-constraining true low-frequency heave in high sea states.
-        const float k = std::min(std::max(HEAVE_RS_INVERT_EXP, 0.0f), 1.0f);
-        const float scale = std::pow(inflate, -k);
-        float RS_adj = RS_base * scale;
-
-        // Use an emergency floor below nominal min_R_S_ while envelope-gated,
-        // otherwise the nominal clamp can erase most of the gating authority.
-        const float emergency_factor = std::min(std::max(HEAVE_RS_EMERGENCY_MIN_FACTOR, 1e-3f), 1.0f);
-        const float min_RS_emergency = std::max(1e-6f, min_R_S_ * emergency_factor);
-
-        // Keep upper bound unchanged; lower bound becomes emergency floor.
-        RS_adj = std::min(std::max(RS_adj, min_RS_emergency), max_R_S_);
-        return RS_adj;
-    }
-
     void apply_ou_tune_() {
         if (!mekf_) return;
         mekf_->set_aw_time_constant(tune_.tau_applied);
@@ -788,13 +743,7 @@ private:
 
     void apply_RS_tune_() {
         if (!mekf_) return;
-        const float RS_base = std::min(std::max(tune_.RS_applied, 1e-6f), max_R_S_); // DO NOT clamp to min_R_S_ here
-        float RSb = RS_base;
-        if (enable_heave_RS_gating_) {
-            RSb = adjustRSWithHeave(RS_base);   // does emergency floor itself
-        } else {
-            RSb = std::min(std::max(RSb, min_R_S_), max_R_S_);
-        }
+        const float RSb = std::min(std::max(tune_.RS_applied, min_R_S_), max_R_S_);
         mekf_->set_RS_noise(Eigen::Vector3f(
             RSb * R_S_xy_factor_,
             RSb * R_S_xy_factor_,
@@ -1010,7 +959,18 @@ private:
 
     bool enable_clamp_ = true;
     bool enable_tuner_ = true;
-    bool enable_heave_RS_gating_ = true;  
+    bool enable_envelope_projection_ = false;
+    Kalman3D_Wave<float>::EnvelopeProjectionCfg envelope_projection_cfg_ = [] {
+        Kalman3D_Wave<float>::EnvelopeProjectionCfg cfg;
+        cfg.gate_trigger = HEAVE_PROJ_GATE_TRIGGER;
+        cfg.s_min_z = HEAVE_PROJ_MIN_SZ;
+        cfg.s_min_xy = HEAVE_PROJ_MIN_SXY;
+        cfg.max_shrink_per_sec = HEAVE_PROJ_MAX_SHRINK_PER_SEC;
+        cfg.project_pxy = false;
+        cfg.project_vxy = false;
+        cfg.project_Sxy = true;
+        return cfg;
+    }();
 
     // Controls whether the extended linear block [v,p,S,a_w] of Kalman3D_Wave
     // is ever enabled. When false, the underlying filter runs as a pure
