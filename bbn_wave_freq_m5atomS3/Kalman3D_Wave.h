@@ -1943,6 +1943,9 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
     // Cross-covariance PCᵀ = P(:,p) (N×3)
     MatrixNX3& PCt = PCt_scratch_;
     PCt.noalias() = Pext.template block<NX,3>(0, off_P);
+    if constexpr (with_accel_bias) {
+        if (!acc_bias_updates_enabled_) freeze_acc_bias_rows_(PCt);
+    }
 
     // Gain K = PCᵀ S⁻¹
     Eigen::LDLT<Matrix3> ldlt;
@@ -1953,6 +1956,9 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
 
     MatrixNX3& K = K_scratch_;
     K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
+    if constexpr (with_accel_bias) {
+        if (!acc_bias_updates_enabled_) freeze_acc_bias_rows_(K);
+    }
 
     xext.noalias() += K * r;           // State update
     joseph_update3_(K, S_mat, PCt);    // Covariance update (Joseph form, 3D)
