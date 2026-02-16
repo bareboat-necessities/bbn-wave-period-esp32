@@ -707,7 +707,7 @@ private:
 
     float adjustRSWithHeave(float RS_in) const noexcept {
         // Base clamp into global RS range
-        float RS_base = std::min(std::max(RS_in, min_R_S_), max_R_S_);
+        const float RS_base = std::min(std::max(RS_in, min_R_S_), max_R_S_);
 
         const float gate = getHeaveEnvelopeGate(
             HEAVE_ENV_MIN_GATE,
@@ -746,15 +746,7 @@ private:
 
         float RSb = RS_base;
         if (enable_heave_RS_gating_) {
-            const float heave_gate = getHeaveEnvelopeGate(
-                HEAVE_ENV_MIN_GATE,
-                HEAVE_ENV_SOFT_START,
-                HEAVE_ENV_AGGRESSIVENESS
-            );
-            const bool last_resort = freq_stillness_.isStill() || (heave_gate <= HEAVE_RS_LAST_RESORT_GATE);
-            if (last_resort) {
-                RSb = adjustRSWithHeave(RS_base);
-            }
+            RSb = adjustRSWithHeave(RS_base);
         }
     
         mekf_->set_RS_noise(Eigen::Vector3f(
