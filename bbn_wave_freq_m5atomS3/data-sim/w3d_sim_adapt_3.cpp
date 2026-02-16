@@ -28,8 +28,6 @@ const float g_std = 9.80665f;     // standard gravity acceleration m/s²
 const float FAIL_ERR_LIMIT_PERCENT_Z_JONSWAP   = 10.0f;
 const float FAIL_ERR_LIMIT_PERCENT_Z_PMSTOKES  = 10.0f;
 
-const float PMSTOKES_HIGH_SEA_HS_M = 6.0f;
-
 const float FAIL_ERR_LIMIT_YAW_DEG = 3.9f;  
 
 const float FAIL_ERR_LIMIT_PERCENT_3D_JONSWAP   = 55.0f;
@@ -451,9 +449,7 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
     } else {
         filter.enableLinearBlock(true);
         filter.enableTuner(true);
-        const bool disable_heave_rs_gating =
-            (type == WaveType::PMSTOKES && wp.height >= PMSTOKES_HIGH_SEA_HS_M);
-        filter.enableHeaveRSGating(!disable_heave_rs_gating);
+        filter.enableHeaveRSGating(true);
         filter.enableClamp(true);
     }
     
