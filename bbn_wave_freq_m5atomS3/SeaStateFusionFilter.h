@@ -86,9 +86,9 @@ constexpr float MAG_DELAY_SEC            = 8.0f;
 constexpr float FREQ_SMOOTHER_DT = 1.0f / 240.0f;
 
 // Shared envelope-gate shape for both position pseudo-measurement and R_S gating.
-constexpr float HEAVE_ENV_MIN_GATE = 0.03f;
-constexpr float HEAVE_ENV_SOFT_START = 1.35f;
-constexpr float HEAVE_ENV_AGGRESSIVENESS = 8.0f;
+constexpr float HEAVE_ENV_MIN_GATE = 0.08f;
+constexpr float HEAVE_ENV_SOFT_START = 1.75f;
+constexpr float HEAVE_ENV_AGGRESSIVENESS = 6.0f;
 
 struct TuneState {
     float tau_applied   = 1.1f;    // s
@@ -712,8 +712,7 @@ private:
             HEAVE_ENV_SOFT_START,
             HEAVE_ENV_AGGRESSIVENESS
         );
-        // Square gate for stronger RS tightening once outside envelope.
-        float RS_adj = RS_base * gate * gate;
+        float RS_adj = RS_base * gate;
 
         // Ensure we stay in the usual [min_R_S_, max_R_S_] range
         RS_adj = std::min(std::max(RS_adj, min_R_S_), max_R_S_);
