@@ -91,7 +91,6 @@ constexpr float HEAVE_ENV_SOFT_START = 1.75f;
 constexpr float HEAVE_ENV_AGGRESSIVENESS = 6.0f;
 constexpr float HEAVE_RS_MIN_SCALE = 0.2f;
 constexpr float HEAVE_RS_LAST_RESORT_GATE = 0.30f;
-constexpr float HEAVE_RS_MIN_STILL_SEC = 6.0f;
 
 struct TuneState {
     float tau_applied   = 1.1f;    // s
@@ -751,9 +750,7 @@ private:
                 HEAVE_ENV_SOFT_START,
                 HEAVE_ENV_AGGRESSIVENESS
             );
-            const bool last_resort = freq_stillness_.isStill()
-                && (freq_stillness_.getStillTime() >= HEAVE_RS_MIN_STILL_SEC)
-                && (heave_gate <= HEAVE_RS_LAST_RESORT_GATE);
+            const bool last_resort = freq_stillness_.isStill() || (heave_gate <= HEAVE_RS_LAST_RESORT_GATE);
             if (last_resort) {
                 RSb = adjustRSWithHeave(RS_base);
             }
