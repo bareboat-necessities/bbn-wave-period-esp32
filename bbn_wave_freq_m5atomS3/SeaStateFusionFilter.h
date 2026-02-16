@@ -741,7 +741,7 @@ private:
     void applyEnvelopeDriftCorrection_(float /*dt*/) {
         if (!mekf_) return;
 
-        const float scale = getDisplacementScale();
+        const float scale = std::max(getDisplacementScale(), 0.3f);
         const float pz = mekf_->get_position().z();
         if (!std::isfinite(scale) || !std::isfinite(pz) || scale <= 0.0f) {
             apply_RS_tune_();
@@ -754,14 +754,14 @@ private:
         const float err_ratio = err / std::max(scale, 1e-3f);
 
         float rs_scale = 1.0f;
-        if (enable_env_rs_correction_) {
+        if (enable_env_rs_correction_ && err > 0.001f) {
             // Use normalized overrun so correction gain stays consistent across sea states.
             rs_scale = 1.0f / (1.0f + env_rs_gain_ * err_ratio);
             rs_scale = std::min(std::max(rs_scale, env_rs_min_scale_), 1.0f);
         }
         apply_RS_tune_(rs_scale);
 
-        if (enable_env_state_correction_ && err > 0.0f) {
+        if (enable_env_state_correction_ && err > 0.001f) {
             // Only pull back while moving farther outside the gate; avoid fighting natural return.
             const float vz = mekf_->get_velocity().z();
             const bool moving_outward = (pz * vz) > 0.0f;
