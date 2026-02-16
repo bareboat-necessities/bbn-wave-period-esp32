@@ -752,7 +752,8 @@ private:
             const float z_ref = sgnf_(pz) * scale;
             const float sigma = env_sigma0_m_ / (1.0f + env_state_gain_ * err);
             const float sigma_z = std::max(1e-3f, sigma);
-            const Eigen::Vector3f p_meas(0.0f, 0.0f, z_ref);
+            const Eigen::Vector3f p_pred = mekf_->get_position();
+            const Eigen::Vector3f p_meas(p_pred.x(), p_pred.y(), z_ref);
             const Eigen::Vector3f sigmas(1e9f, 1e9f, sigma_z);
             mekf_->measurement_update_position_pseudo(p_meas, sigmas);
         }
