@@ -448,10 +448,10 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
         filter.mekf().set_Racc(Vector3f::Constant(0.5f));
     } else {
         filter.enableLinearBlock(true);
-        filter.enableTuner(true);
+        filter.enableTuner(true);                    // keep adaptive R_S/tuning active
         filter.enableClamp(true);
-        filter.enableEnvelopeProjection(true);
-        filter.setEnvelopeRSCorrectionEnabled(true);
+        filter.setEnvelopeStateCorrectionEnabled(true); // keep envelope state gate enabled in sim
+        filter.setEnvelopeRSCorrectionEnabled(true);    // keep envelope-driven R_S modulation enabled
     }
     
     WaveDataCSVReader reader(filename);
