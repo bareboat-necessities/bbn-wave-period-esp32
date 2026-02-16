@@ -450,6 +450,8 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
         filter.enableLinearBlock(true);
         filter.enableTuner(true);
         filter.enableClamp(true);
+        filter.enableEnvelopeProjection(true);
+        filter.setEnvelopeRSCorrectionEnabled(true);
     }
     
     WaveDataCSVReader reader(filename);
