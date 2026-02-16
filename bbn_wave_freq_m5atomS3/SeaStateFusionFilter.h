@@ -87,11 +87,11 @@ constexpr float FREQ_SMOOTHER_DT = 1.0f / 240.0f;
 
 // Shared envelope-gate shape for heave envelope confidence.
 constexpr float HEAVE_ENV_MIN_GATE = 0.08f;
-constexpr float HEAVE_ENV_SOFT_START = 1.75f;
-constexpr float HEAVE_ENV_AGGRESSIVENESS = 6.0f;
+constexpr float HEAVE_ENV_SOFT_START = 2.50f;
+constexpr float HEAVE_ENV_AGGRESSIVENESS = 4.0f;
 
 // Envelope-driven state projection (disabled by default).
-constexpr float HEAVE_PROJ_GATE_TRIGGER = 0.98f;
+constexpr float HEAVE_PROJ_GATE_TRIGGER = 0.90f;
 constexpr float HEAVE_PROJ_MIN_SZ = 0.35f;
 constexpr float HEAVE_PROJ_MIN_SXY = 0.80f;
 constexpr float HEAVE_PROJ_MAX_SHRINK_PER_SEC = 0.20f;
