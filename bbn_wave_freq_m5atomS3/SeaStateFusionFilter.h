@@ -454,7 +454,28 @@ public:
         }
     }
 
-    // Scale factor for the envelope gate used to trigger drift correction.
+    // Direction-aware multipliers for envelope-driven R_S modulation.
+    // outward_scale applies when outside envelope and moving outward (|z| increasing),
+    // inward_scale applies when outside envelope but returning inward.
+    // Values are clamped to (0, 1] so R_S modulation remains a tightening-only scale.
+    void setEnvelopeRSDirectionalScales(float outward_scale, float inward_scale) {
+        if (std::isfinite(outward_scale) && outward_scale > 0.0f) {
+            env_rs_outward_scale_ = std::min(std::max(outward_scale, 1e-3f), 1.0f);
+        }
+        if (std::isfinite(inward_scale) && inward_scale > 0.0f) {
+            env_rs_inward_scale_ = std::min(std::max(inward_scale, 1e-3f), 1.0f);
+        }
+    }
+
+    // Time constant for smoothing RS scale switching (seconds).
+    // Set to 0 for immediate switching.
+    void setEnvelopeRSSmoothingTauSec(float tau_sec) {
+        if (std::isfinite(tau_sec) && tau_sec >= 0.0f) {
+            env_rs_smooth_tau_sec_ = tau_sec;
+        }
+    }
+
+    // Scale factor for the envelope gate used by state correction.
     // 1.0 means correction starts at |z| > envelope, 1.3 means |z| must exceed
     // 130% of the envelope before correction kicks in.
     void setEnvelopeGateThresholdScale(float scale) {
@@ -465,6 +486,19 @@ public:
 
     float getEnvelopeGateThresholdScale() const noexcept {
         return env_gate_threshold_scale_;
+    }
+
+    // Separate gate scale for envelope-driven R_S modulation.
+    // This allows RS tightening to engage earlier/later independently from
+    // envelope state-correction gating.
+    void setEnvelopeRSGateThresholdScale(float scale) {
+        if (std::isfinite(scale) && scale > 0.0f) {
+            env_rs_gate_threshold_scale_ = scale;
+        }
+    }
+
+    float getEnvelopeRSGateThresholdScale() const noexcept {
+        return env_rs_gate_threshold_scale_;
     }
 
     // Delay envelope-driven corrections after entering Live so the envelope
@@ -791,8 +825,12 @@ private:
 
         const float gate_scale = std::max(env_gate_threshold_scale_, 0.5f);
         const float gate = scale * gate_scale;
+        const float rs_gate_scale = std::max(env_rs_gate_threshold_scale_, 0.5f);
+        const float rs_gate = scale * rs_gate_scale;
         const float err = std::max(0.0f, std::fabs(pz) - gate);
         const float err_ratio = err / std::max(scale, 1e-3f);
+        const float envelope_ratio = std::fabs(pz) / std::max(rs_gate, 1e-3f);
+        const float rs_over_ratio = std::max(0.0f, envelope_ratio - 1.0f);
 
         if (err > 0.001f && std::isfinite(dt) && dt > 0.0f) {
             env_outside_time_sec_ += dt;
@@ -801,13 +839,27 @@ private:
         }
 
 
-        float rs_scale = 1.0f;
-        if (enable_env_rs_correction_ && err > 0.001f) {
-            // Use normalized overrun so correction gain stays consistent across sea states.
-            rs_scale = 1.0f / (1.0f + env_rs_gain_ * err_ratio);
-            rs_scale = std::min(std::max(rs_scale, env_rs_min_scale_), 1.0f);
+        float rs_scale_cmd = 1.0f;
+        if (enable_env_rs_correction_ && rs_over_ratio > 1e-3f) {
+            // Soft overrun ratio around the RS gate so modulation starts engaging
+            // immediately after crossing while staying sea-state normalized.
+            float rs_mag_scale = 1.0f / (1.0f + env_rs_gain_ * rs_over_ratio);
+            rs_mag_scale = std::min(std::max(rs_mag_scale, env_rs_min_scale_), 1.0f);
+
+            const float vz = mekf_->get_velocity().z();
+            const bool outward = std::isfinite(vz) && ((pz * vz) > 0.0f);
+            const float rs_dir_scale = outward ? env_rs_outward_scale_ : env_rs_inward_scale_;
+            rs_scale_cmd = std::min(std::max(rs_mag_scale * rs_dir_scale, env_rs_min_scale_), 1.0f);
         }
-        apply_RS_tune_(rs_scale);
+
+        if (std::isfinite(dt) && dt > 0.0f && env_rs_smooth_tau_sec_ > 0.0f) {
+            const float alpha = dt / (env_rs_smooth_tau_sec_ + dt);
+            env_rs_scale_state_ += alpha * (rs_scale_cmd - env_rs_scale_state_);
+        } else {
+            env_rs_scale_state_ = rs_scale_cmd;
+        }
+        env_rs_scale_state_ = std::min(std::max(env_rs_scale_state_, env_rs_min_scale_), 1.0f);
+        apply_RS_tune_(env_rs_scale_state_);
 
         if (enable_env_state_correction_) {
             const bool outside_persistent = env_outside_time_sec_ >= env_state_dwell_sec_;
@@ -983,6 +1035,7 @@ private:
 
         // Reset envelope correction dwell/scheduler state.
         env_outside_time_sec_ = 0.0f;
+        env_rs_scale_state_ = 1.0f;
         last_env_state_update_sec_ = static_cast<float>(time_);
     }
     
@@ -1027,6 +1080,7 @@ private:
         if (enable_linear_block_) apply_RS_tune_();
 
         env_outside_time_sec_ = 0.0f;
+        env_rs_scale_state_ = 1.0f;
         last_env_state_update_sec_ = static_cast<float>(time_);
     }
 
@@ -1073,9 +1127,14 @@ private:
     float env_state_every_sec_ = 0.15f;
     float env_state_min_err_ratio_ = 0.08f;
     float last_env_state_update_sec_ = -1e9f;
-    float env_rs_gain_ = 3.0f;
-    float env_rs_min_scale_ = 0.25f;
-    float env_gate_threshold_scale_ = 2.2f;
+    float env_rs_gain_ = 8.0f;
+    float env_rs_min_scale_ = 0.10f;
+    float env_rs_outward_scale_ = 0.30f;
+    float env_rs_inward_scale_ = 1.0f;
+    float env_rs_smooth_tau_sec_ = 0.35f;
+    float env_rs_scale_state_ = 1.0f;
+    float env_gate_threshold_scale_ = 1.2f;
+    float env_rs_gate_threshold_scale_ = 1.2f;
     float env_correction_warmup_sec_ = 16.0f;
 
     // Controls whether the extended linear block [v,p,S,a_w] of Kalman3D_Wave
