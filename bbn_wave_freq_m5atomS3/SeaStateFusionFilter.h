@@ -554,11 +554,17 @@ public:
 
     inline float getHeaveAbs() const noexcept { if (!mekf_) return NAN; return std::fabs(mekf_->get_position().z()); }
 
-    inline float getDisplacementScale(bool smoothed = true) const noexcept {
+    inline float getDisplacementScale(bool smoothed = true, bool low_bound = true) const noexcept {
         const float tau = smoothed ? tune_.tau_applied : tau_target_;
         const float sigma = smoothed ? tune_.sigma_applied : sigma_target_;
         if (!std::isfinite(sigma) || !std::isfinite(tau)) return NAN;
         constexpr float C_HS  = 2.0f * std::sqrt(2.0f) / (M_PI * M_PI);  // Longuet–Higgins envelope for wave height
+        if (low_bound) {
+            const float ang_freq = std::max(getFreqHz() * 2.0f * M_PI, 1e-2f);
+            const float amp = std::fabs(getAccelVertical()) / (ang_freq * ang_freq);
+            const float envelope = C_HS * sigma * tau * tau;          
+            return envelope > amp ? envelope : amp;
+        }
         return C_HS * sigma * tau * tau;
     }
 
