@@ -351,8 +351,8 @@ private:
     auto& ff = fusion_.raw();
     ff.enableLinearBlock(WANT_LINEAR_BLOCK);
     ff.enableTuner(true);
-    ff.enableEnvelopeProjection(true);
-    ff.setEnvelopeRSCorrectionEnabled(true);
+    ff.setEnvelopeStateCorrectionEnabled(true); // envelope state gate 
+    ff.setEnvelopeRSCorrectionEnabled(true);    // envelope-driven R_S modulation
     ff.enableClamp(true);
     ff.setFreqInputCutoffHz(6.0f);
 
