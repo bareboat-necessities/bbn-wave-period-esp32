@@ -431,6 +431,18 @@ public:
         }
     }
 
+    void setEnvelopeStateCorrectionUpdatePeriod(float every_sec) {
+        if (std::isfinite(every_sec) && every_sec > 0.02f) {
+            env_state_every_sec_ = every_sec;
+        }
+    }
+
+    void setEnvelopeStateCorrectionMinErrRatio(float r) {
+        if (std::isfinite(r) && r >= 0.0f) {
+            env_state_min_err_ratio_ = std::min(std::max(r, 0.0f), 1.0f);
+        }
+    }
+
     // R_S modulation while outside envelope:
     //   R_S_eff = R_S_base * clamp(1/(1 + gain*err), min_scale, 1)
     void setEnvelopeRSCorrectionParams(float gain, float min_scale) {
@@ -797,7 +809,8 @@ private:
         }
         apply_RS_tune_(rs_scale);
 
-        if (enable_env_state_correction_ && err > 0.001f) {
+        if (enable_env_state_correction_) {
+            // Only act if outside long enough and outside by a meaningful fraction of scale.
             const bool outside_persistent = env_outside_time_sec_ >= env_state_dwell_sec_;
             if (outside_persistent) {
                 // Minimal restoring logic: once outside long enough, pull directly to gate,
@@ -1030,6 +1043,9 @@ private:
     float env_state_max_speed_mps_ = 0.35f;
     float env_state_dwell_sec_ = 0.8f;
     float env_outside_time_sec_ = 0.0f;
+    float env_state_every_sec_ = 0.15f;
+    float env_state_min_err_ratio_ = 0.08f;
+    float last_env_state_update_sec_ = -1e9f;
     float env_rs_gain_ = 3.0f;
     float env_rs_min_scale_ = 0.25f;
     float env_gate_threshold_scale_ = 1.8f;
