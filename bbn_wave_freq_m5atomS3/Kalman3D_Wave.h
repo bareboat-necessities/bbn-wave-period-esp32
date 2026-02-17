@@ -634,7 +634,7 @@ class Kalman3D_Wave {
     // Optional smoothing for alpha (0 = off)
     T alpha_smooth_tau_ = T(0.05); // seconds
 
-	bool centerline_pseudo_	= true;
+	bool centerline_pseudo_	= false;
     Vector3 p_center_      = Vector3::Zero();   // slow centerline of p
     Vector3 S_center_int_  = Vector3::Zero();   // ∫ p_center dt
     bool    center_init_   = false;
