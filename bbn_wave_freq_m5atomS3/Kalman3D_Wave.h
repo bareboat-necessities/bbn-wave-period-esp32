@@ -1899,10 +1899,13 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::applyInte
     // Innovation: target S = 0 if centerline_pseudo_ is false
 	// Remove DC contribution from the S pseudo-measurement
     // so RS does not “pull” the waveform center and distort shape.
-    const Vector3 r = centerline_pseudo_ ? 
-				-(xext.template segment<3>(off_S) - S_center_int_) :		
-                -xext.template segment<3>(off_S);
-
+    Vector3 r;
+    if (centerline_pseudo_) {
+        r = -(xext.template segment<3>(off_S) - S_center_int_);
+    } else {
+        r = -xext.template segment<3>(off_S);
+    }
+				
     // Innovation covariance S = P_SS + R_S
     Matrix3& S_mat = S_scratch_;
     S_mat = Pext.template block<3,3>(off_S, off_S) + R_S;
