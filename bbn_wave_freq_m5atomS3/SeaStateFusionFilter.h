@@ -560,7 +560,7 @@ public:
         if (!std::isfinite(sigma) || !std::isfinite(tau)) return NAN;
         constexpr float C_HS  = 2.0f * std::sqrt(2.0f) / (M_PI * M_PI);  // Longuet–Higgins envelope for wave height
         if (low_bound) {
-            const float ang_freq = std::max(getFreqHz() * 2.0f * M_PI, 1e-2f);
+            const float ang_freq = std::max((float) (getFreqHz() * 2.0f * M_PI), 1e-2f);
             const float amp = std::fabs(getAccelVertical()) / (ang_freq * ang_freq);
             const float envelope = C_HS * sigma * tau * tau;          
             return envelope > amp ? envelope : amp;
