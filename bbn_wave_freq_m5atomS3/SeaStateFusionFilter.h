@@ -812,38 +812,17 @@ private:
         if (enable_env_state_correction_) {
             // Only act if outside long enough and outside by a meaningful fraction of scale.
             const bool outside_persistent = env_outside_time_sec_ >= env_state_dwell_sec_;
-            const bool enough_overrun = (err_ratio >= env_state_min_err_ratio_);
-
-            // Only apply at low rate (prevents covariance collapse / oscillation injection).
-            const bool time_ok = (static_cast<float>(time_) - last_env_state_update_sec_) >= env_state_every_sec_;
-
-            if (outside_persistent && enough_overrun && time_ok && std::isfinite(dt) && dt > 0.0f) {
-                // Don't fight the filter if it's already returning inside.
-                const float vz = mekf_->get_velocity().z();
-                const bool moving_outward = (pz * vz) > 0.0f;
-
-                // Skip in stillness mode.
-                const bool still = freq_stillness_.isStill();
-
-                if (moving_outward && !still) {
-                    // Pull target toward the gate with a speed limit.
-                    const float z_gate = sgnf_(pz) * gate;
-                    const float max_step = std::max(env_state_max_speed_mps_, 1e-3f) * dt;
-                    const float dz = std::clamp(z_gate - pz, -max_step, max_step);
-                    const float z_target = pz + dz;
-
-                    // Keep the pseudo-measurement soft and sea-state scaled.
-                    const float sigma_floor = std::max(env_sigma0_m_, 0.05f);
-                    const float sigma_scale = 0.20f * std::max(scale, 0.3f);
-                    const float sigma_z = std::max(sigma_floor, sigma_scale);
-
-                    const Eigen::Vector3f p_pred = mekf_->get_position();
-                    const Eigen::Vector3f p_meas(p_pred.x(), p_pred.y(), z_target);
-                    const Eigen::Vector3f sigmas(1e9f, 1e9f, sigma_z);
-
-                    mekf_->measurement_update_position_pseudo(p_meas, sigmas);
-                    last_env_state_update_sec_ = static_cast<float>(time_);
-                }
+            if (outside_persistent) {
+                // Minimal restoring logic: once outside long enough, pull directly to gate,
+                // with a configurable speed limit to avoid clipping the waveform.
+                const float z_gate = sgnf_(pz) * gate;
+                const float max_step = std::max(env_state_max_speed_mps_, 1e-3f) * dt;
+                const float z_target = pz + std::clamp(z_gate - pz, -max_step, max_step);
+                const float sigma_z = std::min(std::max(env_sigma0_m_, 0.05f), 0.12f);
+                const Eigen::Vector3f p_pred = mekf_->get_position();
+                const Eigen::Vector3f p_meas(p_pred.x(), p_pred.y(), z_target);
+                const Eigen::Vector3f sigmas(1e9f, 1e9f, sigma_z);
+                mekf_->measurement_update_position_pseudo(p_meas, sigmas);
             }
         }
     }
