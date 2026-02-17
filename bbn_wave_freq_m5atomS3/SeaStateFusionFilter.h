@@ -49,7 +49,6 @@
 #include <cmath>
 #include <memory>
 #include <algorithm>
-#include <cstdio>
 
 #include "AranovskiyFilter.h"
 #include "KalmANF.h"
@@ -506,13 +505,6 @@ public:
         return env_rs_gate_threshold_scale_;
     }
 
-    void setEnvelopeRSDebugLog(bool enable, float hz = 5.0f) {
-        enable_env_rs_debug_log_ = enable;
-        if (std::isfinite(hz) && hz > 0.0f) {
-            env_rs_debug_period_sec_ = 1.0f / hz;
-        }
-    }
-
     // Delay envelope-driven corrections after entering Live so the envelope
     // scale has time to converge and does not start too low.
     void setEnvelopeCorrectionWarmupSec(float warmup_sec) {
@@ -520,7 +512,6 @@ public:
             env_correction_warmup_sec_ = warmup_sec;
         }
     }
-
 
     // Enable/disable use of the extended linear block [v,p,S,a_w] in Kalman3D_Wave.
     //
@@ -882,35 +873,6 @@ private:
         env_rs_scale_state_ = std::min(std::max(env_rs_scale_state_, env_rs_min_scale_), 1.0f);
         apply_RS_tune_(env_rs_scale_state_);
 
-        if (enable_env_rs_debug_log_ && (time_ - env_rs_last_debug_log_sec_) >= env_rs_debug_period_sec_) {
-            env_rs_last_debug_log_sec_ = static_cast<float>(time_);
-#ifdef EIGEN_NON_ARDUINO
-            std::printf("[ENV-RS] pz=%.3f vz=%.3f scale=%.3f gate_s=%.3f r=%.3f out=%d rs_t=%.3f cmd=%.3f st=%.3f RS=%.3f\n",
-                        static_cast<double>(pz),
-                        static_cast<double>(vz),
-                        static_cast<double>(scale),
-                        static_cast<double>(rs_gate_scale),
-                        static_cast<double>(envelope_ratio),
-                        outward ? 1 : 0,
-                        static_cast<double>(env_rs_outside_time_sec_),
-                        static_cast<double>(rs_scale_cmd),
-                        static_cast<double>(env_rs_scale_state_),
-                        static_cast<double>(tune_.RS_applied * env_rs_scale_state_));
-#else
-            Serial.printf("[ENV-RS] pz=%.3f vz=%.3f scale=%.3f gate_s=%.3f r=%.3f out=%d rs_t=%.3f cmd=%.3f st=%.3f RS=%.3f\n",
-                          static_cast<double>(pz),
-                          static_cast<double>(vz),
-                          static_cast<double>(scale),
-                          static_cast<double>(rs_gate_scale),
-                          static_cast<double>(envelope_ratio),
-                          outward ? 1 : 0,
-                          static_cast<double>(env_rs_outside_time_sec_),
-                          static_cast<double>(rs_scale_cmd),
-                          static_cast<double>(env_rs_scale_state_),
-                          static_cast<double>(tune_.RS_applied * env_rs_scale_state_));
-#endif
-        }
-
         if (enable_env_state_correction_) {
             const bool outside_persistent = env_outside_time_sec_ >= env_state_dwell_sec_;
             const bool enough_overrun     = (err_ratio >= env_state_min_err_ratio_);
@@ -1188,9 +1150,6 @@ private:
     float env_rs_scale_state_ = 1.0f;
     float env_gate_threshold_scale_ = 1.2f;
     float env_rs_gate_threshold_scale_ = 1.2f;
-    bool  enable_env_rs_debug_log_ = false;
-    float env_rs_debug_period_sec_ = 0.2f;
-    float env_rs_last_debug_log_sec_ = -1e9f;
     float env_correction_warmup_sec_ = 16.0f;
 
     // Controls whether the extended linear block [v,p,S,a_w] of Kalman3D_Wave
