@@ -825,8 +825,8 @@ private:
         }
 
         const float vz = mekf_->get_velocity().z();
-        const bool outward = std::isfinite(vz) && ((pz * vz) > 0.0f);
-
+        const float pz_next = pz + vz * dt;
+        const bool outward = std::fabs(pz_next) > std::fabs(pz);
 
         float rs_scale_cmd = 1.0f;
         if (enable_env_rs_correction_ && outward && r > 1.0f) {
