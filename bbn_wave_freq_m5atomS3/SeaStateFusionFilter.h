@@ -1115,7 +1115,7 @@ private:
     float env_rs_smooth_tau_sec_ = 0.0f;
     float env_rs_scale_state_ = 1.0f;
     float env_gate_threshold_scale_ = 1.2f;
-    float env_rs_gate_threshold_scale_ = 1.2f;
+    float env_rs_gate_threshold_scale_ = 0.8f;
     float env_correction_warmup_sec_ = 16.0f;
 
     // Controls whether the extended linear block [v,p,S,a_w] of Kalman3D_Wave
