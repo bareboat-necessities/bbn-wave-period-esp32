@@ -800,11 +800,14 @@ private:
         if (enable_env_state_correction_ && err > 0.001f) {
             const bool outside_persistent = env_outside_time_sec_ >= env_state_dwell_sec_;
             if (outside_persistent) {
-                // Minimal restoring logic: once outside long enough, pull directly to gate.
+                // Minimal restoring logic: once outside long enough, pull directly to gate,
+                // with a configurable speed limit to avoid clipping the waveform.
                 const float z_gate = sgnf_(pz) * gate;
+                const float max_step = std::max(env_state_max_speed_mps_, 1e-3f) * dt;
+                const float z_target = pz + std::clamp(z_gate - pz, -max_step, max_step);
                 const float sigma_z = std::min(std::max(env_sigma0_m_, 0.05f), 0.12f);
                 const Eigen::Vector3f p_pred = mekf_->get_position();
-                const Eigen::Vector3f p_meas(p_pred.x(), p_pred.y(), z_gate);
+                const Eigen::Vector3f p_meas(p_pred.x(), p_pred.y(), z_target);
                 const Eigen::Vector3f sigmas(1e9f, 1e9f, sigma_z);
                 mekf_->measurement_update_position_pseudo(p_meas, sigmas);
             }
@@ -1024,6 +1027,7 @@ private:
     bool enable_env_rs_correction_ = false;
 
     float env_sigma0_m_ = 0.5f;
+    float env_state_max_speed_mps_ = 0.35f;
     float env_state_dwell_sec_ = 0.8f;
     float env_outside_time_sec_ = 0.0f;
     float env_rs_gain_ = 3.0f;
