@@ -1075,7 +1075,7 @@ private:
     float last_env_state_update_sec_ = -1e9f;
     float env_rs_gain_ = 3.0f;
     float env_rs_min_scale_ = 0.25f;
-    float env_gate_threshold_scale_ = 1.8f;
+    float env_gate_threshold_scale_ = 2.2f;
     float env_correction_warmup_sec_ = 16.0f;
 
     // Controls whether the extended linear block [v,p,S,a_w] of Kalman3D_Wave
