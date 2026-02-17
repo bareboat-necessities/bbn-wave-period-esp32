@@ -450,8 +450,8 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
         filter.enableLinearBlock(true);
         filter.enableTuner(true);                    // keep adaptive R_S/tuning active
         filter.enableClamp(true);
-        filter.setEnvelopeStateCorrectionEnabled(true); // envelope state gate 
-        filter.setEnvelopeRSCorrectionEnabled(true);    // envelope-driven R_S modulation
+        filter.setEnvelopeStateCorrectionEnabled(false); // envelope state gate 
+        filter.setEnvelopeRSCorrectionEnabled(false);    // envelope-driven R_S modulation
     }
     
     WaveDataCSVReader reader(filename);
