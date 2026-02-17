@@ -49,6 +49,7 @@
 #include <cmath>
 #include <memory>
 #include <algorithm>
+#include <cstdio>
 
 #include "AranovskiyFilter.h"
 #include "KalmANF.h"
@@ -444,7 +445,8 @@ public:
     }
 
     // R_S modulation while outside envelope:
-    //   R_S_eff = R_S_base * clamp(1/(1 + gain*err), min_scale, 1)
+    //   R_S_eff = R_S_base * clamp(1/(1 + gain*over^p), min_scale, 1)
+    // where over = max(0, |z|/rs_gate - 1).
     void setEnvelopeRSCorrectionParams(float gain, float min_scale) {
         if (std::isfinite(gain) && gain >= 0.0f) {
             env_rs_gain_ = gain;
@@ -454,18 +456,21 @@ public:
         }
     }
 
-    // Direction-aware multipliers for envelope-driven R_S modulation.
-    // outward_scale applies when outside envelope and moving outward (|z| increasing),
-    // inward_scale applies when outside envelope but returning inward.
-    // Values are clamped to (0, 1] so R_S modulation remains a tightening-only scale.
-    void setEnvelopeRSDirectionalScales(float outward_scale, float inward_scale) {
-        if (std::isfinite(outward_scale) && outward_scale > 0.0f) {
-            env_rs_outward_scale_ = std::min(std::max(outward_scale, 1e-3f), 1.0f);
-        }
-        if (std::isfinite(inward_scale) && inward_scale > 0.0f) {
-            env_rs_inward_scale_ = std::min(std::max(inward_scale, 1e-3f), 1.0f);
+    void setEnvelopeRSPower(float p) {
+        if (std::isfinite(p) && p > 0.0f) {
+            env_rs_power_ = p;
         }
     }
+
+    void setEnvelopeRSDwellSec(float dwell_sec) {
+        if (std::isfinite(dwell_sec) && dwell_sec >= 0.0f) {
+            env_rs_dwell_sec_ = dwell_sec;
+        }
+    }
+
+    // Legacy API kept for compatibility. Directional scaling is now policy-A:
+    // outward motion can tighten, inward motion keeps RS scale at 1.
+    void setEnvelopeRSDirectionalScales(float /*outward_scale*/, float /*inward_scale*/) {}
 
     // Time constant for smoothing RS scale switching (seconds).
     // Set to 0 for immediate switching.
@@ -499,6 +504,13 @@ public:
 
     float getEnvelopeRSGateThresholdScale() const noexcept {
         return env_rs_gate_threshold_scale_;
+    }
+
+    void setEnvelopeRSDebugLog(bool enable, float hz = 5.0f) {
+        enable_env_rs_debug_log_ = enable;
+        if (std::isfinite(hz) && hz > 0.0f) {
+            env_rs_debug_period_sec_ = 1.0f / hz;
+        }
     }
 
     // Delay envelope-driven corrections after entering Live so the envelope
@@ -838,18 +850,27 @@ private:
             env_outside_time_sec_ = 0.0f;
         }
 
+        const float rs_err = std::max(0.0f, std::fabs(pz) - rs_gate);
+        if (rs_err > 0.001f && std::isfinite(dt) && dt > 0.0f) {
+            env_rs_outside_time_sec_ += dt;
+        } else {
+            env_rs_outside_time_sec_ = 0.0f;
+        }
+
+        const float vz = mekf_->get_velocity().z();
+        const bool outward = std::isfinite(vz) && ((pz * vz) > 0.0f);
+
 
         float rs_scale_cmd = 1.0f;
-        if (enable_env_rs_correction_ && rs_over_ratio > 1e-3f) {
-            // Soft overrun ratio around the RS gate so modulation starts engaging
-            // immediately after crossing while staying sea-state normalized.
-            float rs_mag_scale = 1.0f / (1.0f + env_rs_gain_ * rs_over_ratio);
-            rs_mag_scale = std::min(std::max(rs_mag_scale, env_rs_min_scale_), 1.0f);
-
-            const float vz = mekf_->get_velocity().z();
-            const bool outward = std::isfinite(vz) && ((pz * vz) > 0.0f);
-            const float rs_dir_scale = outward ? env_rs_outward_scale_ : env_rs_inward_scale_;
-            rs_scale_cmd = std::min(std::max(rs_mag_scale * rs_dir_scale, env_rs_min_scale_), 1.0f);
+        if (enable_env_rs_correction_
+            && outward
+            && env_rs_outside_time_sec_ >= env_rs_dwell_sec_
+            && rs_over_ratio > 1e-3f) {
+            const float over_pow = std::pow(rs_over_ratio, env_rs_power_);
+            const float rs_mag_scale = 1.0f / (1.0f + env_rs_gain_ * over_pow);
+            rs_scale_cmd = std::min(std::max(rs_mag_scale, env_rs_min_scale_), 1.0f);
+        } else {
+            rs_scale_cmd = 1.0f;
         }
 
         if (std::isfinite(dt) && dt > 0.0f && env_rs_smooth_tau_sec_ > 0.0f) {
@@ -860,6 +881,35 @@ private:
         }
         env_rs_scale_state_ = std::min(std::max(env_rs_scale_state_, env_rs_min_scale_), 1.0f);
         apply_RS_tune_(env_rs_scale_state_);
+
+        if (enable_env_rs_debug_log_ && (time_ - env_rs_last_debug_log_sec_) >= env_rs_debug_period_sec_) {
+            env_rs_last_debug_log_sec_ = static_cast<float>(time_);
+#ifdef EIGEN_NON_ARDUINO
+            std::printf("[ENV-RS] pz=%.3f vz=%.3f scale=%.3f gate_s=%.3f r=%.3f out=%d rs_t=%.3f cmd=%.3f st=%.3f RS=%.3f\n",
+                        static_cast<double>(pz),
+                        static_cast<double>(vz),
+                        static_cast<double>(scale),
+                        static_cast<double>(rs_gate_scale),
+                        static_cast<double>(envelope_ratio),
+                        outward ? 1 : 0,
+                        static_cast<double>(env_rs_outside_time_sec_),
+                        static_cast<double>(rs_scale_cmd),
+                        static_cast<double>(env_rs_scale_state_),
+                        static_cast<double>(tune_.RS_applied * env_rs_scale_state_));
+#else
+            Serial.printf("[ENV-RS] pz=%.3f vz=%.3f scale=%.3f gate_s=%.3f r=%.3f out=%d rs_t=%.3f cmd=%.3f st=%.3f RS=%.3f\n",
+                          static_cast<double>(pz),
+                          static_cast<double>(vz),
+                          static_cast<double>(scale),
+                          static_cast<double>(rs_gate_scale),
+                          static_cast<double>(envelope_ratio),
+                          outward ? 1 : 0,
+                          static_cast<double>(env_rs_outside_time_sec_),
+                          static_cast<double>(rs_scale_cmd),
+                          static_cast<double>(env_rs_scale_state_),
+                          static_cast<double>(tune_.RS_applied * env_rs_scale_state_));
+#endif
+        }
 
         if (enable_env_state_correction_) {
             const bool outside_persistent = env_outside_time_sec_ >= env_state_dwell_sec_;
@@ -1035,6 +1085,7 @@ private:
 
         // Reset envelope correction dwell/scheduler state.
         env_outside_time_sec_ = 0.0f;
+        env_rs_outside_time_sec_ = 0.0f;
         env_rs_scale_state_ = 1.0f;
         last_env_state_update_sec_ = static_cast<float>(time_);
     }
@@ -1080,6 +1131,7 @@ private:
         if (enable_linear_block_) apply_RS_tune_();
 
         env_outside_time_sec_ = 0.0f;
+        env_rs_outside_time_sec_ = 0.0f;
         env_rs_scale_state_ = 1.0f;
         last_env_state_update_sec_ = static_cast<float>(time_);
     }
@@ -1127,14 +1179,18 @@ private:
     float env_state_every_sec_ = 0.15f;
     float env_state_min_err_ratio_ = 0.08f;
     float last_env_state_update_sec_ = -1e9f;
-    float env_rs_gain_ = 8.0f;
-    float env_rs_min_scale_ = 0.10f;
-    float env_rs_outward_scale_ = 0.30f;
-    float env_rs_inward_scale_ = 1.0f;
-    float env_rs_smooth_tau_sec_ = 0.35f;
+    float env_rs_gain_ = 1.0f;
+    float env_rs_power_ = 4.0f;
+    float env_rs_min_scale_ = 0.05f;
+    float env_rs_smooth_tau_sec_ = 0.30f;
+    float env_rs_dwell_sec_ = 0.25f;
+    float env_rs_outside_time_sec_ = 0.0f;
     float env_rs_scale_state_ = 1.0f;
     float env_gate_threshold_scale_ = 1.2f;
-    float env_rs_gate_threshold_scale_ = 0.8f;
+    float env_rs_gate_threshold_scale_ = 1.2f;
+    bool  enable_env_rs_debug_log_ = false;
+    float env_rs_debug_period_sec_ = 0.2f;
+    float env_rs_last_debug_log_sec_ = -1e9f;
     float env_correction_warmup_sec_ = 16.0f;
 
     // Controls whether the extended linear block [v,p,S,a_w] of Kalman3D_Wave
