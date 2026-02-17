@@ -79,7 +79,7 @@ static constexpr float    MAG_MIN_DELTA_uT      = 0.02f;
 
 // Display / serial rates
 static constexpr uint32_t UI_REFRESH_MS   = 100;
-static constexpr uint32_t DEBUG_SERIAL_MS = 100;
+static constexpr uint32_t DEBUG_SERIAL_MS = 250;
 static constexpr uint32_t NMEA_SERIAL_MS  = 100;
 
 // ROT bias removal (stillness-gated gyro bias estimator)
@@ -351,7 +351,7 @@ private:
     auto& ff = fusion_.raw();
     ff.enableLinearBlock(WANT_LINEAR_BLOCK);
     ff.enableTuner(true);
-    ff.setEnvelopeStateCorrectionEnabled(true); // envelope state gate 
+    ff.setEnvelopeStateCorrectionEnabled(false); // envelope state gate 
     ff.setEnvelopeRSCorrectionEnabled(true);    // envelope-driven R_S modulation
     ff.enableClamp(true);
     ff.setFreqInputCutoffHz(6.0f);
@@ -638,7 +638,7 @@ private:
                   (double)mag_norm_uT_,
                   (int)fusion_.isLive());
     */
-    Serial.printf("H_m:%6.3f, wave_envelope_m:%6.3f, imu_stale:%u\n",
+    Serial.printf("Hm=%+6.3f\twaveEnvelopeM=%+6.3f\timuStale=%u\n",
                   (double)heave_m_,
                   (double)wave_envelope_m_,
                   (unsigned)stale_frame_count_);
