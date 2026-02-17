@@ -443,15 +443,13 @@ public:
         }
     }
 
-    // R_S modulation while outside envelope:
-    //   R_S_eff = R_S_base * clamp(1/(1 + gain*over^p), min_scale, 1)
-    // where over = max(0, |z|/rs_gate - 1).
+    // R_S modulation minimum scale.
     void setEnvelopeRSCorrectionParams(float gain, float min_scale) {
         if (std::isfinite(gain) && gain >= 0.0f) {
             env_rs_gain_ = gain;
         }
         if (std::isfinite(min_scale)) {
-            env_rs_min_scale_ = std::min(std::max(min_scale, 1e-3f), 1.0f);
+            env_rs_min_scale_ = std::min(std::max(min_scale, 1e-4f), 1.0f);
         }
     }
 
@@ -832,8 +830,8 @@ private:
         const float rs_gate = scale * rs_gate_scale;
         const float err = std::max(0.0f, std::fabs(pz) - gate);
         const float err_ratio = err / std::max(scale, 1e-3f);
-        const float envelope_ratio = std::fabs(pz) / std::max(rs_gate, 1e-3f);
-        const float rs_over_ratio = std::max(0.0f, envelope_ratio - 1.0f);
+        const float absz = std::fabs(pz);
+        const float r = absz / std::max(rs_gate, 1e-3f);
 
         if (err > 0.001f && std::isfinite(dt) && dt > 0.0f) {
             env_outside_time_sec_ += dt;
@@ -841,25 +839,14 @@ private:
             env_outside_time_sec_ = 0.0f;
         }
 
-        const float rs_err = std::max(0.0f, std::fabs(pz) - rs_gate);
-        if (rs_err > 0.001f && std::isfinite(dt) && dt > 0.0f) {
-            env_rs_outside_time_sec_ += dt;
-        } else {
-            env_rs_outside_time_sec_ = 0.0f;
-        }
-
         const float vz = mekf_->get_velocity().z();
         const bool outward = std::isfinite(vz) && ((pz * vz) > 0.0f);
 
 
         float rs_scale_cmd = 1.0f;
-        if (enable_env_rs_correction_
-            && outward
-            && env_rs_outside_time_sec_ >= env_rs_dwell_sec_
-            && rs_over_ratio > 1e-3f) {
-            const float over_pow = std::pow(rs_over_ratio, env_rs_power_);
-            const float rs_mag_scale = 1.0f / (1.0f + env_rs_gain_ * over_pow);
-            rs_scale_cmd = std::min(std::max(rs_mag_scale, env_rs_min_scale_), 1.0f);
+        if (enable_env_rs_correction_ && outward && r > 1.0f) {
+            constexpr float RS_TIGHTEN_POWER = 8.0f;
+            rs_scale_cmd = std::clamp(std::pow(r, -RS_TIGHTEN_POWER), env_rs_min_scale_, 1.0f);
         } else {
             rs_scale_cmd = 1.0f;
         }
@@ -870,7 +857,7 @@ private:
         } else {
             env_rs_scale_state_ = rs_scale_cmd;
         }
-        env_rs_scale_state_ = std::min(std::max(env_rs_scale_state_, env_rs_min_scale_), 1.0f);
+        env_rs_scale_state_ = std::clamp(env_rs_scale_state_, env_rs_min_scale_, 1.0f);
         apply_RS_tune_(env_rs_scale_state_);
 
         if (enable_env_state_correction_) {
@@ -1143,8 +1130,8 @@ private:
     float last_env_state_update_sec_ = -1e9f;
     float env_rs_gain_ = 1.0f;
     float env_rs_power_ = 4.0f;
-    float env_rs_min_scale_ = 0.05f;
-    float env_rs_smooth_tau_sec_ = 0.30f;
+    float env_rs_min_scale_ = 5e-4f;
+    float env_rs_smooth_tau_sec_ = 0.0f;
     float env_rs_dwell_sec_ = 0.25f;
     float env_rs_outside_time_sec_ = 0.0f;
     float env_rs_scale_state_ = 1.0f;
