@@ -1484,7 +1484,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::time_upda
 
     symmetrize_Pext_();   // Symmetry hygiene
 
-    if (linear_block_enabled_ && centering_pseudo_) {
+    if (linear_block_enabled_ && centerline_pseudo_) {
         const Vector3 p = xext.template segment<3>(OFF_P);
 
         if (!center_init_) { p_center_ = p; center_init_ = true; }
