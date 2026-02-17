@@ -443,25 +443,10 @@ public:
         }
     }
 
-    // R_S modulation minimum scale.
-    void setEnvelopeRSCorrectionParams(float gain, float min_scale) {
-        if (std::isfinite(gain) && gain >= 0.0f) {
-            env_rs_gain_ = gain;
-        }
+    // Minimum clamp for outward-only RS tightening scale.
+    void setEnvelopeRSMinScale(float min_scale) {
         if (std::isfinite(min_scale)) {
             env_rs_min_scale_ = std::min(std::max(min_scale, 1e-4f), 1.0f);
-        }
-    }
-
-    void setEnvelopeRSPower(float p) {
-        if (std::isfinite(p) && p > 0.0f) {
-            env_rs_power_ = p;
-        }
-    }
-
-    void setEnvelopeRSDwellSec(float dwell_sec) {
-        if (std::isfinite(dwell_sec) && dwell_sec >= 0.0f) {
-            env_rs_dwell_sec_ = dwell_sec;
         }
     }
 
@@ -1034,7 +1019,6 @@ private:
 
         // Reset envelope correction dwell/scheduler state.
         env_outside_time_sec_ = 0.0f;
-        env_rs_outside_time_sec_ = 0.0f;
         env_rs_scale_state_ = 1.0f;
         last_env_state_update_sec_ = static_cast<float>(time_);
     }
@@ -1080,7 +1064,6 @@ private:
         if (enable_linear_block_) apply_RS_tune_();
 
         env_outside_time_sec_ = 0.0f;
-        env_rs_outside_time_sec_ = 0.0f;
         env_rs_scale_state_ = 1.0f;
         last_env_state_update_sec_ = static_cast<float>(time_);
     }
@@ -1128,12 +1111,8 @@ private:
     float env_state_every_sec_ = 0.15f;
     float env_state_min_err_ratio_ = 0.08f;
     float last_env_state_update_sec_ = -1e9f;
-    float env_rs_gain_ = 1.0f;
-    float env_rs_power_ = 4.0f;
     float env_rs_min_scale_ = 5e-4f;
     float env_rs_smooth_tau_sec_ = 0.0f;
-    float env_rs_dwell_sec_ = 0.25f;
-    float env_rs_outside_time_sec_ = 0.0f;
     float env_rs_scale_state_ = 1.0f;
     float env_gate_threshold_scale_ = 1.2f;
     float env_rs_gate_threshold_scale_ = 1.2f;
