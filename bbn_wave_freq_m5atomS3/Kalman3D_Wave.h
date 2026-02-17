@@ -634,6 +634,12 @@ class Kalman3D_Wave {
     // Optional smoothing for alpha (0 = off)
     T alpha_smooth_tau_ = T(0.05); // seconds
 
+	bool centerline_pseudo_	= true;
+    Vector3 p_center_      = Vector3::Zero();   // slow centerline of p
+    Vector3 S_center_int_  = Vector3::Zero();   // ∫ p_center dt
+    bool    center_init_   = false;
+    T center_tau_sec_ = T(30.0);   // 20–60s (longer than waves periods)			
+
     // Scratch buffers to avoid large stack allocation in time/measurement updates
     MatrixBaseN  F_AA_scratch_;
     MatrixBaseN  Q_AA_scratch_;
@@ -1478,6 +1484,18 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::time_upda
 
     symmetrize_Pext_();   // Symmetry hygiene
 
+    if (linear_block_enabled_ && centering_pseudo_) {
+        const Vector3 p = xext.template segment<3>(OFF_P);
+
+        if (!center_init_) { p_center_ = p; center_init_ = true; }
+
+        const T a = T(1) - std::exp(-Ts / std::max(center_tau_sec_, T(1e-3)));
+        p_center_ += a * (p - p_center_);
+
+        // integrate the slow centerline
+        S_center_int_ += p_center_ * Ts;
+    }
+				
     // Integral pseudo-measurement drift correction (only if linear block is live)
     if (linear_block_enabled_) {
         if (++pseudo_update_counter_ >= PSEUDO_UPDATE_PERIOD) {
@@ -1878,8 +1896,12 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::applyInte
                 
     constexpr int off_S = OFF_S;   // offset of S block (3 states)
 
-    // Innovation: target S = 0
-    const Vector3 r = -xext.template segment<3>(off_S);
+    // Innovation: target S = 0 if centerline_pseudo_ is false
+	// Remove DC contribution from the S pseudo-measurement
+    // so RS does not “pull” the waveform center and distort shape.
+    const Vector3 r = centerline_pseudo_ ? 
+				-(xext.template segment<3>(off_S) - S_center_int_) :		
+                -xext.template segment<3>(off_S);
 
     // Innovation covariance S = P_SS + R_S
     Matrix3& S_mat = S_scratch_;
