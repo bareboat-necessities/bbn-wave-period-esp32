@@ -422,6 +422,15 @@ public:
         }
     }
 
+    // Absolute cap for how quickly envelope state correction can move z [m/s].
+    // This keeps the correction from "clipping" the heave waveform when the
+    // envelope is briefly underestimated.
+    void setEnvelopeStateCorrectionMaxSpeed(float max_speed_mps) {
+        if (std::isfinite(max_speed_mps) && max_speed_mps > 0.0f) {
+            env_state_max_speed_mps_ = max_speed_mps;
+        }
+    }
+
     // R_S modulation while outside envelope:
     //   R_S_eff = R_S_base * clamp(1/(1 + gain*err), min_scale, 1)
     void setEnvelopeRSCorrectionParams(float gain, float min_scale) {
