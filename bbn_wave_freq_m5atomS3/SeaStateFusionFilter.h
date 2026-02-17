@@ -424,6 +424,15 @@ public:
         }
     }
 
+    // Absolute cap for how quickly envelope state correction can move z [m/s].
+    // This keeps the correction from "clipping" the heave waveform when the
+    // envelope is briefly underestimated.
+    void setEnvelopeStateCorrectionMaxSpeed(float max_speed_mps) {
+        if (std::isfinite(max_speed_mps) && max_speed_mps > 0.0f) {
+            env_state_max_speed_mps_ = max_speed_mps;
+        }
+    }
+
     // R_S modulation while outside envelope:
     //   R_S_eff = R_S_base * clamp(1/(1 + gain*err), min_scale, 1)
     void setEnvelopeRSCorrectionParams(float gain, float min_scale) {
@@ -802,10 +811,13 @@ private:
                 const float pull_clamped = std::min(std::max(pull, 0.0f), env_state_max_pull_);
                 const float z_gate = sgnf_(pz) * gate;
                 const float z_ref = pz + (z_gate - pz) * pull_clamped;
+                const float max_step = std::max(1e-5f, env_state_max_speed_mps_ * dt);
+                const float z_delta = std::min(std::max(z_ref - pz, -max_step), max_step);
+                const float z_ref_limited = pz + z_delta;
                 const float sigma = env_sigma0_m_ / (1.0f + 0.5f * env_state_gain_ * err_ratio);
-                const float sigma_z = std::max(1.5e-1f, sigma);
+                const float sigma_z = std::max(env_sigma0_m_, sigma);
                 const Eigen::Vector3f p_pred = mekf_->get_position();
-                const Eigen::Vector3f p_meas(p_pred.x(), p_pred.y(), z_ref);
+                const Eigen::Vector3f p_meas(p_pred.x(), p_pred.y(), z_ref_limited);
                 const Eigen::Vector3f sigmas(1e9f, 1e9f, sigma_z);
                 mekf_->measurement_update_position_pseudo(p_meas, sigmas);
             }
@@ -1028,6 +1040,7 @@ private:
     float env_state_gain_ = 3.0f;
     float env_state_dwell_sec_ = 0.8f;
     float env_state_max_pull_ = 0.4f;
+    float env_state_max_speed_mps_ = 0.08f;
     float env_outside_time_sec_ = 0.0f;
     float env_rs_gain_ = 3.0f;
     float env_rs_min_scale_ = 0.25f;
