@@ -488,6 +488,20 @@ public:
         return env_rs_gate_threshold_scale_;
     }
 
+    // Hysteresis scales for envelope-driven RS modulation.
+    void setEnvelopeRSGateHysteresisScales(float on_scale, float off_scale) {
+        if (!std::isfinite(on_scale) || !std::isfinite(off_scale)) return;
+        if (on_scale < 0.5f || off_scale < 0.1f || off_scale >= on_scale) return;
+        env_rs_gate_on_scale_  = on_scale;
+        env_rs_gate_off_scale_ = off_scale;
+    }
+
+    void setEnvelopeRSOutwardEps(float eps_m) {
+        if (std::isfinite(eps_m) && eps_m >= 0.0f) {
+            env_outward_eps_m_ = eps_m;
+        }
+    }
+
     // Delay envelope-driven corrections after entering Live so the envelope
     // scale has time to converge and does not start too low.
     void setEnvelopeCorrectionWarmupSec(float warmup_sec) {
@@ -811,12 +825,9 @@ private:
 
         const float gate_scale = std::max(env_gate_threshold_scale_, 0.5f);
         const float gate = scale * gate_scale;
-        const float rs_gate_scale = std::max(env_rs_gate_threshold_scale_, 0.5f);
-        const float rs_gate = scale * rs_gate_scale;
         const float err = std::max(0.0f, std::fabs(pz) - gate);
         const float err_ratio = err / std::max(scale, 1e-3f);
         const float absz = std::fabs(pz);
-        const float r = absz / std::max(rs_gate, 1e-3f);
 
         if (err > 0.001f && std::isfinite(dt) && dt > 0.0f) {
             env_outside_time_sec_ += dt;
@@ -826,14 +837,29 @@ private:
 
         const float vz = mekf_->get_velocity().z();
         const float pz_next = pz + vz * dt;
-        const bool outward = std::fabs(pz_next) > std::fabs(pz);
+        const float absz_next = std::fabs(pz_next);
+        const bool outward = std::isfinite(vz) && ((absz_next - absz) > env_outward_eps_m_);
+
+        const float rs_on_scale = std::max(env_rs_gate_on_scale_, 0.1f);
+        const float rs_off_scale = std::max(env_rs_gate_off_scale_, 0.1f);
+        const float rs_gate_on = scale * rs_on_scale;
+        const float rs_gate_off = scale * std::min(rs_off_scale, rs_on_scale - 1e-3f);
+
+        if (!env_rs_latched_) {
+            if (enable_env_rs_correction_ && outward && absz > rs_gate_on) {
+                env_rs_latched_ = true;
+            }
+        } else if (absz < rs_gate_off) {
+            env_rs_latched_ = false;
+        }
 
         float rs_scale_cmd = 1.0f;
-        if (enable_env_rs_correction_ && outward && r > 1.0f) {
-            constexpr float RS_TIGHTEN_POWER = 8.0f;
-            rs_scale_cmd = std::clamp(std::pow(r, -RS_TIGHTEN_POWER), env_rs_min_scale_, 1.0f);
-        } else {
-            rs_scale_cmd = 1.0f;
+        if (enable_env_rs_correction_ && env_rs_latched_) {
+            const float r = absz / std::max(rs_gate_on, 1e-3f);
+            if (r > 1.0f) {
+                constexpr float RS_TIGHTEN_POWER = 8.0f;
+                rs_scale_cmd = std::clamp(std::pow(r, -RS_TIGHTEN_POWER), env_rs_min_scale_, 1.0f);
+            }
         }
 
         if (std::isfinite(dt) && dt > 0.0f && env_rs_smooth_tau_sec_ > 0.0f) {
@@ -1019,6 +1045,7 @@ private:
 
         // Reset envelope correction dwell/scheduler state.
         env_outside_time_sec_ = 0.0f;
+        env_rs_latched_ = false;
         env_rs_scale_state_ = 1.0f;
         last_env_state_update_sec_ = static_cast<float>(time_);
     }
@@ -1040,6 +1067,8 @@ private:
             mekf_->set_Racc(Eigen::Vector3f::Constant(Racc_warmup_));
             warmup_Racc_active_ = true;
         }
+
+        env_rs_latched_ = false;
     }
 
     void enterLive_() {
@@ -1064,6 +1093,7 @@ private:
         if (enable_linear_block_) apply_RS_tune_();
 
         env_outside_time_sec_ = 0.0f;
+        env_rs_latched_ = false;
         env_rs_scale_state_ = 1.0f;
         last_env_state_update_sec_ = static_cast<float>(time_);
     }
@@ -1114,6 +1144,10 @@ private:
     float env_rs_min_scale_ = 5e-4f;
     float env_rs_smooth_tau_sec_ = 0.0f;
     float env_rs_scale_state_ = 1.0f;
+    bool env_rs_latched_ = false;
+    float env_rs_gate_on_scale_ = 1.20f;
+    float env_rs_gate_off_scale_ = 0.95f;
+    float env_outward_eps_m_ = 1e-4f;
     float env_gate_threshold_scale_ = 1.2f;
     float env_rs_gate_threshold_scale_ = 0.8f;
     float env_correction_warmup_sec_ = 16.0f;
