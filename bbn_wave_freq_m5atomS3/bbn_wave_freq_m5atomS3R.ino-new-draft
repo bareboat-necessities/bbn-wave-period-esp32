@@ -246,8 +246,11 @@ public:
     }
 #endif
 
+    const uint32_t sample_us = micros();
+    const uint32_t update_mask = M5.Imu.update();
+
     ImuSample s;
-    if (readImuMapped(M5.Imu, s)) {
+    if (readImuMapped(M5.Imu, update_mask, sample_us, s)) {
       updateFilter_(s);
     }
 
