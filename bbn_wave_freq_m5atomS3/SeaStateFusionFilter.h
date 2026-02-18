@@ -60,6 +60,7 @@
 #include "FrameConversions.h"
 #include "KalmanWaveDirection.h"
 #include "WaveDirectionDetector.h"
+#include "TimeAwareSpikeFilter.h"
 
 // Shared constants
 
@@ -304,6 +305,7 @@ public:
         // waiting for slow adaptation cadence.
         if (startup_stage_ == StartupStage::Live && enable_linear_block_) {
             applyEnvelopeDriftCorrection_(dt);
+            applyHarmonicPositionCorrection_(dt);
         }
     
         const float omega = 2.0f * static_cast<float>(M_PI) * freq_hz_;
@@ -412,6 +414,35 @@ public:
 
     void setEnvelopeRSCorrectionEnabled(bool en) {
         enable_env_rs_correction_ = en;
+    }
+
+    // Harmonic pseudo-position correction from acceleration:
+    //    p ~= -a / omega^2
+    // where omega uses fast-smoothed frequency.
+    // Enabled by default and applied sparsely (every N IMU steps) with
+    // intentionally very large uncertainty.
+    void setHarmonicPositionCorrectionEnabled(bool en) {
+        enable_harmonic_position_correction_ = en;
+    }
+
+    void setHarmonicPositionCorrectionPeriodSteps(int steps) {
+        if (steps > 0) {
+            harmonic_position_update_period_steps_ = steps;
+        }
+    }
+
+    void setHarmonicPositionCorrectionSigma(float sigma_m) {
+        if (std::isfinite(sigma_m) && sigma_m > 0.0f) {
+            harmonic_position_sigma_m_ = sigma_m;
+        }
+    }
+
+    void setHarmonicPositionDespikeConfig(int window_size, float threshold) {
+        if (window_size < 3) return;
+        if (!std::isfinite(threshold) || threshold <= 0.0f) return;
+        harmonic_despike_window_ = window_size;
+        harmonic_despike_threshold_ = threshold;
+        initHarmonicDespikeFilters_();
     }
 
     // State restoring-force pseudo-measurement parameter.
@@ -858,6 +889,52 @@ private:
         apply_RS_tune_(env_rs_scale_state_);
     }
 
+    void initHarmonicDespikeFilters_() {
+        despike_ax_ = std::make_unique<TimeAwareSpikeFilter>(harmonic_despike_window_, harmonic_despike_threshold_);
+        despike_ay_ = std::make_unique<TimeAwareSpikeFilter>(harmonic_despike_window_, harmonic_despike_threshold_);
+        despike_az_ = std::make_unique<TimeAwareSpikeFilter>(harmonic_despike_window_, harmonic_despike_threshold_);
+    }
+
+    void resetHarmonicPositionCorrection_() {
+        harmonic_position_counter_ = 0;
+        initHarmonicDespikeFilters_();
+    }
+
+    void applyHarmonicPositionCorrection_(float dt) {
+        if (!mekf_ || !enable_harmonic_position_correction_) return;
+        if (!(dt > 0.0f) || !std::isfinite(dt)) return;
+
+        if (++harmonic_position_counter_ < harmonic_position_update_period_steps_) {
+            return;
+        }
+        harmonic_position_counter_ = 0;
+
+        const float omega = 2.0f * static_cast<float>(M_PI) * std::max(freq_hz_, min_freq_hz_);
+        const float omega_sq = omega * omega;
+        if (!(omega_sq > 1e-4f) || !std::isfinite(omega_sq)) return;
+
+        const Eigen::Vector3f a_w = mekf_->get_world_accel();
+        if (!a_w.allFinite()) return;
+
+        if (!despike_ax_ || !despike_ay_ || !despike_az_) {
+            initHarmonicDespikeFilters_();
+        }
+
+        const Eigen::Vector3f a_despiked(
+            despike_ax_->filterWithDelta(a_w.x(), dt),
+            despike_ay_->filterWithDelta(a_w.y(), dt),
+            despike_az_->filterWithDelta(a_w.z(), dt)
+        );
+
+        if (!a_despiked.allFinite()) return;
+
+        const Eigen::Vector3f p_meas = -a_despiked / omega_sq;
+        if (!p_meas.allFinite()) return;
+
+        const float sigma = std::max(harmonic_position_sigma_m_, 1.0f);
+        mekf_->measurement_update_position_pseudo(p_meas, Eigen::Vector3f::Constant(sigma));
+    }
+
     void update_tuner(float dt, float a_vert_inertial, float freq_hz_for_tuner) {
         tuner_.update(dt, a_vert_inertial, freq_hz_for_tuner);
     
@@ -997,6 +1074,7 @@ private:
         env_rs_latched_ = false;
         env_rs_scale_state_ = 1.0f;
         last_env_state_update_sec_ = static_cast<float>(time_);
+        resetHarmonicPositionCorrection_();
     }
     
     void enterCold_() {
@@ -1018,6 +1096,7 @@ private:
         }
 
         env_rs_latched_ = false;
+        resetHarmonicPositionCorrection_();
     }
 
     void enterLive_() {
@@ -1045,6 +1124,7 @@ private:
         env_rs_latched_ = false;
         env_rs_scale_state_ = 1.0f;
         last_env_state_update_sec_ = static_cast<float>(time_);
+        resetHarmonicPositionCorrection_();
     }
 
     StartupStage startup_stage_    = StartupStage::Cold;
@@ -1082,6 +1162,16 @@ private:
 
     bool enable_env_state_correction_ = false;
     bool enable_env_rs_correction_ = false;
+
+    bool  enable_harmonic_position_correction_ = true;
+    int   harmonic_position_update_period_steps_ = 3;
+    int   harmonic_position_counter_ = 0;
+    float harmonic_position_sigma_m_ = 75.0f;
+    int   harmonic_despike_window_ = 5;
+    float harmonic_despike_threshold_ = 4.0f;
+    std::unique_ptr<TimeAwareSpikeFilter> despike_ax_;
+    std::unique_ptr<TimeAwareSpikeFilter> despike_ay_;
+    std::unique_ptr<TimeAwareSpikeFilter> despike_az_;
 
     float env_sigma0_m_ = 0.5f;
     float env_state_max_speed_mps_ = 0.35f;
@@ -1171,6 +1261,11 @@ public:
         bool  freeze_acc_bias_until_live = true;
         float Racc_warmup = 0.5f;
 
+        // Harmonic pseudo-position drift correction (enabled by default)
+        bool  enable_harmonic_position_correction = true;
+        int   harmonic_position_update_period_steps = 3;
+        float harmonic_position_sigma_m = 75.0f;
+
         // Sensor noise
         Eigen::Vector3f sigma_a = Eigen::Vector3f(0.2f,0.2f,0.2f);
         Eigen::Vector3f sigma_g = Eigen::Vector3f(0.01f,0.01f,0.01f);
@@ -1228,6 +1323,9 @@ public:
         impl_.setWarmupRacc(cfg.Racc_warmup);
         impl_.setMagDelaySec(cfg.mag_delay_sec);
         impl_.setOnlineTuneWarmupSec(cfg.online_tune_warmup_sec);
+        impl_.setHarmonicPositionCorrectionEnabled(cfg.enable_harmonic_position_correction);
+        impl_.setHarmonicPositionCorrectionPeriodSteps(cfg.harmonic_position_update_period_steps);
+        impl_.setHarmonicPositionCorrectionSigma(cfg.harmonic_position_sigma_m);
 
         impl_.initialize(cfg.sigma_a, cfg.sigma_g, cfg.sigma_m);
 
