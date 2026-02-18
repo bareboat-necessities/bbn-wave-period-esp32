@@ -907,6 +907,20 @@ private:
         if (!mekf_ || !enable_harmonic_position_correction_) return;
         if (!(dt > 0.0f) || !std::isfinite(dt)) return;
 
+        float env_scale = getDisplacementScale(true, true);
+        if (!std::isfinite(env_scale) || env_scale <= 0.0f) {
+            env_scale = 1.0f;
+        }
+
+        const float absz = std::fabs(mekf_->get_position().z());
+        // Harmonic pseudo-position correction should only run when there is
+        // clear drift risk. If position is still inside 80% of the estimated
+        // wave-height envelope, keep the correction disabled.
+        constexpr float HARMONIC_DRIFT_RISK_ENVELOPE_RATIO = 0.8f;
+        if (!(absz > env_scale * HARMONIC_DRIFT_RISK_ENVELOPE_RATIO)) {
+            return;
+        }
+
         if (++harmonic_position_counter_ < harmonic_position_update_period_steps_) {
             return;
         }
@@ -943,11 +957,6 @@ private:
 
         const Eigen::Vector3f p_meas = -a_despiked / omega_sq;
         if (!p_meas.allFinite()) return;
-
-        float env_scale = getDisplacementScale(true, true);
-        if (!std::isfinite(env_scale) || env_scale <= 0.0f) {
-            env_scale = 1.0f;
-        }
 
         // Dimensionally-consistent uncertainty scaling:
         //   sigma(env) = sigma_ref * (env / env_ref)
