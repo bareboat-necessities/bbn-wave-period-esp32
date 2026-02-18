@@ -823,30 +823,16 @@ private:
             return;
         }
 
-        const float gate_scale = std::max(env_gate_threshold_scale_, 0.5f);
-        const float gate = scale * gate_scale;
-        const float err = std::max(0.0f, std::fabs(pz) - gate);
-        const float err_ratio = err / std::max(scale, 1e-3f);
         const float absz = std::fabs(pz);
 
-        if (err > 0.001f && std::isfinite(dt) && dt > 0.0f) {
-            env_outside_time_sec_ += dt;
-        } else {
-            env_outside_time_sec_ = 0.0f;
-        }
-
-        const float vz = mekf_->get_velocity().z();
-        const float pz_next = pz + vz * dt;
-        const float absz_next = std::fabs(pz_next);
-        const bool outward = std::isfinite(vz) && ((absz_next - absz) > env_outward_eps_m_);
-
+        const float rs_gate_scale = std::max(env_rs_gate_threshold_scale_, 0.05f);
         const float rs_on_scale = std::max(env_rs_gate_on_scale_, 0.1f);
         const float rs_off_scale = std::max(env_rs_gate_off_scale_, 0.1f);
-        const float rs_gate_on = scale * rs_on_scale;
-        const float rs_gate_off = scale * std::min(rs_off_scale, rs_on_scale - 1e-3f);
+        const float rs_gate_on = scale * rs_gate_scale * rs_on_scale;
+        const float rs_gate_off = scale * rs_gate_scale * std::min(rs_off_scale, rs_on_scale - 1e-3f);
 
         if (!env_rs_latched_) {
-            if (enable_env_rs_correction_ && outward && absz > rs_gate_on) {
+            if (enable_env_rs_correction_ && absz > rs_gate_on) {
                 env_rs_latched_ = true;
             }
         } else if (absz < rs_gate_off) {
@@ -870,43 +856,6 @@ private:
         }
         env_rs_scale_state_ = std::clamp(env_rs_scale_state_, env_rs_min_scale_, 1.0f);
         apply_RS_tune_(env_rs_scale_state_);
-
-        if (enable_env_state_correction_) {
-            const bool outside_persistent = env_outside_time_sec_ >= env_state_dwell_sec_;
-            const bool enough_overrun     = (err_ratio >= env_state_min_err_ratio_);
-
-            const float now = static_cast<float>(time_);
-            const bool time_ok = (now - last_env_state_update_sec_) >= env_state_every_sec_;
-
-            if (outside_persistent && enough_overrun && time_ok) {
-                // Don’t fight the filter if it’s already returning inside.
-                const float vz = mekf_->get_velocity().z();
-                const bool moving_outward = (pz * vz) > 0.0f;
-
-                // Skip in stillness (envelope scale is less meaningful / avoids chatter)
-                const bool still = freq_stillness_.isStill();
-
-                if (moving_outward && !still) {
-                    const float z_gate   = sgnf_(pz) * gate;
-                    const float max_step = std::max(env_state_max_speed_mps_, 1e-3f) * dt;
-                    const float dz       = std::clamp(z_gate - pz, -max_step, max_step);
-                    const float z_target = pz + dz;
-
-                    // IMPORTANT: make sigma_z "sea-state sized" (soft), not centimeters-tight.
-                    // At least env_sigma0_m_, and at least ~20% of scale.
-                    const float sigma_floor = std::max(env_sigma0_m_, 0.05f);
-                    const float sigma_scale = 0.20f * std::max(scale, 0.3f);
-                    const float sigma_z     = std::max(sigma_floor, sigma_scale);
-
-                    const Eigen::Vector3f p_pred = mekf_->get_position();
-                    const Eigen::Vector3f p_meas(p_pred.x(), p_pred.y(), z_target);
-                    const Eigen::Vector3f sigmas(1e9f, 1e9f, sigma_z);
-
-                    mekf_->measurement_update_position_pseudo(p_meas, sigmas);
-                    last_env_state_update_sec_ = now;
-                }
-            }
-        }
     }
 
     void update_tuner(float dt, float a_vert_inertial, float freq_hz_for_tuner) {
