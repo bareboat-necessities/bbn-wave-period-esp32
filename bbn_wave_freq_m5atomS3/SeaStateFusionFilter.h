@@ -931,7 +931,13 @@ private:
         const Eigen::Vector3f p_meas = -a_despiked / omega_sq;
         if (!p_meas.allFinite()) return;
 
-        const float sigma = std::max(harmonic_position_sigma_m_, 1.0f);
+        float env_scale = getDisplacementScale(true, true);
+        if (!std::isfinite(env_scale) || env_scale <= 0.0f) {
+            env_scale = 1.0f;
+        }
+
+        // Keep uncertainty very high, and make it grow with wave envelope scale.
+        const float sigma = std::max(harmonic_position_sigma_m_ * env_scale, harmonic_position_sigma_m_);
         mekf_->measurement_update_position_pseudo(p_meas, Eigen::Vector3f::Constant(sigma));
     }
 
