@@ -403,9 +403,8 @@ private:
     w_cal_ = runtime_.applyGyro (s.w, s.tempC);
     m_cal_ = runtime_.applyMag  (s.m);
 
-    const uint32_t now_us = micros();
-    float dt = (now_us - last_update_us_) * 1e-6f;
-    last_update_us_ = now_us;
+    float dt = (s.sample_us - last_update_us_) * 1e-6f;
+    last_update_us_ = s.sample_us;
     dt = clampf_(dt, 0.0010f, 0.0200f);
 
     const float a_err = fabsf(a_cal_.norm() - g_std);
