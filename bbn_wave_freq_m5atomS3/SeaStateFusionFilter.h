@@ -305,7 +305,7 @@ public:
         // waiting for slow adaptation cadence.
         if (startup_stage_ == StartupStage::Live && enable_linear_block_) {
             applyEnvelopeDriftCorrection_(dt);
-            applyHarmonicPositionCorrection_(dt);
+            applyHarmonicPositionCorrection_(dt, acc);
         }
     
         const float omega = 2.0f * static_cast<float>(M_PI) * freq_hz_;
@@ -900,7 +900,7 @@ private:
         initHarmonicDespikeFilters_();
     }
 
-    void applyHarmonicPositionCorrection_(float dt) {
+    void applyHarmonicPositionCorrection_(float dt, const Eigen::Vector3f& acc_body_ned) {
         if (!mekf_ || !enable_harmonic_position_correction_) return;
         if (!(dt > 0.0f) || !std::isfinite(dt)) return;
 
@@ -913,17 +913,22 @@ private:
         const float omega_sq = omega * omega;
         if (!(omega_sq > 1e-4f) || !std::isfinite(omega_sq)) return;
 
-        const Eigen::Vector3f a_w = mekf_->get_world_accel();
-        if (!a_w.allFinite()) return;
+        if (!acc_body_ned.allFinite()) return;
+
+        // Use raw IMU acceleration directly (no attitude rotation) to avoid
+        // feeding back latent a_w from the filter into harmonic updates.
+        // For small angles and high pseudo-measurement uncertainty, this
+        // approximation is sufficient.
+        const Eigen::Vector3f a_world_ned = acc_body_ned;
 
         if (!despike_ax_ || !despike_ay_ || !despike_az_) {
             initHarmonicDespikeFilters_();
         }
 
         const Eigen::Vector3f a_despiked(
-            despike_ax_->filterWithDelta(a_w.x(), dt),
-            despike_ay_->filterWithDelta(a_w.y(), dt),
-            despike_az_->filterWithDelta(a_w.z(), dt)
+            despike_ax_->filterWithDelta(a_world_ned.x(), dt),
+            despike_ay_->filterWithDelta(a_world_ned.y(), dt),
+            despike_az_->filterWithDelta(a_world_ned.z(), dt)
         );
 
         if (!a_despiked.allFinite()) return;
