@@ -293,10 +293,7 @@ private:
     m_cal_ = runtime_.applyMag  (s.m);
 
     // dt from micros; clamp sane
-    float dt = LOOP_PERIOD_US * 1e-6f;
-    if (last_update_us_ != 0) {
-      dt = (s.sample_us - last_update_us_) * 1e-6f;
-    }
+    float dt = (s.sample_us - last_update_us_) * 1e-6f;
     last_update_us_ = s.sample_us;
     dt = clampf_(dt, 0.0010f, 0.0200f);
 
