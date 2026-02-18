@@ -305,7 +305,7 @@ public:
         // waiting for slow adaptation cadence.
         if (startup_stage_ == StartupStage::Live && enable_linear_block_) {
             applyEnvelopeDriftCorrection_(dt);
-            applyHarmonicPositionCorrection_(dt, acc);
+            applyHarmonicPositionCorrection_(dt, acc, a_vert_up);
         }
     
         const float omega = 2.0f * static_cast<float>(M_PI) * freq_hz_;
@@ -902,7 +902,8 @@ private:
         initHarmonicDespikeFilters_();
     }
 
-    void applyHarmonicPositionCorrection_(float dt, const Eigen::Vector3f& acc_body_ned) {
+    void applyHarmonicPositionCorrection_(float dt, const Eigen::Vector3f& acc_body_ned,
+                                          float a_vert_up_osc) {
         if (!mekf_ || !enable_harmonic_position_correction_) return;
         if (!(dt > 0.0f) || !std::isfinite(dt)) return;
 
@@ -911,7 +912,9 @@ private:
         }
         harmonic_position_counter_ = 0;
 
-        const float omega = 2.0f * static_cast<float>(M_PI) * std::max(freq_hz_, min_freq_hz_);
+        const float harmonic_freq_hz =
+            (std::isfinite(freq_hz_slow_) && freq_hz_slow_ > 0.0f) ? freq_hz_slow_ : freq_hz_;
+        const float omega = 2.0f * static_cast<float>(M_PI) * std::max(harmonic_freq_hz, min_freq_hz_);
         const float omega_sq = omega * omega;
         if (!(omega_sq > 1e-4f) || !std::isfinite(omega_sq)) return;
 
@@ -927,10 +930,13 @@ private:
             initHarmonicDespikeFilters_();
         }
 
+        // Use oscillatory gravity-removed vertical acceleration for z (NED-down).
+        const float a_z_ned_osc = -a_vert_up_osc;
+
         const Eigen::Vector3f a_despiked(
             despike_ax_->filterWithDelta(a_world_ned.x(), dt),
             despike_ay_->filterWithDelta(a_world_ned.y(), dt),
-            despike_az_->filterWithDelta(a_world_ned.z(), dt)
+            despike_az_->filterWithDelta(a_z_ned_osc, dt)
         );
 
         if (!a_despiked.allFinite()) return;
