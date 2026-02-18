@@ -215,7 +215,7 @@ public:
 
     start_us_       = micros();
     next_tick_us_   = micros();
-    last_update_us_ = micros();
+    last_update_us_ = 0;
   }
 
   void tick() {
