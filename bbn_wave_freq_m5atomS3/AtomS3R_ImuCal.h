@@ -363,19 +363,31 @@ struct ImuSample {
 };
 
 #ifndef ATOMS3R_IMU_MASK_ACCEL
-#define ATOMS3R_IMU_MASK_ACCEL (1u << 0)
+  #if defined(M5IMU_UPDATE_ACCEL)
+    #define ATOMS3R_IMU_MASK_ACCEL M5IMU_UPDATE_ACCEL
+  #elif defined(IMU_UPDATE_ACCEL)
+    #define ATOMS3R_IMU_MASK_ACCEL IMU_UPDATE_ACCEL
+  #else
+    #define ATOMS3R_IMU_MASK_ACCEL (1u << 0)
+  #endif
 #endif
 
 #ifndef ATOMS3R_IMU_MASK_GYRO
-#define ATOMS3R_IMU_MASK_GYRO (1u << 1)
+  #if defined(M5IMU_UPDATE_GYRO)
+    #define ATOMS3R_IMU_MASK_GYRO M5IMU_UPDATE_GYRO
+  #elif defined(IMU_UPDATE_GYRO)
+    #define ATOMS3R_IMU_MASK_GYRO IMU_UPDATE_GYRO
+  #else
+    #define ATOMS3R_IMU_MASK_GYRO (1u << 1)
+  #endif
 #endif
 
 static constexpr uint32_t kImuMaskAccelGyro = (ATOMS3R_IMU_MASK_ACCEL | ATOMS3R_IMU_MASK_GYRO);
 
 // Reads M5.Imu, applies AtomS3R axis mapping and unit conversion, but does NOT calibrate.
-static inline bool readImuMapped(decltype(M5.Imu)& imu, ImuSample& out) {
-  out.sample_us = micros();
-  out.mask = imu.update();
+static inline bool readImuMapped(decltype(M5.Imu)& imu, uint32_t update_mask, uint32_t sample_us, ImuSample& out) {
+  out.sample_us = sample_us;
+  out.mask = update_mask;
   if ((out.mask & kImuMaskAccelGyro) != kImuMaskAccelGyro) return false;
 
   const auto data = imu.getImuData();
@@ -389,6 +401,12 @@ static inline bool readImuMapped(decltype(M5.Imu)& imu, ImuSample& out) {
   out.m = map_mag_to_body_uT_(data.mag);
 
   return true;
+}
+
+static inline bool readImuMapped(decltype(M5.Imu)& imu, ImuSample& out) {
+  const uint32_t sample_us = micros();
+  const uint32_t update_mask = imu.update();
+  return readImuMapped(imu, update_mask, sample_us, out);
 }
 
 // "No collisions" helper

@@ -171,8 +171,11 @@ private:
   }
 
   void streamSerial_() {
+    const uint32_t sample_us = micros();
+    const uint32_t update_mask = M5.Imu.update();
+
     ImuSample s;
-    if (!readImuMapped(M5.Imu, s)) return;
+    if (!readImuMapped(M5.Imu, update_mask, sample_us, s)) return;
 
     // Apply our runtime cal to ALL measurements
     Vector3f a_cal = runtime_.applyAccel(s.a, s.tempC);
