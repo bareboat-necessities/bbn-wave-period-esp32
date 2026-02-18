@@ -431,9 +431,11 @@ public:
         }
     }
 
+    // Set harmonic pseudo-position uncertainty at the reference envelope
+    // height (8 m). Runtime sigma is scaled linearly from this baseline.
     void setHarmonicPositionCorrectionSigma(float sigma_m) {
         if (std::isfinite(sigma_m) && sigma_m > 0.0f) {
-            harmonic_position_sigma_m_ = sigma_m;
+            harmonic_position_sigma_m_at_ref_env_ = sigma_m;
         }
     }
 
@@ -941,8 +943,13 @@ private:
             env_scale = 1.0f;
         }
 
-        // Keep uncertainty very high, and make it grow with wave envelope scale.
-        const float sigma = std::max(harmonic_position_sigma_m_ * env_scale, harmonic_position_sigma_m_);
+        // Dimensionally-consistent uncertainty scaling:
+        //   sigma(env) = sigma_ref * (env / env_ref)
+        // with a baseline assumption sigma_ref = 75 m at env_ref = 8 m.
+        const float sigma = std::max(
+            harmonic_position_sigma_m_at_ref_env_ * (env_scale / harmonic_position_ref_envelope_m_),
+            harmonic_position_sigma_min_m_
+        );
         mekf_->measurement_update_position_pseudo(p_meas, Eigen::Vector3f::Constant(sigma));
     }
 
@@ -1177,7 +1184,9 @@ private:
     bool  enable_harmonic_position_correction_ = true;
     int   harmonic_position_update_period_steps_ = 3;
     int   harmonic_position_counter_ = 0;
-    float harmonic_position_sigma_m_ = 50.0f;
+    float harmonic_position_ref_envelope_m_ = 8.0f;
+    float harmonic_position_sigma_m_at_ref_env_ = 75.0f;
+    float harmonic_position_sigma_min_m_ = 1.0f;
     int   harmonic_despike_window_ = 5;
     float harmonic_despike_threshold_ = 4.0f;
     std::unique_ptr<TimeAwareSpikeFilter> despike_ax_;
@@ -1275,6 +1284,8 @@ public:
         // Harmonic pseudo-position drift correction (enabled by default)
         bool  enable_harmonic_position_correction = true;
         int   harmonic_position_update_period_steps = 3;
+        // Baseline harmonic pseudo-position uncertainty [m] at a wave
+        // envelope of 8 m. Runtime sigma scales linearly with envelope.
         float harmonic_position_sigma_m = 75.0f;
 
         // Sensor noise
