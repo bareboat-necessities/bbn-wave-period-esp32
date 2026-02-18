@@ -1177,7 +1177,7 @@ private:
     bool  enable_harmonic_position_correction_ = true;
     int   harmonic_position_update_period_steps_ = 3;
     int   harmonic_position_counter_ = 0;
-    float harmonic_position_sigma_m_ = 75.0f;
+    float harmonic_position_sigma_m_ = 50.0f;
     int   harmonic_despike_window_ = 5;
     float harmonic_despike_threshold_ = 4.0f;
     std::unique_ptr<TimeAwareSpikeFilter> despike_ax_;
