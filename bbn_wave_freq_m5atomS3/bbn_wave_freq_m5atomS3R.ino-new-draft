@@ -324,14 +324,28 @@ private:
     // (Cold/TunerWarm disable it; Live enables it) for in-motion initialization.
     constexpr bool WANT_LINEAR_BLOCK = true;
 
-    const float acc_sigma = 1.51e-3f * g_std;
-    const float gyr_sigma = 0.00157f;
+    // AtomS3R IMU tuning for this sketch timing: 240 Hz IMU + 80 Hz magnetometer.
+    // Base 1σ noise values are characterized at the nominal rates below.
+    constexpr float IMU_TUNE_REF_HZ = 240.0f;
+    constexpr float MAG_TUNE_REF_HZ = 80.0f;
 
-    const Vector3f sigma_a(2.8f * acc_sigma, 2.8f * acc_sigma, 2.8f * acc_sigma);
-    const Vector3f sigma_g(2.0f * gyr_sigma, 2.0f * gyr_sigma, 2.0f * gyr_sigma);
+    constexpr float acc_sigma_ref_mps2 = 0.050f;
+    constexpr float gyr_sigma_ref_rps  = 0.00135f;
+    constexpr float mag_sigma_ref_uT   = 1.80f;
 
-    // If heading is twitchy, raise sigma_m_uT (trust mag less).
-    const float sigma_m_uT = 1.0f;
+    // Scale process/measurement sigma if runtime rates drift from the reference.
+    // For white-noise-like terms, sigma scales with sqrt(f_ref / f_runtime).
+    const float imu_rate_scale = sqrtf(IMU_TUNE_REF_HZ / LOOP_HZ);
+    const float mag_rate_runtime_hz = 1000.0f / (float)MAG_SAMPLE_SPACING_MS;
+    const float mag_rate_scale = sqrtf(MAG_TUNE_REF_HZ / mag_rate_runtime_hz);
+
+    const Vector3f sigma_a(acc_sigma_ref_mps2 * imu_rate_scale,
+                           acc_sigma_ref_mps2 * imu_rate_scale,
+                           acc_sigma_ref_mps2 * imu_rate_scale);
+    const Vector3f sigma_g(gyr_sigma_ref_rps * imu_rate_scale,
+                           gyr_sigma_ref_rps * imu_rate_scale,
+                           gyr_sigma_ref_rps * imu_rate_scale);
+    const float sigma_m_uT = mag_sigma_ref_uT * mag_rate_scale;
     const Vector3f sigma_m(sigma_m_uT, sigma_m_uT, sigma_m_uT);
 
     Fusion::Config fcfg;
@@ -344,10 +358,10 @@ private:
     fcfg.use_fixed_mag_world_ref = false;
 
     fcfg.freeze_acc_bias_until_live = true;
-    fcfg.Racc_warmup                = 0.12f;
+    fcfg.Racc_warmup                = 0.16f;
 
-    fcfg.mag_ref_timeout_sec = 1.5f;
-    fcfg.mag_odr_guess_hz    = 80.0f;
+    fcfg.mag_ref_timeout_sec = 2.0f;
+    fcfg.mag_odr_guess_hz    = MAG_TUNE_REF_HZ;
 
     fusion_.begin(fcfg);
 
