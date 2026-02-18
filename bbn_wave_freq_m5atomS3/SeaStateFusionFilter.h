@@ -904,7 +904,7 @@ private:
         // Use the model-based displacement envelope only (no instantaneous
         // acceleration low-bound term) for drift-risk gating. The low-bound can
         // spike independently of position and unintentionally hold the gate shut.
-        float env_scale = getDisplacementScale(true, false);
+        float env_scale = getDisplacementScale(true);
         if (!std::isfinite(env_scale) || env_scale <= 0.0f) {
             env_scale = 1.0f;
         }
