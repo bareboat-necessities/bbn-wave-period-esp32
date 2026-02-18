@@ -907,7 +907,10 @@ private:
         if (!mekf_ || !enable_harmonic_position_correction_) return;
         if (!(dt > 0.0f) || !std::isfinite(dt)) return;
 
-        float env_scale = getDisplacementScale(true, true);
+        // Use the model-based displacement envelope only (no instantaneous
+        // acceleration low-bound term) for drift-risk gating. The low-bound can
+        // spike independently of position and unintentionally hold the gate shut.
+        float env_scale = getDisplacementScale(true, false);
         if (!std::isfinite(env_scale) || env_scale <= 0.0f) {
             env_scale = 1.0f;
         }
