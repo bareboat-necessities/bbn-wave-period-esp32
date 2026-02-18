@@ -359,12 +359,24 @@ struct ImuSample {
   Vector3f m;     // uT     (mapped to body)
   float tempC;    // deg C
   uint32_t mask;  // M5.Imu.update() mask
+  uint32_t sample_us; // micros() timestamp captured at imu.update()
 };
+
+#ifndef ATOMS3R_IMU_MASK_ACCEL
+#define ATOMS3R_IMU_MASK_ACCEL (1u << 0)
+#endif
+
+#ifndef ATOMS3R_IMU_MASK_GYRO
+#define ATOMS3R_IMU_MASK_GYRO (1u << 1)
+#endif
+
+static constexpr uint32_t kImuMaskAccelGyro = (ATOMS3R_IMU_MASK_ACCEL | ATOMS3R_IMU_MASK_GYRO);
 
 // Reads M5.Imu, applies AtomS3R axis mapping and unit conversion, but does NOT calibrate.
 static inline bool readImuMapped(decltype(M5.Imu)& imu, ImuSample& out) {
+  out.sample_us = micros();
   out.mask = imu.update();
-  if (!out.mask) return false;
+  if ((out.mask & kImuMaskAccelGyro) != kImuMaskAccelGyro) return false;
 
   const auto data = imu.getImuData();
   out.tempC = NAN;
