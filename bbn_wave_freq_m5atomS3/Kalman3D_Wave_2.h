@@ -1,7 +1,7 @@
 #pragma once
 /*
-  Kalman3D_Wave_2  (template KMODES)
-  ---------------------------------
+  Kalman3D_Wave_2  (template KMODES + with_mag)
+  --------------------------------------------
   Conventions MATCH your old OU-based Kalman3D_Wave:
 
   - World frame is NED, +Z down.
@@ -64,7 +64,7 @@ static inline Eigen::Quaternion<T> quat_from_delta_theta(const Eigen::Matrix<T,3
   return q;
 }
 
-template<typename T=float, int KMODES=3, bool with_gyro_bias=true, bool with_accel_bias=true>
+template<typename T=float, int KMODES=3, bool with_gyro_bias=true, bool with_accel_bias=true, bool with_mag=true>
 class Kalman3D_Wave_2 {
 public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -121,7 +121,7 @@ public:
     Racc_ = sigma_a_meas.array().square().matrix().asDiagonal();
     Rmag_ = sigma_m_meas.array().square().matrix().asDiagonal();
 
-    // Base process noise
+    // Base process noise rates
     Qg_  = sigma_g_rw.array().square().matrix().asDiagonal(); // drives δθ
     if constexpr (with_gyro_bias) {
       Qbg_ = Mat3::Identity() * b0;                           // bias RW rate
@@ -145,6 +145,9 @@ public:
       P_.template block<3,3>(OFF_Pk(k), OFF_Pk(k)) = Mat3::Identity() * (sigma_p0*sigma_p0);
       P_.template block<3,3>(OFF_Vk(k), OFF_Vk(k)) = Mat3::Identity() * (sigma_v0*sigma_v0);
     }
+
+    // Default mag reference if mag enabled
+    B_world_ref_ = Vec3::UnitX();
 
     set_broadband_params(T(0.12), T(1.0));
   }
@@ -187,8 +190,14 @@ public:
   const MeasDiag3& lastAccDiag() const noexcept { return last_acc_; }
   const MeasDiag3& lastMagDiag() const noexcept { return last_mag_; }
 
-  // ===== Mag ref (no mag bias) =====
-  void set_mag_world_ref(const Vec3& B_world) { B_world_ref_ = B_world; }
+  // ===== Mag ref (compiled out when with_mag=false) =====
+  void set_mag_world_ref(const Vec3& B_world) {
+    if constexpr (with_mag) {
+      B_world_ref_ = B_world;
+    } else {
+      (void)B_world;
+    }
+  }
 
   // ===== Bias temp model / RW =====
   void set_accel_bias_temp_coeff(const Vec3& ka_per_degC) { k_a_ = ka_per_degC; }
@@ -210,7 +219,6 @@ public:
   // ===== Warmup / enable toggles =====
   void set_wave_block_enabled(bool on) {
     if (wave_block_enabled_ && !on) {
-      // Decouple base from wave
       P_.template block<BASE_N,WAVE_N>(0, OFF_WAVE).setZero();
       P_.template block<WAVE_N,BASE_N>(OFF_WAVE, 0).setZero();
       if constexpr (with_accel_bias) {
@@ -266,7 +274,7 @@ public:
     update_unheel_trig_();
   }
 
-  // ===== Initialization (uses deheel like old) =====
+  // ===== Initialization =====
   void initialize_from_acc_mag(const Vec3& acc_body, const Vec3& mag_body) {
     const Vec3 acc = deheel_vector_(acc_body);
     const Vec3 mag = deheel_vector_(mag_body);
@@ -291,8 +299,10 @@ public:
     qref_ = Eigen::Quaternion<T>(R_wb); // WORLD->BODY'
     qref_.normalize();
 
-    // world mag ref (like old)
-    B_world_ref_ = R_bw() * mag;
+    if constexpr (with_mag) {
+      // world mag ref (like old)
+      B_world_ref_ = R_bw() * mag;
+    }
 
     x_.template segment<3>(OFF_DTH).setZero();
   }
@@ -325,11 +335,8 @@ public:
   void set_broadband_params(T f0_hz, T Hs_m, T zeta_mid = T(0.08), T horiz_scale = T(0.35)) {
     const T w0 = T(2)*T(M_PI)*std::max(T(1e-4), f0_hz);
 
-    // If user sets KMODES != 3, spread them logarithmically around w0.
-    // For K=3 this reproduces ~[0.6, 1.0, 1.7]*w0.
     for (int k=0;k<KMODES;++k) {
       const T u = (KMODES==1) ? T(0) : (T(k) / T(KMODES-1)); // 0..1
-      // map to [log(0.6), log(1.7)]
       const T lo = std::log(T(0.6));
       const T hi = std::log(T(1.7));
       omega_[k] = std::exp(lo + (hi-lo)*u) * w0;
@@ -338,7 +345,6 @@ public:
       zeta_[k] = std::max(T(0.01), zeta_mid * scale);
     }
 
-    // energy weights: peaked at center, normalized
     T wsum = T(0);
     for (int k=0;k<KMODES;++k) {
       const T c = (KMODES==1) ? T(0) : (T(k) - T(0.5)*(KMODES-1));
@@ -367,15 +373,12 @@ public:
   void time_update(const Vec3& gyr_body, T Ts) {
     last_dt_ = Ts;
 
-    // De-heel gyro into B'
     const Vec3 gyr = deheel_vector_(gyr_body);
 
-    // Bias-corrected ω in B'
     Vec3 bg = Vec3::Zero();
     if constexpr (with_gyro_bias) bg = x_.template segment<3>(OFF_BG);
     last_gyr_bias_corrected_ = gyr - bg;
 
-    // α estimate (lever-arm)
     const Vec3 omega_b = last_gyr_bias_corrected_;
     if (have_prev_omega_ && Ts > T(0)) {
       const Vec3 alpha_raw = (omega_b - prev_omega_b_) / Ts;
@@ -391,7 +394,6 @@ public:
     }
     prev_omega_b_ = omega_b;
 
-    // Quaternion propagation (right-multiply)
     qref_ = qref_ * quat_from_delta_theta<T>((omega_b * Ts).eval());
     qref_.normalize();
 
@@ -454,7 +456,7 @@ public:
           P_.template block<6,6>(offk, offk) = Pkk;
         }
 
-        // Cross with base: P_Ak = F_AA * P_Ak * Phi6ᵀ
+        // Cross with base
         {
           auto P_Ak = P_.template block<BASE_N,6>(0, offk);
           Eigen::Matrix<T,BASE_N,6> tmp = F_AA * P_Ak;
@@ -463,7 +465,7 @@ public:
           P_.template block<6,BASE_N>(offk, 0) = P_Ak.transpose();
         }
 
-        // Cross with BA (if present): BA has F=I
+        // Cross with BA
         if constexpr (with_accel_bias) {
           auto P_BAk = P_.template block<3,6>(OFF_BA, offk);
           P_BAk = P_BAk * Phi6.transpose();
@@ -479,7 +481,7 @@ public:
       if (acc_bias_updates_enabled_) Pba += Q_bacc_ * Ts;
       P_.template block<3,3>(OFF_BA, OFF_BA) = Pba;
 
-      // Cross BA with base: P_Aba = F_AA * P_Aba
+      // Cross BA with base
       auto P_Aba = P_.template block<BASE_N,3>(0, OFF_BA);
       P_Aba = F_AA * P_Aba;
       P_.template block<BASE_N,3>(0, OFF_BA) = P_Aba;
@@ -496,7 +498,6 @@ public:
 
     const Vec3 acc_meas = deheel_vector_(acc_meas_body);
 
-    // lever-arm term (same as old)
     Vec3 lever = Vec3::Zero();
     if (use_imu_lever_arm_) {
       const Vec3 r_imu_bprime = deheel_vector_(r_imu_wrt_cog_body_phys_);
@@ -504,7 +505,6 @@ public:
                       +  last_gyr_bias_corrected_.cross(last_gyr_bias_corrected_.cross(r_imu_bprime));
     }
 
-    // accel bias term (temp)
     Vec3 ba_term = Vec3::Zero();
     if constexpr (with_accel_bias) {
       const Vec3 ba0 = x_.template segment<3>(OFF_BA);
@@ -518,25 +518,21 @@ public:
     const Vec3 r = acc_meas - f_pred;
     last_acc_.r = r;
 
-    // Jacobians
     const Vec3 f_cog_b = R_wb() * (aw - g_world);
     const Mat3 J_att = -skew3<T>(f_cog_b);
 
-    // S = Racc + J_att Ptt J_attᵀ + ... (wave + bias contributions)
     Mat3 S = Racc_;
     const Mat3 Ptt = P_.template block<3,3>(OFF_DTH, OFF_DTH);
     S.noalias() += J_att * Ptt * J_att.transpose();
 
-    // BA
     if constexpr (with_accel_bias) {
-      const Mat3 Pba = P_.template block<3,3>(OFF_BA, OFF_BA);
+      const Mat3 Pba  = P_.template block<3,3>(OFF_BA, OFF_BA);
       const Mat3 Ptba = P_.template block<3,3>(OFF_DTH, OFF_BA);
       S.noalias() += Pba;
       S.noalias() += J_att * Ptba;
       S.noalias() += Ptba.transpose() * J_att.transpose();
     }
 
-    // Wave
     for (int k=0;k<KMODES;++k) {
       const T om = omega_[k];
       const T ze = zeta_[k];
@@ -580,7 +576,6 @@ public:
     last_acc_.S = S;
     last_acc_.nis = r.dot(ldlt.solve(r));
 
-    // PCt = P Cᵀ
     MatX3 PCt; PCt.setZero();
     PCt.noalias() += P_.template block<NX,3>(0, OFF_DTH) * J_att.transpose();
 
@@ -595,74 +590,77 @@ public:
       const T ze = zeta_[k];
       const Mat3 Jp = R_wb() * (-(om*om) * Mat3::Identity());
       const Mat3 Jv = R_wb() * (-(T(2)*ze*om) * Mat3::Identity());
-
       PCt.noalias() += P_.template block<NX,3>(0, OFF_Pk(k)) * Jp.transpose();
       PCt.noalias() += P_.template block<NX,3>(0, OFF_Vk(k)) * Jv.transpose();
     }
 
-    // Gain
     MatX3 K;
     K.noalias() = PCt * ldlt.solve(Mat3::Identity());
 
-    // State update
     x_.noalias() += K * r;
 
-    // Joseph covariance update (NX small; OK)
-    const MatX KSKt = K * S * K.transpose();
+    const MatX KSKt  = K * S * K.transpose();
     const MatX KPCtT = K * PCt.transpose();
     P_ = P_ - KPCtT - KPCtT.transpose() + KSKt;
     symmetrize_P_();
 
-    // Apply quaternion correction
     applyQuaternionCorrectionFromErrorState_();
 
     last_acc_.accepted = true;
   }
 
+  // Mag update: NO-OP when with_mag=false (so call sites don’t need #ifs)
   void measurement_update_mag_only(const Vec3& mag_meas_body) {
-    last_mag_ = MeasDiag3{};
-    last_mag_.accepted = false;
+    if constexpr (!with_mag) {
+      (void)mag_meas_body;
+      last_mag_ = MeasDiag3{};
+      last_mag_.accepted = false;
+      return;
+    } else {
+      last_mag_ = MeasDiag3{};
+      last_mag_.accepted = false;
 
-    const Vec3 mag_meas = deheel_vector_(mag_meas_body);
-    if (!mag_meas.allFinite()) return;
-    const T n = mag_meas.norm();
-    if (!(n > T(1e-6))) return;
+      const Vec3 mag_meas = deheel_vector_(mag_meas_body);
+      if (!mag_meas.allFinite()) return;
+      const T n = mag_meas.norm();
+      if (!(n > T(1e-6))) return;
 
-    Vec3 v2hat = R_wb() * B_world_ref_;
-    if (v2hat.dot(mag_meas) < T(0)) v2hat = -v2hat;
+      Vec3 v2hat = R_wb() * B_world_ref_;
+      if (v2hat.dot(mag_meas) < T(0)) v2hat = -v2hat;
 
-    const Vec3 r = mag_meas - v2hat;
-    last_mag_.r = r;
+      const Vec3 r = mag_meas - v2hat;
+      last_mag_.r = r;
 
-    const Mat3 J_att = -skew3<T>(v2hat);
+      const Mat3 J_att = -skew3<T>(v2hat);
 
-    Mat3 S = Rmag_;
-    const Mat3 Ptt = P_.template block<3,3>(OFF_DTH, OFF_DTH);
-    S.noalias() += J_att * Ptt * J_att.transpose();
+      Mat3 S = Rmag_;
+      const Mat3 Ptt = P_.template block<3,3>(OFF_DTH, OFF_DTH);
+      S.noalias() += J_att * Ptt * J_att.transpose();
 
-    MatX3 PCt; PCt.setZero();
-    PCt.noalias() += P_.template block<NX,3>(0, OFF_DTH) * J_att.transpose();
+      MatX3 PCt; PCt.setZero();
+      PCt.noalias() += P_.template block<NX,3>(0, OFF_DTH) * J_att.transpose();
 
-    Eigen::LDLT<Mat3> ldlt;
-    ldlt.compute(S);
-    if (ldlt.info() != Eigen::Success) return;
+      Eigen::LDLT<Mat3> ldlt;
+      ldlt.compute(S);
+      if (ldlt.info() != Eigen::Success) return;
 
-    last_mag_.S = S;
-    last_mag_.nis = r.dot(ldlt.solve(r));
+      last_mag_.S = S;
+      last_mag_.nis = r.dot(ldlt.solve(r));
 
-    MatX3 K;
-    K.noalias() = PCt * ldlt.solve(Mat3::Identity());
+      MatX3 K;
+      K.noalias() = PCt * ldlt.solve(Mat3::Identity());
 
-    x_.noalias() += K * r;
+      x_.noalias() += K * r;
 
-    const MatX KSKt = K * S * K.transpose();
-    const MatX KPCtT = K * PCt.transpose();
-    P_ = P_ - KPCtT - KPCtT.transpose() + KSKt;
-    symmetrize_P_();
+      const MatX KSKt  = K * S * K.transpose();
+      const MatX KPCtT = K * PCt.transpose();
+      P_ = P_ - KPCtT - KPCtT.transpose() + KSKt;
+      symmetrize_P_();
 
-    applyQuaternionCorrectionFromErrorState_();
+      applyQuaternionCorrectionFromErrorState_();
 
-    last_mag_.accepted = true;
+      last_mag_.accepted = true;
+    }
   }
 
 private:
@@ -671,7 +669,7 @@ private:
 
   // ===== MEKF internals =====
   Eigen::Quaternion<T> qref_;    // WORLD->BODY'
-  Vec3 B_world_ref_ = Vec3::UnitX();
+  Vec3 B_world_ref_ = Vec3::UnitX(); // used only if with_mag==true
 
   VecX x_;
   MatX P_;
@@ -688,7 +686,7 @@ private:
 
   // Measurement noise
   Mat3 Racc_ = Mat3::Identity() * T(0.04);
-  Mat3 Rmag_ = Mat3::Identity() * T(1.0);
+  Mat3 Rmag_ = Mat3::Identity() * T(1.0); // used only if with_mag==true
 
   // Wave params
   T omega_[KMODES]{};
@@ -807,7 +805,6 @@ private:
   {
     phi_osc_2x2_(dt, w, z, Phi);
 
-    // Integrand for Qd: q * u uᵀ where u = Phi(t)*B, B=[0;1] => u=[Phi12;Phi22]
     auto G = [&](T t)->Eigen::Matrix<T,2,2> {
       Eigen::Matrix<T,2,2> Pt;
       phi_osc_2x2_(t, w, z, Pt);
@@ -828,8 +825,6 @@ private:
 
     Qd = (h / T(6)) * (G0 + T(4)*G1 + G2);
     Qd = T(0.5) * (Qd + Qd.transpose());
-
-    // tiny hygiene bump
     Qd(0,0) = std::max(Qd(0,0), T(0));
     Qd(1,1) = std::max(Qd(1,1), T(0));
   }
@@ -871,11 +866,9 @@ private:
     const Mat3 R = Rx_(-delta_heel_rad);
     const Eigen::Quaternion<T> qR(R);
 
-    // qref is WORLD->B' : left-multiply by frame change
     qref_ = qR * qref_;
     qref_.normalize();
 
-    // Rotate vector states stored in B' coordinates (δθ and biases)
     x_.template segment<3>(OFF_DTH) = R * x_.template segment<3>(OFF_DTH);
     if constexpr (with_gyro_bias) {
       x_.template segment<3>(OFF_BG) = R * x_.template segment<3>(OFF_BG);
@@ -888,7 +881,6 @@ private:
     prev_omega_b_            = R * prev_omega_b_;
     alpha_b_                 = R * alpha_b_;
 
-    // Similarity transform covariance for rotated blocks
     MatX Tm = MatX::Identity();
     Tm.template block<3,3>(OFF_DTH, OFF_DTH) = R;
     if constexpr (with_gyro_bias)  Tm.template block<3,3>(OFF_BG, OFF_BG) = R;
