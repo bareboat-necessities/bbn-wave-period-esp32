@@ -475,6 +475,7 @@ static void process_wave_file_for_tracker(const std::string &filename, float def
     
     bool have_prev_time = false;
     float prev_time = 0.0f;
+    float dt_last = default_dt;
 
     reader.for_each_record([&](const Wave_Data_Sample &rec) {
         float dt = default_dt;
@@ -484,6 +485,7 @@ static void process_wave_file_for_tracker(const std::string &filename, float def
                 dt = dt_from_data;
             }
         }
+        dt_last = dt;
         prev_time = static_cast<float>(rec.time);
         have_prev_time = true;
 
@@ -679,7 +681,8 @@ static void process_wave_file_for_tracker(const std::string &filename, float def
     std::cout << "Wrote " << outname << "\n";
 
     //  RMS summary (last 60 s)
-    int N_last = static_cast<int>(RMS_WINDOW_SEC / dt);
+    const float rms_dt = (std::isfinite(dt_last) && dt_last > 0.0f) ? dt_last : default_dt;
+    int N_last = static_cast<int>(RMS_WINDOW_SEC / rms_dt);
     if (errs_z.size() > static_cast<size_t>(N_last)) {
         size_t start = errs_z.size() - N_last;
 
