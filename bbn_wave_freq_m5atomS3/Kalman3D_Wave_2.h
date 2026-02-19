@@ -1639,17 +1639,14 @@ private:
       return;
     }
 
-    // Overdamped
+    // Overdamped (ze > 1): use scaled exponentials to avoid cancellation/underflow
     const T srt = std::sqrt(std::max(T(0), ze*ze - T(1)));
-    const T r1 = -om*(ze - srt);
-    const T r2 = -om*(ze + srt);
-
-    const T e1 = std::exp(r1*t);
-    const T e2 = std::exp(r2*t);
-
+    const T r1  = -om*(ze - srt);
+    const T r2  = -om*(ze + srt);
+    
     const T denom = (r2 - r1);
     if (std::abs(denom) < eps) {
-      // Degenerate overdamped fallback: use critical-like series  [FIXED: exp(-ζ ω t)]
+      // Degenerate overdamped fallback (critical-like)
       const T e = std::exp(-a*t);
       Phi(0,0) = e * (T(1) + a*t);
       Phi(0,1) = e * t;
@@ -1657,11 +1654,22 @@ private:
       Phi(1,1) = e * (T(1) - a*t);
       return;
     }
+    
+    // scale by e1 to keep numbers sane
+    const T e1 = std::exp(r1*t);
+    const T dr = (r2 - r1) * t;          // negative
+    const T e21 = std::exp(dr);          // = e2/e1 in (0,1]
+    const T e2  = e1 * e21;
+    
     const T invd = T(1)/denom;
-
+    
+    // Use expm1 for (e2 - e1) = e1*(e21 - 1)
+    const T e21m1 = std::expm1(dr);      // accurate when dr ~ 0
+    const T e2_minus_e1 = e1 * e21m1;
+    
     Phi(0,0) = (r2*e1 - r1*e2) * invd;
-    Phi(0,1) = (e2 - e1) * invd;
-    Phi(1,0) = (r1*r2) * (e1 - e2) * invd;
+    Phi(0,1) = (e2_minus_e1) * invd;
+    Phi(1,0) = (r1*r2) * (-e2_minus_e1) * invd;   // (e1 - e2) = -(e2-e1)
     Phi(1,1) = (r2*e2 - r1*e1) * invd;
   }
 
