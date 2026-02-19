@@ -452,6 +452,7 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
         filter.enableClamp(true);
         filter.setEnvelopeStateCorrectionEnabled(false); // envelope state gate 
         filter.setEnvelopeRSCorrectionEnabled(false);    // envelope-driven R_S modulation
+        filter.setHarmonicPositionCorrectionEnabled(false);  // harmonic-driven model corrections
     }
     
     WaveDataCSVReader reader(filename);
