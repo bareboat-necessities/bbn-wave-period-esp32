@@ -296,7 +296,7 @@ public:
 
         if (warmup_Racc_active_) {
           if (Racc_nominal_.allFinite() && Racc_nominal_.maxCoeff() > 0.0f) {
-            mekf_->set_Racc(Racc_nominal_);
+            mekf_->set_Racc(Racc_nominal_.eval());
           }
           warmup_Racc_active_ = false;
         }
