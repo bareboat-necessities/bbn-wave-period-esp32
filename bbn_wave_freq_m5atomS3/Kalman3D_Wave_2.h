@@ -407,8 +407,9 @@ public:
   // Set full covariance directly (will be symmetrized + PSD-projected).
   void set_Racc(const Mat3& Racc) {
     Racc_ = T(0.5) * (Racc + Racc.transpose());
-    for (int i=0;i<3;++i) Racc_(i,i) = std::max(Racc_(i,i), T(1e-12));
-    project_psd<T,3>(Racc_, T(1e-18));
+    // Hard floor: do NOT let accel be "too perfect"
+    for (int i=0; i<3; ++i) Racc_(i,i) = std::max(Racc_(i,i), T(5e-2)); // 0.05–0.15 m/s^2 are reasonable depending on IMU
+    project_psd<T,3>(Racc_, T(1e-8));
     Racc_ = T(0.5) * (Racc_ + Racc_.transpose());
   }
 
