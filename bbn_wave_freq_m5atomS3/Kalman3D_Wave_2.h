@@ -1383,7 +1383,7 @@ private:
   T weights_[KMODES]{};
   Vec3 q_axis_[KMODES]{};
 
-  bool wave_block_enabled_ = true;
+  bool wave_block_enabled_ = false;
   bool acc_bias_updates_enabled_ = true;
   bool warmup_mode_ = true;
   bool use_exact_att_bias_Qd_ = true;
