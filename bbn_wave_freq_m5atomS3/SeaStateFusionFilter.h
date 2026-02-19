@@ -625,7 +625,7 @@ private:
     if (freeze_acc_bias_until_live_) {
       mekf_->set_acc_bias_updates_enabled(false);
       if (std::isfinite(Racc_warmup_) && Racc_warmup_ > 0.0f) {
-        mekf_->set_Racc(Eigen::Vector3f::Constant(Racc_warmup_));
+        mekf_->set_Racc(Eigen::Vector3f::Constant(Racc_warmup_).eval());
         warmup_Racc_active_ = true;
       } else {
         warmup_Racc_active_ = false;
