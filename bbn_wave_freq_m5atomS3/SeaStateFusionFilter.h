@@ -921,8 +921,7 @@ private:
         }
         harmonic_position_counter_ = 0;
 
-        const float harmonic_freq_hz =
-            (std::isfinite(freq_hz_slow_) && freq_hz_slow_ > 0.0f) ? freq_hz_slow_ : freq_hz_;
+        const float harmonic_freq_hz = (std::isfinite(freq_hz_) && freq_hz_ > 0.0f) ? freq_hz_ : freq_hz_slow_;
         const float omega = 2.0f * static_cast<float>(M_PI) * std::max(harmonic_freq_hz, min_freq_hz_);
         const float omega_sq = omega * omega;
         if (!(omega_sq > 1e-4f) || !std::isfinite(omega_sq)) return;
