@@ -406,7 +406,7 @@ public:
 
   // marginalization for disabled wave block
   // Sets the assumed (stationary) WORLD-frame covariance of wave acceleration when the wave block is disabled.
-  // If you don't call this, we auto-derive a diagonal estimate from the current oscillator params in
+  // If we don't call this, we auto-derive a diagonal estimate from the current oscillator params in
   // set_broadband_params() (using steady-state moments).
   void set_disabled_wave_accel_cov_world(const Mat3& Sigma_aw_world) {
     Sigma_aw_disabled_world_ = T(0.5) * (Sigma_aw_world + Sigma_aw_world.transpose());
@@ -744,7 +744,7 @@ public:
     qref_ = qref_ * quat_from_delta_theta<T>((omega_b * Ts).eval());
     qref_.normalize();
 
-    //----- Base covariance propagation-----
+    // Base covariance propagation
     F_AA_.setIdentity();
     const Vec3 w = omega_b;
     const T omega = w.norm();
@@ -813,7 +813,7 @@ public:
       Paa.noalias() += Q_AA_;
     }
 
-    //----- Wave block propagation-----
+    // Wave block propagation
     if (wave_block_enabled_) {
       for (int k=0;k<KMODES;++k) {
         // Build per-axis Phi2 and Qd2, then assemble Phi6/Qd6
@@ -866,7 +866,7 @@ public:
       }
     }
 
-    //----- Accel bias RW-----
+    // Accel bias RW
     if constexpr (with_accel_bias) {
       auto Pba = P_.template block<3,3>(OFF_BA,OFF_BA);
       if (acc_bias_updates_enabled_) Pba.noalias() += Q_bacc_ * Ts;
@@ -884,7 +884,7 @@ public:
     symmetrize_P_();
   }
 
-  // Measurement update: accelerometer ( Joseph)
+  // Measurement update: accelerometer (Joseph)
 
   void measurement_update_acc_only(const Vec3& acc_meas_body, T tempC = tempC_ref) {
     last_acc_ = MeasDiag3{};
@@ -928,7 +928,7 @@ public:
     // Mode A (normal): subtract BA mean and allow BA update.
     // Mode B (frozen-but-uncertain): KEEP BA uncertainty in S (via Pba/Ptba below),
     // but do NOT subtract the estimated BA mean when BA updates are disabled,
-    // otherwise you inject an un-updatable offset into the mean model.
+    // otherwise inject an un-updatable offset into the mean model.
     // We still allow fixed calibration-only terms (e.g., temperature compensation).
     Vec3 ba_term = Vec3::Zero();
     if constexpr (with_accel_bias) {
