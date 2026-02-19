@@ -369,7 +369,8 @@ private:
     ff.enableLinearBlock(WANT_LINEAR_BLOCK);
     ff.enableTuner(true);
     ff.setEnvelopeStateCorrectionEnabled(false); // envelope state gate 
-    ff.setEnvelopeRSCorrectionEnabled(true);    // envelope-driven R_S modulation
+    ff.setEnvelopeRSCorrectionEnabled(false);    // envelope-driven R_S modulation
+    ff.setHarmonicPositionCorrectionEnabled(true);
     ff.enableClamp(true);
     ff.setFreqInputCutoffHz(6.0f);
 
