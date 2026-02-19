@@ -1679,6 +1679,22 @@ private:
   {
     phi_osc_2x2_(dt, w, z, Phi);
 
+    // For extremely small dt, use series Qd to avoid roundoff-dominated Simpson
+    const T dt_abs = std::abs(dt);
+    if (dt_abs < T(5e-4)) { // tune: 5e-4..2e-3 depending on sample rate/float
+      // For p' = v, v' = ... + ξ, with G=[0;1], the leading-order discretization:
+      // Qd ≈ q * [[dt^3/3, dt^2/2],
+      //          [dt^2/2, dt      ]]
+      const T dt2 = dt * dt;
+      const T dt3 = dt2 * dt;
+      Qd.setZero();
+      Qd(0,0) = q * (dt3 / T(3));
+      Qd(0,1) = q * (dt2 / T(2));
+      Qd(1,0) = Qd(0,1);
+      Qd(1,1) = q * dt_abs; // keep non-negative if dt sign ever flips
+      return;
+    }
+
     q = std::max(T(0), q);
 
     auto uuT = [&](T t)->Eigen::Matrix<T,2,2> {
