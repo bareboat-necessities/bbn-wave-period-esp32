@@ -691,6 +691,16 @@ public:
       const T om = std::max(T(1e-4), omega_[k]);
       const T ze = std::max(T(1e-3), zeta_[k]);
       const T qk = T(4) * ze * om*om*om * var_k;
+  
+      last_f0_hz_ = f0_hz;
+      last_Hs_m_  = Hs_m;
+  
+      // Driving noise intensity qk already computed:
+      // qk = 4 ζ ω^3 var(p)  => steady-state:
+      // var(p) = var_k
+      // var(v) = qk / (4 ζ ω)
+      init_var_p_[k] = std::max(T(1e-12), var_k);
+      init_var_v_[k] = std::max(T(1e-12), qk / (T(4) * ze * om));
 
       q_axis_[k].x() = horiz_scale * qk;
       q_axis_[k].y() = horiz_scale * qk;
@@ -1375,6 +1385,12 @@ private:
   int  warmup_bias_min_samples_ = 150;
   T    warmup_gyro_stationary_thr_ = T(0.03); // rad/s
   T    warmup_acc_stationary_thr_  = T(0.35); // m/s^2
+
+  // Wave init priors derived from Hs/params (per-mode steady-state)
+  T last_f0_hz_ = T(0.12);
+  T last_Hs_m_  = T(1.0);
+  T init_var_p_[KMODES]{};
+  T init_var_v_[KMODES]{};
 
   // Lever arm caches
   bool use_imu_lever_arm_ = false;
