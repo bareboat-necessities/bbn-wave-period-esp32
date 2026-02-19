@@ -293,6 +293,25 @@ public:
     x_.setZero();
     P_.setZero();
 
+    // Defensive init: scratch / temporaries
+    F_AA_.setIdentity();
+    Q_AA_.setZero();
+    tmp_AA_.setZero();
+    tmp_Ak_.setZero();
+    
+    Phi6_.setIdentity();
+    Qd6_.setZero();
+    tmp6_.setZero();
+    
+    for (int ax = 0; ax < 3; ++ax) {
+      Phi2_[ax].setIdentity();
+      Qd2_[ax].setZero();
+    }
+    
+    S_scratch_.setZero();
+    PCt_scratch_.setZero();
+    K_scratch_.setZero();
+
     // Measurement noise
     Racc_ = sigma_a_meas.array().square().matrix().asDiagonal();
     Rmag_ = sigma_m_meas.array().square().matrix().asDiagonal();
