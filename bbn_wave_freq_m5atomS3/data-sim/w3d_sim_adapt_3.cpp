@@ -476,12 +476,6 @@ static void process_wave_file_for_tracker(const std::string &filename, float def
 
     reader.for_each_record([&](const Wave_Data_Sample &rec) {
         float dt = default_dt;
-        if (have_prev_time) {
-            const float dt_from_data = static_cast<float>(rec.time - prev_time);
-            if (std::isfinite(dt_from_data) && dt_from_data > 0.0f) {
-                dt = dt_from_data;
-            }
-        }
         dt_last = dt;
         prev_time = static_cast<float>(rec.time);
         have_prev_time = true;
