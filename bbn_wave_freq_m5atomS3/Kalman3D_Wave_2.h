@@ -328,7 +328,7 @@ public:
     use_exact_att_bias_Qd_ = true;
 
     // Warmup ON by default
-    set_warmup_mode(true);
+    (true);
 
     // Ensure trig consistent
     update_unheel_trig_();
@@ -502,14 +502,26 @@ public:
       bg_accum_.setZero();
       bg_accum_count_ = 0;
     } else {
-      // Restore reasonable covariances
-      const T sigma_p0 = T(20.0);
-      const T sigma_v0 = T(1.0);
+      // Restore wave covariances based on steady-state moments (from set_broadband_params)
       for (int k=0;k<KMODES;++k) {
-        P_.template block<3,3>(OFF_Pk(k), OFF_Pk(k)) = Mat3::Identity()*(sigma_p0*sigma_p0);
-        P_.template block<3,3>(OFF_Vk(k), OFF_Vk(k)) = Mat3::Identity()*(sigma_v0*sigma_v0);
+        const T varp = std::max(T(1e-12), init_var_p_[k]);
+        const T varv = std::max(T(1e-12), init_var_v_[k]);
+        P_.template block<3,3>(OFF_Pk(k), OFF_Pk(k)) = Mat3::Identity() * varp;
+        P_.template block<3,3>(OFF_Vk(k), OFF_Vk(k)) = Mat3::Identity() * varv;
+      }
+
+      // Optional: start wave mean at zero (safe) when enabling after warmup
+      x_.template segment<WAVE_N>(OFF_WAVE).setZero();
+
+      // Optional: decouple base/bias from wave on first enable (prevents a “kick”)
+      P_.template block<BASE_N,WAVE_N>(0, OFF_WAVE).setZero();
+      P_.template block<WAVE_N,BASE_N>(OFF_WAVE, 0).setZero();
+      if constexpr (with_accel_bias) {
+        P_.template block<3,WAVE_N>(OFF_BA, OFF_WAVE).setZero();
+        P_.template block<WAVE_N,3>(OFF_WAVE, OFF_BA).setZero();
       }
     }
+
     symmetrize_P_();
     clamp_P_diag_(T(1e-15));
     symmetrize_P_();
