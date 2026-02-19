@@ -31,6 +31,13 @@
 
   Template parameters:
     T, KMODES, with_gyro_bias, with_accel_bias, with_mag
+
+  FIXES APPLIED (bugs):
+    1) Propagate full wave-wave cross-covariances P(k,j) in time_update (k!=j).
+    2) Accel update now accounts for full Pww (including cross-mode) via Jw*Pww*Jwᵀ
+       and uses P(:,wave)*Jwᵀ in PCt (no per-mode diagonal-only shortcut).
+    3) Correct lever-arm gyro-bias Jacobian sign: d/d(bg) = - d/d(ω).
+    4) Avoid M_PI portability issues (use local kPi constant).
 */
 
 #ifdef EIGEN_NON_ARDUINO
@@ -252,6 +259,7 @@ class Kalman3D_Wave_2 {
 
   static constexpr T STD_GRAVITY = T(9.80665);
   static constexpr T tempC_ref   = T(35.0);
+  static constexpr T kPi         = T(3.1415926535897932384626433832795);
 
   // Offsets
   static constexpr int OFF_DTH  = 0;
@@ -404,6 +412,8 @@ public:
         P_.template block<3,WAVE_N>(OFF_BA, OFF_WAVE).setZero();
         P_.template block<WAVE_N,3>(OFF_WAVE, OFF_BA).setZero();
       }
+      // Optional: if you want wave fully inert when disabled, also clear wave-wave off-diagonals.
+      // P_.template block<WAVE_N,WAVE_N>(OFF_WAVE, OFF_WAVE).setZero();
     }
     wave_block_enabled_ = on;
   }
@@ -583,7 +593,7 @@ public:
   // ---------------- Wave tuning ----------------
 
   void set_broadband_params(T f0_hz, T Hs_m, T zeta_mid = T(0.08), T horiz_scale = T(0.35)) {
-    const T w0 = T(2)*T(M_PI)*std::max(T(1e-4), f0_hz);
+    const T w0 = T(2) * kPi * std::max(T(1e-4), f0_hz);
 
     // log-spaced ω around w0
     for (int k=0;k<KMODES;++k) {
@@ -611,8 +621,7 @@ public:
     const T var_total = sigma_total * sigma_total;
 
     // Driving noise intensity q such that stationary var(p)=var_k approximately:
-    // For SDE: p'' + 2ζω p' + ω^2 p = ξ(t), with ξ white, intensity q,
-    // approximate var(p) ≈ q / (4 ζ ω^3)  -> q ≈ 4 ζ ω^3 var(p)
+    // var(p) ≈ q / (4 ζ ω^3)  -> q ≈ 4 ζ ω^3 var(p)
     for (int k=0;k<KMODES;++k) {
       const T var_k = weights_[k] * var_total;
       const T om = std::max(T(1e-4), omega_[k]);
@@ -729,6 +738,11 @@ public:
 
     // -------- Wave block propagation --------
     if (wave_block_enabled_) {
+
+      // cache per-mode Phi/Qd (needed for cross-mode covariance propagation)
+      Eigen::Matrix<T,6,6> Phi6_k[KMODES];
+      Eigen::Matrix<T,6,6> Qd6_k [KMODES];
+
       for (int k=0;k<KMODES;++k) {
         // Build per-axis Phi2 and Qd2, then assemble Phi6/Qd6
         for (int ax=0; ax<3; ++ax) {
@@ -740,6 +754,9 @@ public:
           Phi6_.template block<2,2>(2*ax,2*ax) = Phi2_[ax];
           Qd6_ .template block<2,2>(2*ax,2*ax) = Qd2_[ax];
         }
+
+        Phi6_k[k] = Phi6_;
+        Qd6_k[k]  = Qd6_;
 
         // Mean
         Vec3 p = x_.template segment<3>(OFF_Pk(k));
@@ -760,7 +777,7 @@ public:
           auto Pkk = P_.template block<6,6>(offk, offk);
           tmp6_.noalias() = Phi6_ * Pkk;
           Pkk.noalias() = tmp6_ * Phi6_.transpose();
-          Pkk.noalias() += Qd6_;
+          Pkk.noalias() += Qd6_; // noise only on diagonals
         }
 
         // Cross with base: P_Ak = F_AA * P_Ak * Phi6^T
@@ -776,6 +793,19 @@ public:
           auto P_BAk = P_.template block<3,6>(OFF_BA, offk);
           P_BAk.noalias() = P_BAk * Phi6_.transpose();
           P_.template block<6,3>(offk,OFF_BA) = P_BAk.transpose();
+        }
+      }
+
+      // NEW: propagate full wave-wave cross-covariances (k!=j)
+      for (int k = 0; k < KMODES; ++k) {
+        const int ok = OFF_Pk(k);
+        for (int j = k + 1; j < KMODES; ++j) {
+          const int oj = OFF_Pk(j);
+
+          auto Pkj = P_.template block<6,6>(ok, oj);
+          tmp6_.noalias() = Phi6_k[k] * Pkj;
+          Pkj.noalias()   = tmp6_ * Phi6_k[j].transpose();
+          P_.template block<6,6>(oj, ok) = Pkj.transpose();
         }
       }
     }
@@ -814,7 +844,7 @@ public:
                       +  last_gyr_bias_corrected_.cross(last_gyr_bias_corrected_.cross(r_imu_bprime));
     }
 
-    // J_bg (copied meaning from OU)
+    // J_bg (copied meaning from OU) --- FIXED SIGN
     Mat3 J_bg = Mat3::Zero();
     if constexpr (with_gyro_bias) {
       if (use_imu_lever_arm_) {
@@ -832,7 +862,9 @@ public:
         }
         const Mat3 J_alpha_part = k_alpha * skew3<T>(r_imu_bprime);
         const Mat3 J_omega_part = d_omega_x_omega_x_r_domega_<T>(w, r_imu_bprime);
-        J_bg = J_alpha_part - J_omega_part;
+
+        // ω = gyr - bg => d/d(bg) = - d/d(ω)
+        J_bg = -J_alpha_part - J_omega_part;
       }
     }
 
@@ -863,7 +895,7 @@ public:
     const Mat3 Ptt = P_.template block<3,3>(OFF_DTH,OFF_DTH);
     S.noalias() += J_att * Ptt * J_att.transpose();
 
-    // BA (J_ba = I): always marginalized through S, but only allowed to UPDATE when use_ba==true
+    // BA (J_ba = I): always marginalized through S
     if constexpr (with_accel_bias) {
       const Mat3 Pba  = P_.template block<3,3>(OFF_BA,OFF_BA);
       const Mat3 Ptba = P_.template block<3,3>(OFF_DTH,OFF_BA);
@@ -889,7 +921,9 @@ public:
       }
     }
 
-    // Wave states contributions (only if wave block enabled)
+    // Wave states contributions (FULL Pww, includes cross-mode)  --- FIXED
+    Eigen::Matrix<T,3,WAVE_N> Jw;
+    Jw.setZero();
     if (wave_block_enabled_) {
       for (int k=0;k<KMODES;++k) {
         const T om = omega_[k];
@@ -898,46 +932,12 @@ public:
         const Mat3 Jp = R_wb() * (-(om*om) * Mat3::Identity());
         const Mat3 Jv = R_wb() * (-(T(2)*ze*om) * Mat3::Identity());
 
-        const int op = OFF_Pk(k);
-        const int ov = OFF_Vk(k);
-
-        const Mat3 Ppp = P_.template block<3,3>(op,op);
-        const Mat3 Pvv = P_.template block<3,3>(ov,ov);
-        const Mat3 Ppv = P_.template block<3,3>(op,ov);
-
-        S.noalias() += Jp * Ppp * Jp.transpose();
-        S.noalias() += Jv * Pvv * Jv.transpose();
-        S.noalias() += Jp * Ppv * Jv.transpose();
-        S.noalias() += Jv * Ppv.transpose() * Jp.transpose();
-
-        const Mat3 Ptp = P_.template block<3,3>(OFF_DTH, op);
-        const Mat3 Ptv = P_.template block<3,3>(OFF_DTH, ov);
-
-        S.noalias() += J_att * Ptp * Jp.transpose();
-        S.noalias() += Jp * Ptp.transpose() * J_att.transpose();
-        S.noalias() += J_att * Ptv * Jv.transpose();
-        S.noalias() += Jv * Ptv.transpose() * J_att.transpose();
-
-        if constexpr (with_accel_bias) {
-          const Mat3 Pbap = P_.template block<3,3>(OFF_BA, op);
-          const Mat3 Pbav = P_.template block<3,3>(OFF_BA, ov);
-          S.noalias() += Pbap * Jp.transpose();
-          S.noalias() += Jp * Pbap.transpose();
-          S.noalias() += Pbav * Jv.transpose();
-          S.noalias() += Jv * Pbav.transpose();
-        }
-
-        if constexpr (with_gyro_bias) {
-          if (use_imu_lever_arm_) {
-            const Mat3 Pbgp = P_.template block<3,3>(OFF_BG, op);
-            const Mat3 Pbgv = P_.template block<3,3>(OFF_BG, ov);
-            S.noalias() += J_bg * Pbgp * Jp.transpose();
-            S.noalias() += Jp * Pbgp.transpose() * J_bg.transpose();
-            S.noalias() += J_bg * Pbgv * Jv.transpose();
-            S.noalias() += Jv * Pbgv.transpose() * J_bg.transpose();
-          }
-        }
+        Jw.template block<3,3>(0, 6*k + 0) = Jp;
+        Jw.template block<3,3>(0, 6*k + 3) = Jv;
       }
+
+      const auto Pww = P_.template block<WAVE_N,WAVE_N>(OFF_WAVE, OFF_WAVE);
+      S.noalias() += Jw * Pww * Jw.transpose();
     }
 
     S = T(0.5)*(S + S.transpose());
@@ -979,16 +979,9 @@ public:
       }
     }
 
-    // Wave states
+    // Wave contribution to PCt: FULL P(:,wave)*Jwᵀ  --- FIXED
     if (wave_block_enabled_) {
-      for (int k=0;k<KMODES;++k) {
-        const T om = omega_[k];
-        const T ze = zeta_[k];
-        const Mat3 Jp = R_wb() * (-(om*om) * Mat3::Identity());
-        const Mat3 Jv = R_wb() * (-(T(2)*ze*om) * Mat3::Identity());
-        PCt.noalias() += P_.template block<NX,3>(0, OFF_Pk(k)) * Jp.transpose();
-        PCt.noalias() += P_.template block<NX,3>(0, OFF_Vk(k)) * Jv.transpose();
-      }
+      PCt.noalias() += P_.template block<NX, WAVE_N>(0, OFF_WAVE) * Jw.transpose();
     } else {
       freeze_wave_rows_(PCt);
     }
