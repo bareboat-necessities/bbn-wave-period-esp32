@@ -191,6 +191,12 @@ public:
 
     time_ += dt;
     startup_stage_t_ += dt;
+  
+    if (mekf_->warmup_mode()) {
+        // mag is unused in update_initialization() right now, so pass zero.
+        mekf_->update_initialization(acc_body_ned, gyro_body_ned,
+                                     Eigen::Vector3f::Zero(), dt);
+    }
 
     const float a_x_body = acc_body_ned.x();
     const float a_y_body = acc_body_ned.y();
