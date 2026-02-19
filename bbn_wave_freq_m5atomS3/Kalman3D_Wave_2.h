@@ -915,7 +915,7 @@ public:
           auto P_Ak = P_.template block<BASE_N,6>(0, offk);
           tmp_Ak_.noalias() = F_AA_ * P_Ak;
           P_Ak.noalias() = tmp_Ak_ * Phi6_.transpose();
-          P_.template block<6,BASE_N>(offk,0) = P_Ak.transpose();
+          P_.template block<6,BASE_N>(offk,0) = P_Ak.transpose().eval();
         }
 
         // Cross with accel bias (F=I): P_BAk = P_BAk * Phi6^T
@@ -924,7 +924,7 @@ public:
           Eigen::Matrix<T,3,6> tmp_BAk;
           tmp_BAk.noalias() = P_BAk * Phi6_.transpose();
           P_BAk = tmp_BAk;
-          P_.template block<6,3>(offk,OFF_BA) = P_BAk.transpose();
+          P_.template block<6,3>(offk,OFF_BA) = P_BAk.transpose().eval();
         }
       }
     }
@@ -1613,7 +1613,7 @@ private:
     Tm.template block<3,3>(OFF_DTH,OFF_DTH) = R;
     if constexpr (with_gyro_bias)  Tm.template block<3,3>(OFF_BG,OFF_BG) = R;
     if constexpr (with_accel_bias) Tm.template block<3,3>(OFF_BA,OFF_BA) = R;
-    P_ = Tm * P_ * Tm.transpose();
+    P_ = (Tm * P_ * Tm.transpose()).eval();
     symmetrize_P_();
     clamp_P_diag_(T(1e-15));
     symmetrize_P_();
