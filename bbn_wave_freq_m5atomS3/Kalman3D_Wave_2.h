@@ -528,9 +528,13 @@ public:
 
     // crude motion detect in WORLD using current attitude (BODY'->WORLD)
     const Vec3 acc = deheel_vector_(acc_body);
+
+    // NED gravity (+Z down)
     const Vec3 g_world(0,0,+gravity_magnitude_);
-    const Vec3 acc_world = R_bw() * acc;
-    const Vec3 acc_motion = acc_world - g_world;
+
+    // acc is SPECIFIC FORCE: f = a - g  =>  a = f + g
+    const Vec3 f_world    = R_bw() * acc;
+    const Vec3 acc_motion = f_world + g_world;
 
     vel_detect_ += acc_motion * dt;
     pseudo_motion_dist_ += vel_detect_.norm() * dt;
