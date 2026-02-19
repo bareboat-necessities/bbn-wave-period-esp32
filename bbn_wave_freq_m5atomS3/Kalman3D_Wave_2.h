@@ -36,7 +36,7 @@
     - LDLT failure recovery with regularization
     - Division‑by‑zero guards in discretization
     - Minimum bounds for covariances
-    - Catastrophic cancellation avoidance using std::max/min
+    - Joseph form covariance update for guaranteed positive definiteness
 */
 
 #ifdef EIGEN_NON_ARDUINO
@@ -618,7 +618,7 @@ public:
     symmetrize_P_();
   }
 
-  // ===== Measurement update: accelerometer =====
+  // ===== Measurement update: accelerometer (Joseph form) =====
   void measurement_update_acc_only(const Vec3& acc_meas_body, T tempC = tempC_ref_) {
     last_acc_ = MeasDiag3{};
     last_acc_.accepted = false;
@@ -731,11 +731,34 @@ public:
 
     K_acc_.noalias() = PCt_acc_ * ldlt.solve(Mat3::Identity());
 
+    // ----- Joseph form covariance update -----
+    // 1. Compute H^T by solving P * Ht = PCt (where Ht = H^T)
+    Eigen::LLT<MatX> llt(P_);
+    if (llt.info() != Eigen::Success) {
+      // Regularize and retry
+      regularize_covariance_();
+      llt.compute(P_);
+      if (llt.info() != Eigen::Success) return;
+    }
+    MatX Ht = llt.solve(PCt_acc_);  // Ht = H^T (NX x 3)
+    // 2. Form H (3 x NX)
+    // We don't need explicit H; we need K * H. Since K is NX x 3 and H is 3 x NX,
+    // KH = K * H = K * (Ht.transpose()) = (K * Ht.transpose()).
+    // But K * Ht.transpose() would be NX x NX. Compute KH_ = K_acc_ * Ht.transpose();
+    KH_.noalias() = K_acc_ * Ht.transpose();
+    // 3. I - K*H
+    I_KH_ = MatX::Identity() - KH_;
+    // 4. Compute I_KH * P_ * I_KH^T
+    tmp_P_.noalias() = I_KH_ * P_;
+    P_ = tmp_P_ * I_KH_.transpose();
+    // 5. Add K * R * K^T
+    KSKt_.noalias() = K_acc_ * Racc_ * K_acc_.transpose();
+    P_ += KSKt_;
+    // -------------------------------------
+
+    // State update
     x_.noalias() += K_acc_ * r;
 
-    KSKt_.noalias() = K_acc_ * S_acc_ * K_acc_.transpose();
-    KPCtT_.noalias() = K_acc_ * PCt_acc_.transpose();
-    P_ = P_ - KPCtT_ - KPCtT_.transpose() + KSKt_;
     regularize_covariance_();
     symmetrize_P_();
 
@@ -744,7 +767,7 @@ public:
     last_acc_.accepted = true;
   }
 
-  // ===== Measurement update: magnetometer =====
+  // ===== Measurement update: magnetometer (Joseph form) =====
   void measurement_update_mag_only(const Vec3& mag_meas_body) {
     if constexpr (!with_mag) {
       (void)mag_meas_body;
@@ -791,11 +814,28 @@ public:
 
       K_mag_.noalias() = PCt_mag_ * ldlt.solve(Mat3::Identity());
 
+      // ----- Joseph form covariance update -----
+      // 1. Compute H^T by solving P * Ht = PCt_mag_
+      Eigen::LLT<MatX> llt(P_);
+      if (llt.info() != Eigen::Success) {
+        regularize_covariance_();
+        llt.compute(P_);
+        if (llt.info() != Eigen::Success) return;
+      }
+      MatX Ht = llt.solve(PCt_mag_);  // Ht = H^T
+      // 2. Compute K * H
+      KH_.noalias() = K_mag_ * Ht.transpose();
+      // 3. I - K*H
+      I_KH_ = MatX::Identity() - KH_;
+      // 4. Joseph update
+      tmp_P_.noalias() = I_KH_ * P_;
+      P_ = tmp_P_ * I_KH_.transpose();
+      KSKt_mag_.noalias() = K_mag_ * Rmag_ * K_mag_.transpose();
+      P_ += KSKt_mag_;
+      // -------------------------------------
+
       x_.noalias() += K_mag_ * r;
 
-      KSKt_mag_.noalias() = K_mag_ * S_mag_ * K_mag_.transpose();
-      KPCtT_mag_.noalias() = K_mag_ * PCt_mag_.transpose();
-      P_ = P_ - KPCtT_mag_ - KPCtT_mag_.transpose() + KSKt_mag_;
       regularize_covariance_();
       symmetrize_P_();
 
@@ -889,15 +929,20 @@ private:
   Mat3 S_acc_;
   MatX3 PCt_acc_;
   MatX3 K_acc_;
-  MatX KSKt_;
-  MatX KPCtT_;
+  MatX KSKt_;          // also used as temporary for Joseph update
+  MatX KPCtT_;         // not used in Joseph form, kept for compatibility
 
   // Mag update
   Mat3 S_mag_;
   MatX3 PCt_mag_;
   MatX3 K_mag_;
-  MatX KSKt_mag_;
-  MatX KPCtT_mag_;
+  MatX KSKt_mag_;      // also used as temporary for Joseph update
+  MatX KPCtT_mag_;     // not used in Joseph form, kept for compatibility
+
+  // Joseph form temporaries (NX x NX)
+  MatX KH_;             // K * H
+  MatX I_KH_;           // I - K*H
+  MatX tmp_P_;          // temporary for (I-KH)*P
 
 private:
   Mat3 R_wb() const { return qref_.toRotationMatrix(); }             // world->body'
@@ -909,7 +954,6 @@ private:
     for (int i = 0; i < NX; ++i) {
       P_(i,i) = std::max(P_(i,i), min_diag);
     }
-    // Optional: enforce symmetry (already done by symmetrize_)
   }
 
   void symmetrize_P_() {
