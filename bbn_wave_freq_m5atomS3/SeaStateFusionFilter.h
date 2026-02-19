@@ -544,7 +544,7 @@ public:
     // Enable/disable use of the extended linear block [v,p,S,a_w] in Kalman3D_Wave_2.
     //
     // When flag == false:
-    //   • Kalman3D_Wave_2::set_linear_block_enabled(false) is enforced,
+    //   • Kalman3D_Wave_2::set_wave_block_enabled(false) is enforced,
     //   • startup stages still progress (Cold → TunerWarm → Live),
     //   • tuner still runs and exposes tau/sigma/R_S targets & metrics,
     //   • but OU / v/p/S/a_w propagation and S-pseudo-measurements are never used.
@@ -556,7 +556,7 @@ public:
         if (mekf_) {
             // Only actually *use* the block in Live stage; Cold/TunerWarm are QMEKF-only.
             const bool on_now = flag && (startup_stage_ == StartupStage::Live);
-            mekf_->set_linear_block_enabled(on_now);
+            mekf_->set_wave_block_enabled(on_now);
         }
     }
 
@@ -1117,7 +1117,7 @@ private:
         startup_stage_t_ = 0.0f;
 
         if (!mekf_) return;
-        mekf_->set_linear_block_enabled(false);
+        mekf_->set_wave_block_enabled(false);
     
         accel_bias_locked_   = with_mag_;
         mag_updates_applied_ = 0;  
@@ -1139,7 +1139,7 @@ private:
         startup_stage_t_ = 0.0f;
     
         if (!mekf_) return;
-        mekf_->set_linear_block_enabled(enable_linear_block_);
+        mekf_->set_wave_block_enabled(enable_linear_block_);
     
         if (freeze_acc_bias_until_live_) {
             // Bias learning may remain locked until magnetometer has stabilized,
