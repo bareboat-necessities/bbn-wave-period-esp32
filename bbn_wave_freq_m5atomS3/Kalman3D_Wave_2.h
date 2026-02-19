@@ -1012,8 +1012,10 @@ public:
     last_acc_.r = r;
 
     // Jacobian wrt attitude
-    const Vec3 f_cog_b = R_wb() * (aw - g_world);
-    const Mat3 J_att = -skew3<T>(f_cog_b);
+    // Innovation residual is in BODY'.
+    // Right-multiply error δθ is in BODY' (because qref_ = qref_ * Exp(δθ)).
+    const Vec3 v_world = (aw - g_world);              // WORLD
+    const Mat3 J_att   = - (R_wb() * skew3<T>(v_world));
 
     // Innovation covariance S (3x3)
     Mat3& S = S_scratch_;
