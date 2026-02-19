@@ -308,7 +308,7 @@ public:
 
                 if (warmup_Racc_active_) {
                     if (Racc_nominal_.allFinite() && Racc_nominal_.maxCoeff() > 0.0f) {
-                        mekf_->set_Racc(Racc_nominal_);
+                        // TODO: mekf_->set_Racc(Racc_nominal_);
                         warmup_Racc_active_ = false;
                     }
                 }
@@ -595,14 +595,14 @@ private:
 
         const float tau = std::min(std::max(tune_.tau_applied, min_tau_s_), max_tau_s_);
         if (std::isfinite(tau) && tau > 0.0f) {
-            mekf_->set_aw_time_constant(tau);
+            // TODO: mekf_->set_aw_time_constant(tau);
         }
 
         const float sigma_floor = std::max(0.05f, acc_noise_floor_sigma_);
         const float sZ = std::max(sigma_floor, tune_.sigma_applied);
         const float sH = sZ * S_factor_;
         if (std::isfinite(sH) && std::isfinite(sZ) && sH > 0.0f && sZ > 0.0f) {
-            mekf_->set_aw_stationary_std(Eigen::Vector3f(sH, sH, sZ));
+            // TODO: mekf_->set_aw_stationary_std(Eigen::Vector3f(sH, sH, sZ));
         }
     }
 
