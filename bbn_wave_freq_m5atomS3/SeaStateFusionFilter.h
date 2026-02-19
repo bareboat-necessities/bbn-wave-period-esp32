@@ -1202,15 +1202,15 @@ private:
 
     bool enable_env_state_correction_ = false;
     bool enable_env_rs_correction_ = false;
-    bool  enable_harmonic_position_correction_ = false;
+    bool enable_harmonic_position_correction_ = false;
 
-    int   harmonic_position_update_period_steps_ = 3;
-    int   harmonic_position_counter_ = 0;
+    int harmonic_position_update_period_steps_ = 3;
+    int harmonic_position_counter_ = 0;
     float harmonic_position_ref_envelope_m_ = 8.0f;
     float harmonic_position_sigma_m_at_ref_env_ = HARMONIC_POS_SIGMA_AT_REF;
     float harmonic_position_sigma_min_m_ = 0.05f;
-    int   harmonic_despike_window_ = 5;
     float harmonic_despike_threshold_ = 4.0f;
+    int harmonic_despike_window_ = 5;
     std::unique_ptr<TimeAwareSpikeFilter> despike_ax_;
     std::unique_ptr<TimeAwareSpikeFilter> despike_ay_;
     std::unique_ptr<TimeAwareSpikeFilter> despike_az_;
