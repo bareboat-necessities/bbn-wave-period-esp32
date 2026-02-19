@@ -1254,6 +1254,79 @@ public:
     last_mag_.accepted = true;
   }
 
+  // Pseudo-measurement on total WORLD-frame wave displacement:
+  //   p_sum = Σ p_k  (WORLD)  is constrained to p_meas_world with covariance Rpos_world.
+  //
+  // Useful to prevent long-term drift / re-center heave, etc.
+  void measurement_update_position_pseudo(const Vec3& p_meas_world,
+                                         const Mat3& Rpos_world)
+  {
+    if (!wave_block_enabled_) return;
+
+    // Residual in WORLD
+    const Vec3 p_pred = wave_position_world();
+    const Vec3 r = p_meas_world - p_pred;
+
+    // Innovation covariance: S = R + C P C^T, where C sums the p_k blocks.
+    Mat3& S = S_scratch_;
+    S = T(0.5) * (Rpos_world + Rpos_world.transpose());
+    for (int i=0;i<3;++i) S(i,i) = std::max(S(i,i), T(1e-12));
+    project_psd<T,3>(S, T(1e-18));
+    S = T(0.5) * (S + S.transpose());
+
+    // Add Σ_{k,m} P(p_k, p_m)
+    for (int k=0;k<KMODES;++k) {
+      const int opk = OFF_Pk(k);
+      for (int m=0;m<KMODES;++m) {
+        const int opm = OFF_Pk(m);
+        S.noalias() += P_.template block<3,3>(opk, opm);
+      }
+    }
+
+    S = T(0.5) * (S + S.transpose());
+    for (int i=0;i<3;++i) S(i,i) = std::max(S(i,i), T(1e-12));
+
+    Eigen::LDLT<Mat3> ldlt;
+    ldlt.compute(S);
+    if (ldlt.info() != Eigen::Success) {
+      const T bump = std::max(std::numeric_limits<T>::epsilon(), T(1e-6)*(S.norm()+T(1)));
+      S.diagonal().array() += bump;
+      ldlt.compute(S);
+      if (ldlt.info() != Eigen::Success) return;
+    }
+
+    // PCt = P C^T, where C^T has identity at each p_k, summed.
+    MatX3& PCt = PCt_scratch_;
+    PCt.setZero();
+    for (int k=0;k<KMODES;++k) {
+      const int opk = OFF_Pk(k);
+      PCt.noalias() += P_.template block<NX,3>(0, opk); // times I
+    }
+
+    // K = PCt S^{-1}
+    MatX3& K = K_scratch_;
+    K.noalias() = PCt * ldlt.solve(Mat3::Identity());
+
+    // Only update wave states (keep base/bias untouched)
+    K.template block<OFF_WAVE,3>(0,0).setZero();
+    if constexpr (with_accel_bias) K.template block<3,3>(OFF_BA,0).setZero();
+
+    x_.noalias() += K * r;
+    joseph_update3_(K, S, PCt);
+  }
+
+  // Convenience overload: diagonal std-devs, default measurement is zero (re-center).
+  void measurement_update_position_pseudo(const Vec3& sigma_p_world,
+                                         const Vec3& p_meas_world = Vec3::Zero())
+  {
+    Mat3 R = Mat3::Zero();
+    const Vec3 s = sigma_p_world.array().max(T(0)).matrix();
+    R(0,0) = std::max(T(1e-12), s.x()*s.x());
+    R(1,1) = std::max(T(1e-12), s.y()*s.y());
+    R(2,2) = std::max(T(1e-12), s.z()*s.z());
+    measurement_update_position_pseudo(p_meas_world, R);
+  }
+
 private:
   // Constants / state
   const T gravity_magnitude_ = T(STD_GRAVITY);
