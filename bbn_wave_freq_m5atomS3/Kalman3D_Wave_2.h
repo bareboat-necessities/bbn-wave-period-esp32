@@ -1141,8 +1141,10 @@ public:
 
     if (!wave_block_enabled_) freeze_wave_rows_(K);
     if constexpr (with_accel_bias) if (!use_ba) K.template block<3,3>(OFF_BA,0).setZero();
+    if (!(K.allFinite() && r.allFinite())) return;
 
     x_.noalias() += K * r;
+    if (!x_.allFinite()) return; // or reset wave block + re-enter warmup
 
     joseph_update3_(K, S, PCt);
 
@@ -1383,9 +1385,9 @@ private:
   T weights_[KMODES]{};
   Vec3 q_axis_[KMODES]{};
 
-  bool wave_block_enabled_ = false;
-  bool acc_bias_updates_enabled_ = true;
+  bool wave_block_enabled_ = false;  // start disabled; warmup will manage it
   bool warmup_mode_ = true;
+  bool acc_bias_updates_enabled_ = true;
   bool use_exact_att_bias_Qd_ = true;
 
   //  marginalization term when wave block disabled:
