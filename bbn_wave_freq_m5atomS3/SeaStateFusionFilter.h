@@ -513,13 +513,16 @@ private:
   // Apply OU tuning into Kalman3D_Wave_2 (guarded)
   void apply_ou_tune_() {
     if (!mekf_) return;
-
-    const float tau = std::min(std::max(tune_.tau_applied, min_tau_s_), max_tau_s_);
-
-    const float sigma_floor = std::max(0.05f, acc_noise_floor_sigma_);
-    const float sZ = std::max(sigma_floor, tune_.sigma_applied);
-    const float sH = sZ * S_factor_;
-  }
+  
+    const float tau   = std::clamp(tune_.tau_applied, min_tau_s_, max_tau_s_);
+    const float sZ    = std::max(std::max(0.05f, acc_noise_floor_sigma_), tune_.sigma_applied);
+    const float Hs_m  = std::max(0.0f, S_factor_ * (2.0f * std::sqrt(2.0f) / (float(M_PI)*float(M_PI))) * sZ * tau * tau);
+    const float f0_hz = std::clamp(0.5f / tau, min_freq_hz_, max_freq_hz_);
+  
+    mekf_->set_broadband_params(f0_hz, Hs_m);
+    // (optional) if you want to override/guard marginalization explicitly:
+    // mekf_->set_disabled_wave_accel_cov_world(...derived or custom...);
+}
 
   void update_tuner_(float dt, float a_vert_inertial_up) {
     tuner_.update(dt, a_vert_inertial_up, freq_hz_slow_);
