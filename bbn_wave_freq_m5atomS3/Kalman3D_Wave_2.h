@@ -1264,7 +1264,7 @@ public:
     if (!wave_block_enabled_) return;
 
     // Residual in WORLD
-    const Vec3 p_pred = wave_position_world();
+    const Vec3 p_pred = get_position();
     const Vec3 r = p_meas_world - p_pred;
 
     // Innovation covariance: S = R + C P C^T, where C sums the p_k blocks.
