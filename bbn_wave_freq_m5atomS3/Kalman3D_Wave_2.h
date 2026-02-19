@@ -902,7 +902,9 @@ public:
         // Cross with accel bias (F=I): P_BAk = P_BAk * Phi6^T
         if constexpr (with_accel_bias) {
           auto P_BAk = P_.template block<3,6>(OFF_BA, offk);
-          P_BAk.noalias() = P_BAk * Phi6_.transpose();
+          Eigen::Matrix<T,3,6> tmp_BAk;
+          tmp_BAk.noalias() = P_BAk * Phi6_.transpose();
+          P_BAk = tmp_BAk;
           P_.template block<6,3>(offk,OFF_BA) = P_BAk.transpose();
         }
       }
@@ -917,7 +919,9 @@ public:
 
       // Cross BA with base: P_Aba = F_AA * P_Aba
       auto P_Aba = P_.template block<BASE_N,3>(0,OFF_BA);
-      P_Aba.noalias() = F_AA_ * P_Aba;
+      Eigen::Matrix<T,BASE_N,3> tmp_Aba;
+      tmp_Aba.noalias() = F_AA_ * P_Aba;
+      P_Aba = tmp_Aba;
       P_.template block<3,BASE_N>(OFF_BA,0) = P_Aba.transpose();
     }
 
