@@ -31,9 +31,12 @@
     - After sufficient motion (distance and time thresholds), warm‑up mode is
       automatically turned off → wave block enabled, full filter runs.
 
-  Memory optimizations:
-    - All large temporary matrices are stored as class members to avoid stack
-      allocation in embedded environments.
+  Numerical stability:
+    - Covariance regularization (adds eps to diagonal when needed)
+    - LDLT failure recovery with regularization
+    - Division‑by‑zero guards in discretization
+    - Minimum bounds for covariances
+    - Catastrophic cancellation avoidance using std::max/min
 */
 
 #ifdef EIGEN_NON_ARDUINO
@@ -600,6 +603,8 @@ public:
     if constexpr (with_accel_bias) {
       auto Pba = P_.template block<3,3>(OFF_BA, OFF_BA);
       if (acc_bias_updates_enabled_) Pba += Q_bacc_ * Ts;
+      // Ensure diagonal stays positive
+      for (int i=0;i<3;++i) Pba(i,i) = std::max(Pba(i,i), T(1e-12));
       P_.template block<3,3>(OFF_BA, OFF_BA) = Pba;
 
       // Cross BA with base
@@ -608,6 +613,8 @@ public:
       P_.template block<3,BASE_N>(OFF_BA, 0) = P_Aba.transpose();
     }
 
+    // Regularize covariance (ensure positive definiteness)
+    regularize_covariance_();
     symmetrize_P_();
   }
 
@@ -689,9 +696,17 @@ public:
       }
     }
 
+    // Ensure S is positive definite
+    for (int i=0;i<3;++i) S_acc_(i,i) = std::max(S_acc_(i,i), T(1e-6));
+
     Eigen::LDLT<Mat3> ldlt;
     ldlt.compute(S_acc_);
-    if (ldlt.info() != Eigen::Success) return;
+    if (ldlt.info() != Eigen::Success) {
+      // Regularize and retry
+      S_acc_.diagonal() += Eigen::Matrix<T,3,1>::Constant(T(1e-3));
+      ldlt.compute(S_acc_);
+      if (ldlt.info() != Eigen::Success) return;
+    }
 
     last_acc_.S = S_acc_;
     last_acc_.nis = r.dot(ldlt.solve(r));
@@ -721,6 +736,7 @@ public:
     KSKt_.noalias() = K_acc_ * S_acc_ * K_acc_.transpose();
     KPCtT_.noalias() = K_acc_ * PCt_acc_.transpose();
     P_ = P_ - KPCtT_ - KPCtT_.transpose() + KSKt_;
+    regularize_covariance_();
     symmetrize_P_();
 
     applyQuaternionCorrectionFromErrorState_();
@@ -756,12 +772,19 @@ public:
       const Mat3 Ptt = P_.template block<3,3>(OFF_DTH, OFF_DTH);
       S_mag_.noalias() += J_att * Ptt * J_att.transpose();
 
-      PCt_mag_.setZero();
-      PCt_mag_.noalias() += P_.template block<NX,3>(0, OFF_DTH) * J_att.transpose();
+      // Ensure positive definiteness
+      for (int i=0;i<3;++i) S_mag_(i,i) = std::max(S_mag_(i,i), T(1e-6));
 
       Eigen::LDLT<Mat3> ldlt;
       ldlt.compute(S_mag_);
-      if (ldlt.info() != Eigen::Success) return;
+      if (ldlt.info() != Eigen::Success) {
+        S_mag_.diagonal() += Eigen::Matrix<T,3,1>::Constant(T(1e-3));
+        ldlt.compute(S_mag_);
+        if (ldlt.info() != Eigen::Success) return;
+      }
+
+      PCt_mag_.setZero();
+      PCt_mag_.noalias() += P_.template block<NX,3>(0, OFF_DTH) * J_att.transpose();
 
       last_mag_.S = S_mag_;
       last_mag_.nis = r.dot(ldlt.solve(r));
@@ -773,6 +796,7 @@ public:
       KSKt_mag_.noalias() = K_mag_ * S_mag_ * K_mag_.transpose();
       KPCtT_mag_.noalias() = K_mag_ * PCt_mag_.transpose();
       P_ = P_ - KPCtT_mag_ - KPCtT_mag_.transpose() + KSKt_mag_;
+      regularize_covariance_();
       symmetrize_P_();
 
       applyQuaternionCorrectionFromErrorState_();
@@ -879,6 +903,15 @@ private:
   Mat3 R_wb() const { return qref_.toRotationMatrix(); }             // world->body'
   Mat3 R_bw() const { return qref_.toRotationMatrix().transpose(); } // body'->world
 
+  // Regularize covariance matrix to ensure positive definiteness
+  void regularize_covariance_() {
+    const T min_diag = T(1e-12);
+    for (int i = 0; i < NX; ++i) {
+      P_(i,i) = std::max(P_(i,i), min_diag);
+    }
+    // Optional: enforce symmetry (already done by symmetrize_)
+  }
+
   void symmetrize_P_() {
     for (int i=0;i<NX;++i) {
       for (int j=i+1;j<NX;++j) {
@@ -910,7 +943,7 @@ private:
     return aw;
   }
 
-  // ===== Oscillator discretization (per axis) =====
+  // ===== Oscillator discretization (per axis) with numerical guards =====
   static inline void phi_osc_2x2_(T t, T w, T z, Eigen::Matrix<T,2,2>& Phi) {
     const T om = std::max(T(1e-6), w);
     const T ze = std::max(T(0), z);
@@ -927,12 +960,21 @@ private:
 
     if (ze < T(1)) {
       const T wd = om * std::sqrt(std::max(T(0), T(1) - ze*ze));
+      if (wd < eps) {
+        // Fallback to critically damped approximation
+        const T e = std::exp(-om * t);
+        Phi(0,0) = e * (T(1) + om*t);
+        Phi(0,1) = e * t;
+        Phi(1,0) = e * (-om*om*t);
+        Phi(1,1) = e * (T(1) - om*t);
+        return;
+      }
       const T a  = ze * om;
       const T e  = std::exp(-a * t);
       const T c  = std::cos(wd * t);
       const T s  = std::sin(wd * t);
 
-      const T inv_wd = T(1) / std::max(wd, eps);
+      const T inv_wd = T(1) / wd;
       const T a_over_wd = a * inv_wd;
 
       Phi(0,0) = e * (c + a_over_wd * s);
@@ -942,6 +984,7 @@ private:
       return;
     }
 
+    // Overdamped
     const T s = std::sqrt(std::max(T(0), ze*ze - T(1)));
     const T r1 = -om * (ze - s);
     const T r2 = -om * (ze + s);
@@ -950,7 +993,16 @@ private:
     const T e2 = std::exp(r2 * t);
 
     const T denom = (r2 - r1);
-    const T invd  = T(1) / std::max(denom, eps);
+    if (std::abs(denom) < eps) {
+      // Fallback
+      const T e = std::exp(-om * t);
+      Phi(0,0) = e * (T(1) + om*t);
+      Phi(0,1) = e * t;
+      Phi(1,0) = e * (-om*om*t);
+      Phi(1,1) = e * (T(1) - om*t);
+      return;
+    }
+    const T invd  = T(1) / denom;
 
     Phi(0,0) = (r2*e1 - r1*e2) * invd;
     Phi(0,1) = (e2 - e1) * invd;
@@ -984,8 +1036,13 @@ private:
 
     Qd = (h / T(6)) * (G0 + T(4)*G1 + G2);
     Qd = T(0.5) * (Qd + Qd.transpose());
+    // Ensure positive semi-definite
     Qd(0,0) = std::max(Qd(0,0), T(0));
     Qd(1,1) = std::max(Qd(1,1), T(0));
+    // Off-diagonals bounded by geometric mean
+    const T max_off = std::sqrt(Qd(0,0) * Qd(1,1));
+    Qd(0,1) = std::max(-max_off, std::min(Qd(0,1), max_off));
+    Qd(1,0) = Qd(0,1);
   }
 
   // ===== Heel helpers =====
@@ -1046,6 +1103,7 @@ private:
     if constexpr (with_accel_bias) Tm.template block<3,3>(OFF_BA, OFF_BA) = R;
 
     P_ = Tm * P_ * Tm.transpose();
+    regularize_covariance_();
     symmetrize_P_();
   }
 };
