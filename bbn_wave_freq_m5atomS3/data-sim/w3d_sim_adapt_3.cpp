@@ -362,7 +362,7 @@ static void process_wave_file_for_tracker(const std::string &filename, float def
         << "mag_bias_x,mag_bias_y,mag_bias_z,"                          // TRUE (uT), BODY-NED
         << "mag_bias_est_x,mag_bias_est_y,mag_bias_est_z,"              // EST  (uT), BODY-NED
         << "mag_bias_err_x,mag_bias_err_y,mag_bias_err_z,"              // EST-TRUE (uT)       
-        << "tau_applied,sigma_a_applied,R_S_applied,"
+        << "tau_applied,sigma_a_applied,"
         << "freq_tracker_hz,Tp_tuner_s,accel_var_tuner,"
         << "disp_scale_m,"
         << "dir_phase,"
@@ -448,7 +448,7 @@ static void process_wave_file_for_tracker(const std::string &filename, float def
         filter.mekf().set_Racc(Vector3f::Constant(0.5f).eval());
     } else {
         filter.enableLinearBlock(true);
-        filter.enableTuner(true);                    // keep adaptive R_S/tuning active
+        filter.enableTuner(true);                    // keep adaptive tuning active
         filter.enableClamp(true);
     }
     
