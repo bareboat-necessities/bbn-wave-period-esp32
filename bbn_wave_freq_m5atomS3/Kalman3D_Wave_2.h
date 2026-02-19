@@ -25,7 +25,7 @@
   Multi‑stage initialization (as in OU version):
     - Warm‑up mode (wave block disabled, accel bias updates enabled).
     - While in warm‑up:
-        * Gyro bias is learned by averaging (stationary detection optional).
+        * Gyro bias is learned by averaging.
         * Magnetic reference is learned by accumulating horizontal projections.
         * Wave states remain zero and their covariance is kept tiny.
     - After sufficient motion (distance and time thresholds), warm‑up mode is
@@ -613,15 +613,176 @@ public:
     symmetrize_P_();
   }
 
-  // ===== Measurement updates (unchanged from original, but will respect wave_block_enabled_ flag) =====
+  // ===== Measurement update: accelerometer =====
   void measurement_update_acc_only(const Vec3& acc_meas_body, T tempC = tempC_ref_) {
-    // ... (same as your existing implementation, which already uses wave_block_enabled_) ...
-    // (Omitted for brevity – copy from your original code)
+    last_acc_ = MeasDiag3{};
+    last_acc_.accepted = false;
+
+    const Vec3 acc_meas = deheel_vector_(acc_meas_body);
+
+    Vec3 lever = Vec3::Zero();
+    if (use_imu_lever_arm_) {
+      const Vec3 r_imu_bprime = deheel_vector_(r_imu_wrt_cog_body_phys_);
+      lever.noalias() += alpha_b_.cross(r_imu_bprime)
+                      +  last_gyr_bias_corrected_.cross(last_gyr_bias_corrected_.cross(r_imu_bprime));
+    }
+
+    Vec3 ba_term = Vec3::Zero();
+    if constexpr (with_accel_bias) {
+      const Vec3 ba0 = x_.template segment<3>(OFF_BA);
+      ba_term = ba0 + k_a_ * (tempC - tempC_ref_);
+    }
+
+    const Vec3 g_world(0,0,+gravity_magnitude_);
+    const Vec3 aw = wave_world_accel_();
+
+    const Vec3 f_pred = R_wb() * (aw - g_world) + lever + ba_term;
+    const Vec3 r = acc_meas - f_pred;
+    last_acc_.r = r;
+
+    const Vec3 f_cog_b = R_wb() * (aw - g_world);
+    const Mat3 J_att = -skew3<T>(f_cog_b);
+
+    Mat3 S = Racc_;
+    const Mat3 Ptt = P_.template block<3,3>(OFF_DTH, OFF_DTH);
+    S.noalias() += J_att * Ptt * J_att.transpose();
+
+    if constexpr (with_accel_bias) {
+      const Mat3 Pba  = P_.template block<3,3>(OFF_BA, OFF_BA);
+      const Mat3 Ptba = P_.template block<3,3>(OFF_DTH, OFF_BA);
+      S.noalias() += Pba;
+      S.noalias() += J_att * Ptba;
+      S.noalias() += Ptba.transpose() * J_att.transpose();
+    }
+
+    for (int k=0;k<KMODES;++k) {
+      const T om = omega_[k];
+      const T ze = zeta_[k];
+      const Mat3 Jp = R_wb() * (-(om*om) * Mat3::Identity());
+      const Mat3 Jv = R_wb() * (-(T(2)*ze*om) * Mat3::Identity());
+
+      const int op = OFF_Pk(k);
+      const int ov = OFF_Vk(k);
+
+      const Mat3 Ppp = P_.template block<3,3>(op, op);
+      const Mat3 Pvv = P_.template block<3,3>(ov, ov);
+      const Mat3 Ppv = P_.template block<3,3>(op, ov);
+
+      const Mat3 Ptp = P_.template block<3,3>(OFF_DTH, op);
+      const Mat3 Ptv = P_.template block<3,3>(OFF_DTH, ov);
+
+      S.noalias() += Jp * Ppp * Jp.transpose();
+      S.noalias() += Jv * Pvv * Jv.transpose();
+      S.noalias() += Jp * Ppv * Jv.transpose();
+      S.noalias() += Jv * Ppv.transpose() * Jp.transpose();
+
+      S.noalias() += J_att * Ptp * Jp.transpose();
+      S.noalias() += Jp * Ptp.transpose() * J_att.transpose();
+      S.noalias() += J_att * Ptv * Jv.transpose();
+      S.noalias() += Jv * Ptv.transpose() * J_att.transpose();
+
+      if constexpr (with_accel_bias) {
+        const Mat3 Pbap = P_.template block<3,3>(OFF_BA, op);
+        const Mat3 Pbav = P_.template block<3,3>(OFF_BA, ov);
+        S.noalias() += Pbap * Jp.transpose();
+        S.noalias() += Jp * Pbap.transpose();
+        S.noalias() += Pbav * Jv.transpose();
+        S.noalias() += Jv * Pbav.transpose();
+      }
+    }
+
+    Eigen::LDLT<Mat3> ldlt;
+    ldlt.compute(S);
+    if (ldlt.info() != Eigen::Success) return;
+
+    last_acc_.S = S;
+    last_acc_.nis = r.dot(ldlt.solve(r));
+
+    MatX3 PCt; PCt.setZero();
+    PCt.noalias() += P_.template block<NX,3>(0, OFF_DTH) * J_att.transpose();
+
+    if constexpr (with_accel_bias) {
+      if (acc_bias_updates_enabled_) {
+        PCt.noalias() += P_.template block<NX,3>(0, OFF_BA); // J_ba = I
+      }
+    }
+
+    for (int k=0;k<KMODES;++k) {
+      const T om = omega_[k];
+      const T ze = zeta_[k];
+      const Mat3 Jp = R_wb() * (-(om*om) * Mat3::Identity());
+      const Mat3 Jv = R_wb() * (-(T(2)*ze*om) * Mat3::Identity());
+      PCt.noalias() += P_.template block<NX,3>(0, OFF_Pk(k)) * Jp.transpose();
+      PCt.noalias() += P_.template block<NX,3>(0, OFF_Vk(k)) * Jv.transpose();
+    }
+
+    MatX3 K;
+    K.noalias() = PCt * ldlt.solve(Mat3::Identity());
+
+    x_.noalias() += K * r;
+
+    const MatX KSKt  = K * S * K.transpose();
+    const MatX KPCtT = K * PCt.transpose();
+    P_ = P_ - KPCtT - KPCtT.transpose() + KSKt;
+    symmetrize_P_();
+
+    applyQuaternionCorrectionFromErrorState_();
+
+    last_acc_.accepted = true;
   }
 
+  // ===== Measurement update: magnetometer =====
   void measurement_update_mag_only(const Vec3& mag_meas_body) {
-    // ... (same as your existing implementation) ...
-    // (Omitted for brevity – copy from your original code)
+    if constexpr (!with_mag) {
+      (void)mag_meas_body;
+      last_mag_ = MeasDiag3{};
+      last_mag_.accepted = false;
+      return;
+    } else {
+      last_mag_ = MeasDiag3{};
+      last_mag_.accepted = false;
+
+      const Vec3 mag_meas = deheel_vector_(mag_meas_body);
+      if (!mag_meas.allFinite()) return;
+      const T n = mag_meas.norm();
+      if (!(n > T(1e-6))) return;
+
+      Vec3 v2hat = R_wb() * B_world_ref_;
+      if (v2hat.dot(mag_meas) < T(0)) v2hat = -v2hat;
+
+      const Vec3 r = mag_meas - v2hat;
+      last_mag_.r = r;
+
+      const Mat3 J_att = -skew3<T>(v2hat);
+
+      Mat3 S = Rmag_;
+      const Mat3 Ptt = P_.template block<3,3>(OFF_DTH, OFF_DTH);
+      S.noalias() += J_att * Ptt * J_att.transpose();
+
+      MatX3 PCt; PCt.setZero();
+      PCt.noalias() += P_.template block<NX,3>(0, OFF_DTH) * J_att.transpose();
+
+      Eigen::LDLT<Mat3> ldlt;
+      ldlt.compute(S);
+      if (ldlt.info() != Eigen::Success) return;
+
+      last_mag_.S = S;
+      last_mag_.nis = r.dot(ldlt.solve(r));
+
+      MatX3 K;
+      K.noalias() = PCt * ldlt.solve(Mat3::Identity());
+
+      x_.noalias() += K * r;
+
+      const MatX KSKt  = K * S * K.transpose();
+      const MatX KPCtT = K * PCt.transpose();
+      P_ = P_ - KPCtT - KPCtT.transpose() + KSKt;
+      symmetrize_P_();
+
+      applyQuaternionCorrectionFromErrorState_();
+
+      last_mag_.accepted = true;
+    }
   }
 
 private:
@@ -729,13 +890,80 @@ private:
 
   // ===== Oscillator discretization (per axis) =====
   static inline void phi_osc_2x2_(T t, T w, T z, Eigen::Matrix<T,2,2>& Phi) {
-    // ... (same as your existing implementation) ...
+    const T om = std::max(T(1e-6), w);
+    const T ze = std::max(T(0), z);
+    const T eps = T(1e-6);
+
+    if (std::abs(ze - T(1)) < T(1e-3)) {
+      const T e = std::exp(-om * t);
+      Phi(0,0) = e * (T(1) + om*t);
+      Phi(0,1) = e * (t);
+      Phi(1,0) = e * (-om*om*t);
+      Phi(1,1) = e * (T(1) - om*t);
+      return;
+    }
+
+    if (ze < T(1)) {
+      const T wd = om * std::sqrt(std::max(T(0), T(1) - ze*ze));
+      const T a  = ze * om;
+      const T e  = std::exp(-a * t);
+      const T c  = std::cos(wd * t);
+      const T s  = std::sin(wd * t);
+
+      const T inv_wd = T(1) / std::max(wd, eps);
+      const T a_over_wd = a * inv_wd;
+
+      Phi(0,0) = e * (c + a_over_wd * s);
+      Phi(0,1) = e * (inv_wd * s);
+      Phi(1,0) = e * (-(om*om) * inv_wd * s);
+      Phi(1,1) = e * (c - a_over_wd * s);
+      return;
+    }
+
+    const T s = std::sqrt(std::max(T(0), ze*ze - T(1)));
+    const T r1 = -om * (ze - s);
+    const T r2 = -om * (ze + s);
+
+    const T e1 = std::exp(r1 * t);
+    const T e2 = std::exp(r2 * t);
+
+    const T denom = (r2 - r1);
+    const T invd  = T(1) / std::max(denom, eps);
+
+    Phi(0,0) = (r2*e1 - r1*e2) * invd;
+    Phi(0,1) = (e2 - e1) * invd;
+    Phi(1,0) = (r1*r2) * (e1 - e2) * invd;
+    Phi(1,1) = (r2*e2 - r1*e1) * invd;
   }
 
   static inline void discretize_osc_axis_(T dt, T w, T z, T q,
                                          Eigen::Matrix<T,2,2>& Phi,
-                                         Eigen::Matrix<T,2,2>& Qd) {
-    // ... (same as your existing implementation) ...
+                                         Eigen::Matrix<T,2,2>& Qd)
+  {
+    phi_osc_2x2_(dt, w, z, Phi);
+
+    auto G = [&](T t)->Eigen::Matrix<T,2,2> {
+      Eigen::Matrix<T,2,2> Pt;
+      phi_osc_2x2_(t, w, z, Pt);
+      const T u0 = Pt(0,1);
+      const T u1 = Pt(1,1);
+      Eigen::Matrix<T,2,2> M;
+      M(0,0) = q * u0*u0;
+      M(0,1) = q * u0*u1;
+      M(1,0) = M(0,1);
+      M(1,1) = q * u1*u1;
+      return M;
+    };
+
+    const T h = dt;
+    const auto G0 = G(T(0));
+    const auto G1 = G(T(0.5)*h);
+    const auto G2 = G(h);
+
+    Qd = (h / T(6)) * (G0 + T(4)*G1 + G2);
+    Qd = T(0.5) * (Qd + Qd.transpose());
+    Qd(0,0) = std::max(Qd(0,0), T(0));
+    Qd(1,1) = std::max(Qd(1,1), T(0));
   }
 
   // ===== Heel helpers =====
