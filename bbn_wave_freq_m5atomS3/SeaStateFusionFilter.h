@@ -965,7 +965,7 @@ private:
             harmonic_position_sigma_m_at_ref_env_ * (env_scale / harmonic_position_ref_envelope_m_),
             harmonic_position_sigma_min_m_
         );
-        mekf_->measurement_update_position_pseudo(p_meas, Eigen::Vector3f::Constant(sigma));
+        mekf_->measurement_update_position_pseudo(Eigen::Vector3f::Constant(sigma), p_meas);
     }
 
     static Eigen::Vector3f harmonicPseudoPositionFromAccel_(const Eigen::Vector3f& a_ned, float omega_sq) {
@@ -1128,7 +1128,7 @@ private:
         // optionally: warmup_Racc_active_ 
         if (freeze_acc_bias_until_live_) {
             mekf_->set_acc_bias_updates_enabled(false);
-            mekf_->set_Racc(Eigen::Vector3f::Constant(Racc_warmup_));
+            mekf_->set_Racc(Eigen::Vector3f::Constant(Racc_warmup_).eval());
             warmup_Racc_active_ = true;
         }
 
