@@ -536,7 +536,9 @@ public:
     pseudo_motion_dist_ += vel_detect_.norm() * dt;
     pseudo_motion_time_ += dt;
 
-    if (pseudo_motion_dist_ > exit_min_distance_ && pseudo_motion_time_ > exit_min_time_) {
+    // Allow warmup exit either by sustained elapsed time OR by detected motion distance.
+    // This prevents the wave block from staying permanently frozen on mild-motion/bench data.
+    if (pseudo_motion_time_ > exit_min_time_ || pseudo_motion_dist_ > exit_min_distance_) {
       set_warmup_mode(false);
     }
 
@@ -638,22 +640,13 @@ public:
     const T an = acc.norm();
     if (!(an > T(1e-8))) return;
 
-    const Vec3 anorm = acc / an;
-    const Vec3 zb = Vec3::UnitZ();
-    const Vec3 target = -anorm;
+    const Vec3 acc_n = acc / an;
+    const Vec3 z_world_b = -acc_n;                // world +Z(down) expressed in body
+    const Vec3 e3_world  = Vec3(T(0), T(0), T(1)); // +Z down in world
 
-    T c = std::max(T(-1), std::min(T(1), zb.dot(target)));
-    Vec3 axis = zb.cross(target);
-    T sn = axis.norm();
+    qref_ = Eigen::Quaternion<T>::FromTwoVectors(e3_world, z_world_b);
+    qref_.normalize();
 
-    if (sn < T(1e-8)) {
-      qref_.setIdentity();
-    } else {
-      axis /= sn;
-      const T ang = std::acos(c);
-      qref_ = Eigen::Quaternion<T>(Eigen::AngleAxis<T>(ang, axis));
-      qref_.normalize();
-    }
     x_.template segment<3>(OFF_DTH).setZero();
     set_warmup_mode(true);
   }
@@ -1366,7 +1359,7 @@ private:
   Mat3 Sigma_aw_disabled_world_ = Mat3::Identity() * T(0.0);
 
   // Warmup exit detection
-  T exit_min_distance_ = T(10.0);
+  T exit_min_distance_ = T(0.3);
   T exit_min_time_     = T(5.0);
   Vec3 vel_detect_ = Vec3::Zero();
   T pseudo_motion_dist_ = T(0);
