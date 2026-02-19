@@ -357,17 +357,17 @@ public:
     else return Vec3::Zero();
   }
 
-  [[nodiscard]] Vec3 wave_position_world() const {
+  [[nodiscard]] Vec3 get_position() const {
     Vec3 p=Vec3::Zero();
     for (int k=0;k<KMODES;++k) p += x_.template segment<3>(OFF_Pk(k));
     return p;
   }
-  [[nodiscard]] Vec3 wave_velocity_world() const {
+  [[nodiscard]] Vec3 get_velocity() const {
     Vec3 v=Vec3::Zero();
     for (int k=0;k<KMODES;++k) v += x_.template segment<3>(OFF_Vk(k));
     return v;
   }
-  [[nodiscard]] Vec3 wave_accel_world() const { return wave_world_accel_(); }
+  [[nodiscard]] Vec3 get_world_accel() const { return wave_world_accel_(); }
 
   const MeasDiag3& lastAccDiag() const noexcept { return last_acc_; }
   const MeasDiag3& lastMagDiag() const noexcept { return last_mag_; }
