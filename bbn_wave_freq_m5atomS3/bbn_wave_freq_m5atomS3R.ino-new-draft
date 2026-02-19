@@ -349,28 +349,57 @@ private:
     const Vector3f sigma_m(sigma_m_uT, sigma_m_uT, sigma_m_uT);
 
     Fusion::Config fcfg;
+    // Explicitly mirror SeaStateFusion::Config defaults used by this sketch.
     fcfg.with_mag = true;
+    fcfg.online_tune_warmup_sec = ONLINE_TUNE_WARMUP_SEC;
+    fcfg.use_fixed_mag_world_ref = false;
+    fcfg.mag_world_ref = Vector3f(0.0f, 0.0f, 0.0f);
+
+    fcfg.freeze_acc_bias_until_live = true;
+    fcfg.Racc_warmup = 0.16f;
+
+    fcfg.enable_harmonic_position_correction = true;
+    fcfg.harmonic_position_update_period_steps = 3;
+    fcfg.harmonic_position_sigma_m = HARMONIC_POS_SIGMA_AT_REF;
+
     fcfg.sigma_a  = sigma_a;
     fcfg.sigma_g  = sigma_g;
     fcfg.sigma_m  = sigma_m;
 
     fcfg.mag_delay_sec           = MAG_DELAY_SEC;
-    fcfg.use_fixed_mag_world_ref = false;
-
-    fcfg.freeze_acc_bias_until_live = true;
-    fcfg.Racc_warmup                = 0.16f;
-
     fcfg.mag_ref_timeout_sec = 2.0f;
-    fcfg.mag_odr_guess_hz    = MAG_TUNE_REF_HZ;
+    fcfg.mag_odr_guess_hz = MAG_TUNE_REF_HZ;
+    fcfg.use_custom_mag_tuner_cfg = false;
 
     fusion_.begin(fcfg);
 
     auto& ff = fusion_.raw();
     ff.enableLinearBlock(WANT_LINEAR_BLOCK);
     ff.enableTuner(true);
+    ff.setWithMag(true);
+    ff.setSFactor(1.0f);
+    ff.setTauCoeff(1.4f);
+    ff.setSigmaCoeff(0.9f);
+    ff.setRSCoeff(1.0f);
+    ff.setRSXYFactor(0.17f);
+    ff.setAccNoiseFloorSigma(ACC_NOISE_FLOOR_SIGMA_DEFAULT);
     ff.setEnvelopeStateCorrectionEnabled(false); // envelope state gate 
     ff.setEnvelopeRSCorrectionEnabled(false);    // envelope-driven R_S modulation
+    ff.setEnvelopeStateCorrectionParams(0.5f, 0.0f);
+    ff.setEnvelopeStateCorrectionMaxSpeed(0.35f);
+    ff.setEnvelopeStateCorrectionUpdatePeriod(0.15f);
+    ff.setEnvelopeStateCorrectionMinErrRatio(0.08f);
+    ff.setEnvelopeGateThresholdScale(1.2f);
+    ff.setEnvelopeRSMinScale(5e-4f);
+    ff.setEnvelopeRSSmoothingTauSec(0.0f);
+    ff.setEnvelopeRSGateThresholdScale(0.8f);
+    ff.setEnvelopeRSGateHysteresisScales(1.20f, 0.95f);
+    ff.setEnvelopeRSOutwardEps(1e-4f);
+    ff.setEnvelopeCorrectionWarmupSec(16.0f);
     ff.setHarmonicPositionCorrectionEnabled(true);
+    ff.setHarmonicPositionCorrectionPeriodSteps(3);
+    ff.setHarmonicPositionCorrectionSigma(HARMONIC_POS_SIGMA_AT_REF);
+    ff.setHarmonicPositionDespikeConfig(5, 4.0f);
     ff.enableClamp(true);
     ff.setFreqInputCutoffHz(6.0f);
 
