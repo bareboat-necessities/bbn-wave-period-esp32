@@ -1138,10 +1138,10 @@ public:
 
     MatX3& K = K_scratch_;
     K.noalias() = PCt * ldlt.solve(Mat3::Identity());
+    if (!(K.allFinite() && r.allFinite())) return;
 
     if (!wave_block_enabled_) freeze_wave_rows_(K);
     if constexpr (with_accel_bias) if (!use_ba) K.template block<3,3>(OFF_BA,0).setZero();
-    if (!(K.allFinite() && r.allFinite())) return;
 
     x_.noalias() += K * r;
     if (!x_.allFinite()) return; // or reset wave block + re-enter warmup
@@ -1288,7 +1288,7 @@ public:
   //
   // Useful to prevent long-term drift / re-center heave, etc.
   void measurement_update_position_pseudo(const Vec3& p_meas_world,
-                                         const Mat3& Rpos_world)
+                                          const Mat3& Rpos_world)
   {
     if (!wave_block_enabled_) return;
 
@@ -1335,12 +1335,15 @@ public:
     // K = PCt S^{-1}
     MatX3& K = K_scratch_;
     K.noalias() = PCt * ldlt.solve(Mat3::Identity());
+    if (!K.allFinite() || !r.allFinite() || !S.allFinite()) return;
 
     // Only update wave states (keep base/bias untouched)
-    K.template block<OFF_WAVE,3>(0,0).setZero();
-    if constexpr (with_accel_bias) K.template block<3,3>(OFF_BA,0).setZero();
+    K.template block<BASE_N,3>(0,0).setZero();                 // freeze base
+    if constexpr (with_accel_bias) K.template block<3,3>(OFF_BA,0).setZero();  // freeze accel bias
 
     x_.noalias() += K * r;
+    if (!x_.allFinite()) return;
+
     joseph_update3_(K, S, PCt);
   }
 
