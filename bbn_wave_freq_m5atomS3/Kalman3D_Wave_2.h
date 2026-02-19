@@ -1499,12 +1499,26 @@ private:
       if (!std::isfinite(P_(i,i)) || P_(i,i) < min_diag) P_(i,i) = min_diag;
     }
   }
-
+  
   void applyQuaternionCorrectionFromErrorState_() {
-    const Vec3 dth = x_.template segment<3>(OFF_DTH);
+    Vec3 dth = x_.template segment<3>(OFF_DTH);
+  
+    // Clamp δθ magnitude (rad)
+    // Typical safe range: 0.1–0.3 rad (6–17 deg). Start with 0.25.
+    const T max_dth = T(0.25);
+    const T n2 = dth.squaredNorm();
+    if (n2 > max_dth * max_dth) {
+      const T n = std::sqrt(n2);
+      dth *= (max_dth / n);
+      x_.template segment<3>(OFF_DTH) = dth;  // keep x_ consistent
+    }
+  
+    // Apply correction (right-multiply convention)
     const Eigen::Quaternion<T> corr = quat_from_delta_theta<T>(dth);
     qref_ = qref_ * corr;
     qref_.normalize();
+  
+    // Clear attitude error-state
     x_.template segment<3>(OFF_DTH).setZero();
   }
 
