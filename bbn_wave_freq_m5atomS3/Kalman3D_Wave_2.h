@@ -1388,7 +1388,7 @@ private:
   Mat3 Sigma_aw_disabled_world_ = Mat3::Identity() * T(0.0);
 
   // Warmup exit detection
-  T exit_min_distance_ = T(15.0);
+  T exit_min_distance_ = T(50.0);
   T exit_min_time_     = T(8.0);
   Vec3 vel_detect_ = Vec3::Zero();
   T pseudo_motion_dist_ = T(0);
