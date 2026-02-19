@@ -485,10 +485,6 @@ public:
         }
     }
 
-    // Legacy API kept for compatibility. Directional scaling is now policy-A:
-    // outward motion can tighten, inward motion keeps RS scale at 1.
-    void setEnvelopeRSDirectionalScales(float /*outward_scale*/, float /*inward_scale*/) {}
-
     // Time constant for smoothing RS scale switching (seconds).
     // Set to 0 for immediate switching.
     void setEnvelopeRSSmoothingTauSec(float tau_sec) {
