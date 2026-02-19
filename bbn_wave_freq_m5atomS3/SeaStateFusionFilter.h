@@ -913,7 +913,7 @@ private:
         // Harmonic pseudo-position correction should only run when there is
         // clear drift risk. If position is still inside 80% of the estimated
         // wave-height envelope, keep the correction disabled.
-        constexpr float HARMONIC_DRIFT_RISK_ENVELOPE_RATIO = 0.8f;
+        constexpr float HARMONIC_DRIFT_RISK_ENVELOPE_RATIO = 0.5f;
         if (!(absz > env_scale * HARMONIC_DRIFT_RISK_ENVELOPE_RATIO)) {
             return;
         }
@@ -961,7 +961,7 @@ private:
 
         // Dimensionally-consistent uncertainty scaling:
         //   sigma(env) = sigma_ref * (env / env_ref)
-        // with a baseline assumption sigma_ref = 75 m at env_ref = 8 m.
+        // with a baseline assumption sigma_ref m at env_ref m.
         const float sigma = std::max(
             harmonic_position_sigma_m_at_ref_env_ * (env_scale / harmonic_position_ref_envelope_m_),
             harmonic_position_sigma_min_m_
@@ -969,8 +969,7 @@ private:
         mekf_->measurement_update_position_pseudo(p_meas, Eigen::Vector3f::Constant(sigma));
     }
 
-    static Eigen::Vector3f harmonicPseudoPositionFromAccel_(const Eigen::Vector3f& a_ned,
-                                                            float omega_sq) {
+    static Eigen::Vector3f harmonicPseudoPositionFromAccel_(const Eigen::Vector3f& a_ned, float omega_sq) {
         return -a_ned / omega_sq;
     }
 
@@ -1206,7 +1205,7 @@ private:
     int   harmonic_position_update_period_steps_ = 3;
     int   harmonic_position_counter_ = 0;
     float harmonic_position_ref_envelope_m_ = 8.0f;
-    float harmonic_position_sigma_m_at_ref_env_ = 75.0f;
+    float harmonic_position_sigma_m_at_ref_env_ = 25.0f;
     float harmonic_position_sigma_min_m_ = 1.0f;
     int   harmonic_despike_window_ = 5;
     float harmonic_despike_threshold_ = 4.0f;
