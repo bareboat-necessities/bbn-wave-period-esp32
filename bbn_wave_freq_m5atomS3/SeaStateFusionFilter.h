@@ -452,9 +452,6 @@ private:
     float fc_hz       = 1.0f;
     bool  initialized = false;
 
-    float wave_enable_grace_sec_ = 0.0f;
-    Eigen::Vector3f Racc_nominal_hold_ = Eigen::Vector3f::Constant(NAN);
-
     void setCutoff(float fc) {
       if (std::isfinite(fc) && fc > 0.0f) fc_hz = fc;
     }
@@ -686,6 +683,9 @@ private:
 private:
   StartupStage startup_stage_   = StartupStage::Cold;
   float        startup_stage_t_ = 0.0f;
+
+  float wave_enable_grace_sec_ = 0.0f;
+  Eigen::Vector3f Racc_nominal_hold_ = Eigen::Vector3f::Constant(NAN);
 
   bool  freeze_acc_bias_until_live_ = true;
   float Racc_warmup_                = 0.5f;
