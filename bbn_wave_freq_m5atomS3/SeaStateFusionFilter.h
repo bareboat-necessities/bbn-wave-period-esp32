@@ -952,7 +952,11 @@ private:
 
         if (!a_despiked.allFinite()) return;
 
-        const Eigen::Vector3f p_meas = -a_despiked / omega_sq;
+        // Harmonic displacement proxy from x¨ = -ω²x per component in NED:
+        //   p_x = -a_x/ω²
+        //   p_y = -a_y/ω²
+        //   p_z = -a_z_ned/ω² = +a_up/ω²  (because z_ned = -z_up)
+        const Eigen::Vector3f p_meas = harmonicPseudoPositionFromAccel_(a_despiked, omega_sq);
         if (!p_meas.allFinite()) return;
 
         // Dimensionally-consistent uncertainty scaling:
@@ -963,6 +967,11 @@ private:
             harmonic_position_sigma_min_m_
         );
         mekf_->measurement_update_position_pseudo(p_meas, Eigen::Vector3f::Constant(sigma));
+    }
+
+    static Eigen::Vector3f harmonicPseudoPositionFromAccel_(const Eigen::Vector3f& a_ned,
+                                                            float omega_sq) {
+        return -a_ned / omega_sq;
     }
 
     void update_tuner(float dt, float a_vert_inertial, float freq_hz_for_tuner) {
