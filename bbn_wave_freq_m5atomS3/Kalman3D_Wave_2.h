@@ -858,7 +858,9 @@ public:
       for (int k=0;k<KMODES;++k) {
         // Build per-axis Phi2 and Qd2, then assemble Phi6/Qd6
         for (int ax=0; ax<3; ++ax) {
-          discretize_osc_axis_(Ts, omega_[k], zeta_[k], q_axis_[k](ax), Phi2_[ax], Qd2_[ax]);
+          const T om_k = std::max(T(1e-4), omega_[k]);
+          const T ze_k = std::min(std::max(T(1e-4), zeta_[k]), T(5)); // avoid absurd damping
+          discretize_osc_axis_(Ts, om_k, ze_k, q_axis_[k](ax), Phi2_[ax], Qd2_[ax]);
         }
         Phi6_.setZero();
         Qd6_.setZero();
