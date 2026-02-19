@@ -824,11 +824,13 @@ private:
                         : 1.0f;
         const float RSb = std::min(std::max(tune_.RS_applied, min_R_S_), max_R_S_);
         const float rs_xy = RSb * s * R_S_xy_factor_;
+        /* TODO:
         mekf_->set_RS_noise(Eigen::Vector3f(
             rs_xy,
             rs_xy,
             RSb * s
         ));
+        */
     }
 
     void applyEnvelopeDriftCorrection_(float dt) {
