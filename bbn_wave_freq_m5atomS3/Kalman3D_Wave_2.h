@@ -43,6 +43,10 @@
     4) When disabling the wave block, we also reset wave-wave covariance (and wave means) to avoid
        re-enabling with stale mode correlations.
     5) After time update, we clamp the full covariance diagonal to avoid rare negative/NaN drift.
+    6) When re-enabling the wave block, we re-seed wave covariance (and clear cross-covariances)
+       so the block cannot come back “frozen” with near-zero variance from warmup/disable.
+    7) Magnetometer measurement noise is scaled for direction-only (unit-vector) residuals so
+       Rmag_ (in sensor units) doesn’t overweight/underweight yaw when magnitude varies.
 */
 
 #ifdef EIGEN_NON_ARDUINO
@@ -325,12 +329,7 @@ public:
     }
 
     // Seed wave covariance
-    const T sigma_p0 = T(20.0);
-    const T sigma_v0 = T(1.0);
-    for (int k=0;k<KMODES;++k) {
-      P_.template block<3,3>(OFF_Pk(k), OFF_Pk(k)) = Mat3::Identity() * (sigma_p0*sigma_p0);
-      P_.template block<3,3>(OFF_Vk(k), OFF_Vk(k)) = Mat3::Identity() * (sigma_v0*sigma_v0);
-    }
+    seed_wave_cov_(T(20.0), T(1.0));
 
     // Mag reference default
     B_world_ref_ = Vec3::UnitX();
@@ -434,9 +433,23 @@ public:
       P_.template block<WAVE_N,WAVE_N>(OFF_WAVE, OFF_WAVE).setZero();
       x_.template segment<WAVE_N>(OFF_WAVE).setZero();
     }
+
+    if (!wave_block_enabled_ && on) {
+      // FIX(6): re-seed wave covariance on re-enable; clear cross-covs.
+      P_.template block<BASE_N,WAVE_N>(0, OFF_WAVE).setZero();
+      P_.template block<WAVE_N,BASE_N>(OFF_WAVE, 0).setZero();
+      if constexpr (with_accel_bias) {
+        P_.template block<3,WAVE_N>(OFF_BA, OFF_WAVE).setZero();
+        P_.template block<WAVE_N,3>(OFF_WAVE, OFF_BA).setZero();
+      }
+      x_.template segment<WAVE_N>(OFF_WAVE).setZero();
+      seed_wave_cov_(T(20.0), T(1.0));
+    }
+
     wave_block_enabled_ = on;
     symmetrize_P_();
     clamp_P_diag_(T(1e-15));
+    sanitize_P_finite_();
     symmetrize_P_();
   }
   bool wave_block_enabled() const { return wave_block_enabled_; }
@@ -483,15 +496,11 @@ public:
       bg_accum_count_ = 0;
     } else {
       // Restore reasonable covariances
-      const T sigma_p0 = T(20.0);
-      const T sigma_v0 = T(1.0);
-      for (int k=0;k<KMODES;++k) {
-        P_.template block<3,3>(OFF_Pk(k), OFF_Pk(k)) = Mat3::Identity()*(sigma_p0*sigma_p0);
-        P_.template block<3,3>(OFF_Vk(k), OFF_Vk(k)) = Mat3::Identity()*(sigma_v0*sigma_v0);
-      }
+      seed_wave_cov_(T(20.0), T(1.0));
     }
     symmetrize_P_();
     clamp_P_diag_(T(1e-15));
+    sanitize_P_finite_();
     symmetrize_P_();
   }
 
@@ -585,8 +594,15 @@ public:
     if (!(mag_h.norm() > T(1e-8))) return;
     mag_h.normalize();
 
-    const Vec3 x_world = mag_h;                      // world X (north) in body
-    const Vec3 y_world = z_world.cross(x_world).normalized();
+    Vec3 x_world = mag_h;                      // world X (north) in body
+    Vec3 y_world = z_world.cross(x_world);
+    if (!(y_world.norm() > T(1e-8))) return;
+    y_world.normalize();
+
+    // Re-orthonormalize to reduce numerical tilt issues
+    x_world = y_world.cross(z_world);
+    if (!(x_world.norm() > T(1e-8))) return;
+    x_world.normalize();
 
     Mat3 R_wb;
     R_wb.col(0) = x_world;
@@ -843,10 +859,12 @@ public:
 
     symmetrize_P_();
     clamp_P_diag_(T(1e-15));
+    sanitize_P_finite_();
     symmetrize_P_();
   }
 
   // ---------------- Measurement update: accelerometer (OU-style Joseph) ----------------
+  // (unchanged body; only post-update covariance sanitization added)
 
   void measurement_update_acc_only(const Vec3& acc_meas_body, T tempC = tempC_ref) {
     last_acc_ = MeasDiag3{};
@@ -1054,6 +1072,11 @@ public:
 
     applyQuaternionCorrectionFromErrorState_();
 
+    // Post-update covariance hygiene
+    clamp_P_diag_(T(1e-15));
+    sanitize_P_finite_();
+    symmetrize_P_();
+
     last_acc_.accepted = true;
   }
 
@@ -1128,8 +1151,14 @@ public:
 
     const Mat3 J_att = du_dv * Jv;
 
+    // FIX(7): scale sensor-domain Rmag_ into direction-domain noise for unit-vector residuals.
+    // Very simple model: variance of unit vector ≈ variance(mag) / |m_proj|^2 .
+    const T rmag_var_sensor = std::max(T(1e-12), Rmag_.trace()/T(3));
+    const T sigma_dir2 = std::max(T(1e-12), rmag_var_sensor / (mnorm*mnorm));
+    Mat3 Rdir = Mat3::Identity() * sigma_dir2;
+
     Mat3& S = S_scratch_;
-    S = Rmag_;
+    S = Rdir;
 
     const Mat3 Ptt = P_.template block<3,3>(OFF_DTH,OFF_DTH);
     S.noalias() += J_att * Ptt * J_att.transpose();
@@ -1140,7 +1169,7 @@ public:
     Eigen::LDLT<Mat3> ldlt;
     ldlt.compute(S);
     if (ldlt.info() != Eigen::Success) {
-      const T bump = std::max(std::numeric_limits<T>::epsilon(), T(1e-6)*(Rmag_.norm()+T(1)));
+      const T bump = std::max(std::numeric_limits<T>::epsilon(), T(1e-6)*(S.norm()+T(1)));
       S.diagonal().array() += bump;
       ldlt.compute(S);
       if (ldlt.info() != Eigen::Success) return;
@@ -1174,6 +1203,11 @@ public:
     joseph_update3_(K, S, PCt);
 
     applyQuaternionCorrectionFromErrorState_();
+
+    // Post-update covariance hygiene
+    clamp_P_diag_(T(1e-15));
+    sanitize_P_finite_();
+    symmetrize_P_();
 
     last_mag_.accepted = true;
   }
@@ -1284,6 +1318,15 @@ private:
     }
   }
 
+  // Extra sanity: kill non-finite off-diagonals (prevents NaN “infection”)
+  void sanitize_P_finite_() {
+    for (int i=0;i<NX;++i) {
+      for (int j=0;j<NX;++j) {
+        if (!std::isfinite(P_(i,j))) P_(i,j) = (i==j) ? std::max<T>(P_(i,i), T(1e-15)) : T(0);
+      }
+    }
+  }
+
   void applyQuaternionCorrectionFromErrorState_() {
     const Vec3 dth = x_.template segment<3>(OFF_DTH);
     const Eigen::Quaternion<T> corr = quat_from_delta_theta<T>(dth);
@@ -1303,6 +1346,24 @@ private:
       aw.noalias() += -(om*om)*p - (T(2)*ze*om)*v;
     }
     return aw;
+  }
+
+  void seed_wave_cov_(T sigma_p0, T sigma_v0) {
+    const T sp2 = sigma_p0*sigma_p0;
+    const T sv2 = sigma_v0*sigma_v0;
+    for (int k=0;k<KMODES;++k) {
+      P_.template block<3,3>(OFF_Pk(k), OFF_Pk(k)) = Mat3::Identity() * sp2;
+      P_.template block<3,3>(OFF_Vk(k), OFF_Vk(k)) = Mat3::Identity() * sv2;
+    }
+    // Keep cross-covs between different modes at zero by default (broadband prior).
+    for (int i=0;i<WAVE_N;++i) {
+      for (int j=0;j<WAVE_N;++j) {
+        if (i != j) {
+          // leave existing cross-covs as-is unless they are non-finite
+          if (!std::isfinite(P_(OFF_WAVE+i, OFF_WAVE+j))) P_(OFF_WAVE+i, OFF_WAVE+j) = T(0);
+        }
+      }
+    }
   }
 
   // Freeze wave rows in an NXx3 matrix
@@ -1402,6 +1463,7 @@ private:
     P_ = Tm * P_ * Tm.transpose();
     symmetrize_P_();
     clamp_P_diag_(T(1e-15));
+    sanitize_P_finite_();
     symmetrize_P_();
   }
 
