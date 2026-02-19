@@ -322,7 +322,7 @@ static inline Vector3f get_mag_bias_est_uT(const MekfT& mekf)
 }
 
 //  Main processing
-static void process_wave_file_for_tracker(const std::string &filename, float dt, bool with_mag)
+static void process_wave_file_for_tracker(const std::string &filename, float default_dt, bool with_mag)
 {
     auto parsed = WaveFileNaming::parse_to_params(filename);
     if (!parsed) return;
@@ -473,7 +473,19 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
     std::vector<float> dir_deg_hist, dir_unc_hist, dir_conf_hist, dir_amp_hist, dir_phase_hist;
     std::vector<int>   dir_sign_num_hist;
     
+    bool have_prev_time = false;
+    float prev_time = 0.0f;
+
     reader.for_each_record([&](const Wave_Data_Sample &rec) {
+        float dt = default_dt;
+        if (have_prev_time) {
+            const float dt_from_data = static_cast<float>(rec.time - prev_time);
+            if (std::isfinite(dt_from_data) && dt_from_data > 0.0f) {
+                dt = dt_from_data;
+            }
+        }
+        prev_time = static_cast<float>(rec.time);
+        have_prev_time = true;
 
         // Body-frame raw sensors (Z-up body from CSV)
         Vector3f acc_b(rec.imu.acc_bx, rec.imu.acc_by, rec.imu.acc_bz);
@@ -493,6 +505,9 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
         float p_ref_out = rec.imu.pitch_deg;
         float y_ref_out = rec.imu.yaw_deg;
 
+        // One time update per sample (propagate + accel update)
+        fusion.update(dt, gyr_meas_ned, acc_meas_ned, 35.0f);
+
         // Simulated magnetometer (BODY, then axis-map to NED body)
         if (with_mag) {
             // BMM150-style ODR, independent of whether the filter is using mag yet.
@@ -509,13 +524,10 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
                 }
                 mag_body_ned_hold = zu_to_ned(mag_b_enu);
 
-                // Wrapper decides if/when it’s allowed to use mag
+                // Feed mag after current IMU update so tuner/init gets synchronous acc/gyro context.
                 fusion.updateMag(mag_body_ned_hold);
             }
         }
-
-        // One time update per sample (propagate + accel update)
-        fusion.update(dt, gyr_meas_ned, acc_meas_ned, 35.0f);
         
         // Reference (world Z-up)
         Vector3f disp_ref(rec.wave.disp_x, rec.wave.disp_y, rec.wave.disp_z);
