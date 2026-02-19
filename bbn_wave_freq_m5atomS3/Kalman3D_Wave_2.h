@@ -751,6 +751,9 @@ public:
   // Time update
 
   void time_update(const Vec3& gyr_body, T Ts) {
+    if (!(Ts > T(0)) || !std::isfinite(Ts)) return;          // skip bad steps
+    Ts = std::min(Ts, T(0.1));                               // cap if you ever get stalls
+
     last_dt_ = Ts;
 
     // De-heel gyro into B'
