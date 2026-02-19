@@ -1,15 +1,15 @@
 #pragma once
 /*
+  Copyright (c) 2025  Mikhail Grushinskiy
+
   Kalman3D_Wave_2  (Broadband oscillator wave model + qMEKF attitude)
-  ================================================================
-  CONSISTENT with your OU Kalman3D_Wave conventions:
 
   - qref_ stores WORLD -> BODY' (virtual un-heeled frame B')
   - quaternion() returns BODY' -> WORLD (qref_.conjugate())
   - quaternion_boat() returns physical BODY -> WORLD by re-applying heel
   - Right-multiply quaternion updates: qref_ = qref_ ⊗ δq
   - Error-state attitude δθ is applied then cleared
-  - Structured base Qd path (Simpson + B(t) integrals) copied from OU
+  - Structured base Qd path (Simpson + B(t) integrals)
 
   Wave model (K modes), per mode k and per axis:
       p' = v
@@ -25,33 +25,10 @@
       (p1(3), v1(3), ..., pK(3), vK(3)),
       (b_a 3 optional) ]
 
-  Notes vs OU:
-    - OU had [v,p,S,a_w] + pseudo-meas on S to correct drift.
       Oscillators are mean-reverting in p/v, reducing integration drift naturally.
 
   Template parameters:
     T, KMODES, with_gyro_bias, with_accel_bias, with_mag
-
-  Fixes applied vs previous version:
-    1) Magnetometer update is now direction-only and tilt-compensated:
-       - project both measured and predicted field onto horizontal plane using predicted down_b,
-         normalize, and use robust Jacobian that accounts for projection+normalization.
-       This is far less fragile than raw 3D vector difference when magnitude changes.
-    2) Oscillator fallback branch now uses exp(-ζ ω t), not exp(-ω t).
-    3) Warmup gyro-bias learning is gated by a stationarity detector:
-       - only accumulates gyro as bias when both |ω| and |a_motion| are small.
-    4) When disabling the wave block, we also reset wave-wave covariance (and wave means) to avoid
-       re-enabling with stale mode correlations.
-    5) After time update, we clamp the full covariance diagonal to avoid rare negative/NaN drift.
-
-  OU regression fix (your issue #3):
-    - When wave_block_enabled_ == false, we do NOT merely set a_w = 0.
-      We additionally marginalize the missing (disabled) wave acceleration uncertainty into the
-      accel innovation covariance S:
-
-          S += R_wb() * Sigma_aw_disabled_world_ * R_wb().transpose();
-
-      and we still freeze wave rows in PCt/K, so disabled wave states cannot be nudged.
 */
 
 #ifdef EIGEN_NON_ARDUINO
@@ -69,7 +46,7 @@
   #define M_PI 3.14159265358979323846264338327950288
 #endif
 
-// ---------------------- Small helpers (consistent with OU) ----------------------
+// Small helpers
 
 template<typename T>
 static inline Eigen::Matrix<T,3,3> skew3(const Eigen::Matrix<T,3,1>& a) {
@@ -80,7 +57,7 @@ static inline Eigen::Matrix<T,3,3> skew3(const Eigen::Matrix<T,3,1>& a) {
   return S;
 }
 
-// Full exponential-map correction (Rodrigues in quaternion form). Same as OU.
+// Full exponential-map correction (Rodrigues in quaternion form). 
 template<typename T>
 inline Eigen::Quaternion<T> quat_from_delta_theta(const Eigen::Matrix<T,3,1>& dtheta) {
   const T theta = dtheta.norm();
@@ -111,7 +88,7 @@ inline Eigen::Quaternion<T> quat_from_delta_theta(const Eigen::Matrix<T,3,1>& dt
   return q;
 }
 
-// Helper: project symmetric NxN to PSD (same spirit as OU)
+// Helper: project symmetric NxN to PSD (same spirit as )
 template<typename T, int N>
 static inline void project_psd(Eigen::Matrix<T,N,N>& S, T eps = T(1e-12)) {
   S = T(0.5) * (S + S.transpose());
@@ -149,7 +126,7 @@ static inline void project_psd(Eigen::Matrix<T,N,N>& S, T eps = T(1e-12)) {
   S = T(0.5) * (S + S.transpose());
 }
 
-// ---------------------- Base (att+bias) exact-ish Qd helpers (from OU) ----------------------
+// Base (att+bias) exact-ish Qd helpers (from )
 
 template<typename T>
 static inline bool is_isotropic3_(const Eigen::Matrix<T,3,3>& S, T tol = T(1e-9)) {
@@ -160,7 +137,7 @@ static inline bool is_isotropic3_(const Eigen::Matrix<T,3,3>& S, T tol = T(1e-9)
   return (std::abs(a-mean)+std::abs(b-mean)+std::abs(c-mean)+off) <= tol*(T(1)+std::abs(mean));
 }
 
-// Rodrigues rotation and B(t) = -∫_0^t exp(-[ω]× τ) dτ  (consistent with OU)
+// Rodrigues rotation and B(t) = -∫_0^t exp(-[ω]× τ) dτ  (consistent with )
 template<typename T>
 static inline void rot_and_B_from_wt_(const Eigen::Matrix<T,3,1>& w, T t,
                                      Eigen::Matrix<T,3,3>& R,
@@ -247,7 +224,7 @@ static inline Eigen::Matrix<T,3,3> simpson_B_Q_BT_(const Eigen::Matrix<T,3,1>& w
   return (Tstep/T(6)) * (g0 + T(4)*g1 + g2);
 }
 
-// d/dω of (ω×(ω×r)) = (ω·r) I + ω rᵀ - 2 r ωᵀ  (from OU)
+// d/dω of (ω×(ω×r)) = (ω·r) I + ω rᵀ - 2 r ωᵀ
 template<typename T>
 static inline Eigen::Matrix<T,3,3> d_omega_x_omega_x_r_domega_(const Eigen::Matrix<T,3,1>& w,
                                                                const Eigen::Matrix<T,3,1>& r)
@@ -256,7 +233,7 @@ static inline Eigen::Matrix<T,3,3> d_omega_x_omega_x_r_domega_(const Eigen::Matr
   return Eigen::Matrix<T,3,3>::Identity()*s + (w * r.transpose()) - T(2) * (r * w.transpose());
 }
 
-// ---------------------- The filter ----------------------
+// The filter
 
 template <typename T = float, int KMODES = 3,
           bool with_gyro_bias = true, bool with_accel_bias = true, bool with_mag = true>
@@ -320,7 +297,7 @@ public:
     Racc_ = sigma_a_meas.array().square().matrix().asDiagonal();
     Rmag_ = sigma_m_meas.array().square().matrix().asDiagonal();
 
-    // Base process noise (same meaning as OU):
+    // Base process noise:
     Qg_  = sigma_g_rw.array().square().matrix().asDiagonal();
     if constexpr (with_gyro_bias) Qbg_ = Mat3::Identity() * b0;
 
@@ -347,7 +324,7 @@ public:
     // Default broadband wave params (user should retune)
     set_broadband_params(T(0.12), T(1.0));
 
-    // Defaults consistent with OU toggles
+    // Defaults
     use_exact_att_bias_Qd_ = true;
 
     // Warmup ON by default
@@ -357,7 +334,7 @@ public:
     update_unheel_trig_();
   }
 
-  // ---------------- Accessors (same convention as OU) ----------------
+  // Accessors
 
   [[nodiscard]] Eigen::Quaternion<T> quaternion() const { return qref_.conjugate(); } // BODY'->WORLD
 
@@ -395,7 +372,7 @@ public:
   const MeasDiag3& lastAccDiag() const noexcept { return last_acc_; }
   const MeasDiag3& lastMagDiag() const noexcept { return last_mag_; }
 
-  // ---------------- Config (matching OU toggles) ----------------
+  // Config
 
   void set_mag_world_ref(const Vec3& B_world) {
     if constexpr (with_mag) B_world_ref_ = B_world;
@@ -424,10 +401,10 @@ public:
     warmup_acc_stationary_thr_  = std::max(T(0), acc_motion_m_s2);
   }
 
-  // Toggle structured Qd for base block (same meaning as OU)
+  // Toggle structured Qd for base block
   void set_exact_att_bias_Qd(bool on) { use_exact_att_bias_Qd_ = on; }
 
-  // --- OU-style marginalization for disabled wave block ---
+  // marginalization for disabled wave block
   // Sets the assumed (stationary) WORLD-frame covariance of wave acceleration when the wave block is disabled.
   // If you don't call this, we auto-derive a diagonal estimate from the current oscillator params in
   // set_broadband_params() (using steady-state moments).
@@ -446,7 +423,7 @@ public:
     set_disabled_wave_accel_cov_world(S);
   }
 
-  // ---------------- Staged init controls ----------------
+  // Staged init controls
 
   void set_wave_block_enabled(bool on) {
     if (wave_block_enabled_ && !on) {
@@ -490,7 +467,7 @@ public:
   void set_warmup_mode(bool on) {
     warmup_mode_ = on;
 
-    // OU warmup: disable wave block + freeze BA updates
+    // warmup: disable wave block + freeze BA updates
     set_wave_block_enabled(!on);
     set_acc_bias_updates_enabled(!on);
 
@@ -548,7 +525,7 @@ public:
       set_warmup_mode(false);
     }
 
-    // --- Warmup gyro bias learning (gated) ---
+    // Warmup gyro bias learning (gated)
     if constexpr (with_gyro_bias) {
       const Vec3 gyr = deheel_vector_(gyr_body);
 
@@ -574,7 +551,7 @@ public:
     }
   }
 
-  // ---------------- IMU lever arm ----------------
+  // IMU lever arm
 
   void set_imu_lever_arm_body(const Vec3& r_b_phys) {
     r_imu_wrt_cog_body_phys_ = r_b_phys;
@@ -586,7 +563,7 @@ public:
   }
   void set_alpha_smoothing_tau(T tau_sec) { alpha_smooth_tau_ = std::max(T(0), tau_sec); }
 
-  // ---------------- Heel update ----------------
+  // Heel update
 
   void update_wind_heel(T heel_rad) {
     const T old = wind_heel_rad_;
@@ -596,7 +573,7 @@ public:
     update_unheel_trig_();
   }
 
-  // ---------------- Initialization from acc/mag ----------------
+  // Initialization from acc/mag
 
   void initialize_from_acc_mag(const Vec3& acc_body, const Vec3& mag_body) {
     const Vec3 acc = deheel_vector_(acc_body);
@@ -658,7 +635,7 @@ public:
     set_warmup_mode(true);
   }
 
-  // ---------------- Wave tuning ----------------
+  // Wave tuning
 
   void set_broadband_params(T f0_hz, T Hs_m, T zeta_mid = T(0.08), T horiz_scale = T(0.35)) {
     const T w0 = T(2)*T(M_PI)*std::max(T(1e-4), f0_hz);
@@ -700,7 +677,7 @@ public:
       q_axis_[k].z() = qk;
     }
 
-    // Auto-derive a diagonal stationary WORLD-frame accel covariance for OU-style marginalization
+    // Auto-derive a diagonal stationary WORLD-frame accel covariance for  marginalization
     // when wave_block_enabled_ == false.
     //
     // For each axis independently (since q_axis_ is per-axis):
@@ -726,7 +703,7 @@ public:
     Sigma_aw_disabled_world_(2,2) = var_aw.z();
   }
 
-  // ---------------- Time update ----------------
+  // Time update
 
   void time_update(const Vec3& gyr_body, T Ts) {
     last_dt_ = Ts;
@@ -759,7 +736,7 @@ public:
     qref_ = qref_ * quat_from_delta_theta<T>((omega_b * Ts).eval());
     qref_.normalize();
 
-    // -------- Base covariance propagation --------
+    //----- Base covariance propagation-----
     F_AA_.setIdentity();
     const Vec3 w = omega_b;
     const T omega = w.norm();
@@ -828,7 +805,7 @@ public:
       Paa.noalias() += Q_AA_;
     }
 
-    // -------- Wave block propagation --------
+    //----- Wave block propagation-----
     if (wave_block_enabled_) {
       for (int k=0;k<KMODES;++k) {
         // Build per-axis Phi2 and Qd2, then assemble Phi6/Qd6
@@ -881,7 +858,7 @@ public:
       }
     }
 
-    // -------- Accel bias RW --------
+    //----- Accel bias RW-----
     if constexpr (with_accel_bias) {
       auto Pba = P_.template block<3,3>(OFF_BA,OFF_BA);
       if (acc_bias_updates_enabled_) Pba.noalias() += Q_bacc_ * Ts;
@@ -899,7 +876,7 @@ public:
     symmetrize_P_();
   }
 
-  // ---------------- Measurement update: accelerometer (OU-style Joseph) ----------------
+  // Measurement update: accelerometer ( Joseph)
 
   void measurement_update_acc_only(const Vec3& acc_meas_body, T tempC = tempC_ref) {
     last_acc_ = MeasDiag3{};
@@ -917,7 +894,7 @@ public:
                       +  last_gyr_bias_corrected_.cross(last_gyr_bias_corrected_.cross(r_imu_bprime));
     }
 
-    // J_bg (copied meaning from OU)
+    // J_bg
     Mat3 J_bg = Mat3::Zero();
     if constexpr (with_gyro_bias) {
       if (use_imu_lever_arm_) {
@@ -962,7 +939,7 @@ public:
     Mat3& S = S_scratch_;
     S = Racc_;
 
-    // --- OU regression fix (#3): if wave block disabled, marginalize its missing accel uncertainty into S ---
+    // if wave block disabled, marginalize its missing accel uncertainty into S
     // This makes accel innovations consistent even though we set aw=0 in the mean model.
     if (!wave_block_enabled_) {
       S.noalias() += R_wb() * Sigma_aw_disabled_world_ * R_wb().transpose();
@@ -1116,7 +1093,7 @@ public:
     last_acc_.accepted = true;
   }
 
-  // ---------------- Measurement update: magnetometer (robust tilt-compensated direction-only) ----------------
+  // Measurement update: magnetometer (robust tilt-compensated direction-only)
 
   void measurement_update_mag_only(const Vec3& mag_meas_body) {
     last_mag_ = MeasDiag3{};
@@ -1238,7 +1215,7 @@ public:
   }
 
 private:
-  // ---------------- Constants / state ----------------
+  // Constants / state
   const T gravity_magnitude_ = T(STD_GRAVITY);
 
   Eigen::Quaternion<T> qref_;        // WORLD -> BODY'
@@ -1271,7 +1248,7 @@ private:
   bool warmup_mode_ = true;
   bool use_exact_att_bias_Qd_ = true;
 
-  // OU-style marginalization term when wave block disabled:
+  //  marginalization term when wave block disabled:
   // WORLD-frame covariance of (unknown / marginalized) wave acceleration.
   Mat3 Sigma_aw_disabled_world_ = Mat3::Identity() * T(0.0);
 
@@ -1327,7 +1304,7 @@ private:
   MatX3  K_scratch_;
 
 private:
-  // ---------------- Frame helpers ----------------
+  // Frame helpers
   Mat3 R_wb() const { return qref_.toRotationMatrix(); }              // WORLD->BODY'
   Mat3 R_bw() const { return qref_.toRotationMatrix().transpose(); }  // BODY'->WORLD
 
@@ -1404,7 +1381,7 @@ private:
     symmetrize_P_();
   }
 
-  // ---------------- Heel / de-heel ----------------
+  // Heel / de-heel
 
   EIGEN_STRONG_INLINE void update_unheel_trig_() {
     if (std::abs(wind_heel_rad_) < T(1e-9)) {
@@ -1468,7 +1445,7 @@ private:
     symmetrize_P_();
   }
 
-  // ---------------- Oscillator discretization ----------------
+  // Oscillator discretization
   // State per axis: [p; v], dynamics:
   //   p' = v
   //   v' = -w^2 p - 2 z w v + ξ(t),  with E[ξξ]=q δ(t)
