@@ -77,11 +77,13 @@ constexpr float MAX_SIGMA_A = 6.0f;
 constexpr float MIN_R_S     = 0.4f;
 constexpr float MAX_R_S     = 35.0f;
 
-constexpr float ADAPT_TAU_SEC            = 1.5f;
-constexpr float ADAPT_EVERY_SECS         = 0.1f;
-constexpr float ADAPT_RS_MULT            = 5.0f;   // dimensionless 
-constexpr float ONLINE_TUNE_WARMUP_SEC   = 5.0f;
-constexpr float MAG_DELAY_SEC            = 8.0f;
+constexpr float ADAPT_TAU_SEC              = 1.5f;
+constexpr float ADAPT_EVERY_SECS           = 0.1f;
+constexpr float ADAPT_RS_MULT              = 5.0f;   // dimensionless 
+constexpr float ONLINE_TUNE_WARMUP_SEC     = 5.0f;
+constexpr float MAG_DELAY_SEC              = 8.0f;
+
+constexpr float HARMONIC_POS_SIGMA_AT_REF  = 12.0f;  // Sigma m for harmonic position correction uncertainty (at 8 m ref wave)
 
 // Frequency smoother dt (SeaStateFusionFilter is designed for 240 Hz)
 constexpr float FREQ_SMOOTHER_DT = 1.0f / 240.0f;
@@ -1205,7 +1207,7 @@ private:
     int   harmonic_position_update_period_steps_ = 3;
     int   harmonic_position_counter_ = 0;
     float harmonic_position_ref_envelope_m_ = 8.0f;
-    float harmonic_position_sigma_m_at_ref_env_ = 25.0f;
+    float harmonic_position_sigma_m_at_ref_env_ = HARMONIC_POS_SIGMA_AT_REF;
     float harmonic_position_sigma_min_m_ = 1.0f;
     int   harmonic_despike_window_ = 5;
     float harmonic_despike_threshold_ = 4.0f;
@@ -1306,7 +1308,7 @@ public:
         int   harmonic_position_update_period_steps = 3;
         // Baseline harmonic pseudo-position uncertainty [m] at a wave
         // envelope of 8 m. Runtime sigma scales linearly with envelope.
-        float harmonic_position_sigma_m = 75.0f;
+        float harmonic_position_sigma_m = HARMONIC_POS_SIGMA_AT_REF;
 
         // Sensor noise
         Eigen::Vector3f sigma_a = Eigen::Vector3f(0.2f,0.2f,0.2f);
