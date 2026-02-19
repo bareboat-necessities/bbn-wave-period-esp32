@@ -901,7 +901,7 @@ static void process_wave_file_for_tracker(const std::string &filename, float def
                 auto pct = [&](int n){ return (nWin > 0) ? (100.0 * double(n) / double(nWin)) : 0.0; };
 
                 std::cout << "=== Direction Report (last 60 s only) for " << outname << " ===\n";
-                std::cout << "window_s: " << (float(i1 - i0) * dt)
+                std::cout << "window_s: " << (float(i1 - i0) * dt_last)
                           << " samples: " << (i1 - i0) << "\n";
                 std::cout << "freq_hz: mean=" << mean_vec(vf)
                           << " median=" << median_vec(vf)
