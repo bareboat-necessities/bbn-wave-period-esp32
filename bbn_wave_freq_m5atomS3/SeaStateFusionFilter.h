@@ -3,16 +3,7 @@
   Copyright (c) 2025  Mikhail Grushinskiy
   Released under the MIT License
 
-  SeaStateFusionFilter (DROP-IN FIXED + CLEANED, NO R_S)
-
-  Fixes applied (no behavior regressions intended):
-  - FIX: initialize_from_acc() argument naming + usage: it's BODY-frame accel, not "world".
-  - FIX: initialize_ext() constructor signature: removed bogus R_S_noise arg (did not match Kalman3D_Wave_2).
-  - FIX: Use Kalman3D_Wave_2 warmup mode as the single source of truth for freeze behavior:
-         enterCold_() -> set_warmup_mode(true), enterLive_() -> set_warmup_mode(false).
-  - FIX: apply_ou_tune_() now actually calls into Kalman3D_Wave_2
-         (set_aw_time_constant / set_aw_stationary_std) with finite guards.
-  - SAFETY: All setter calls are guarded by mekf_ and finite checks.
+  SeaStateFusionFilter 
 
   Cleanups:
   - REMOVED: envelope-based corrections.
@@ -518,17 +509,10 @@ private:
     if (!mekf_) return;
 
     const float tau = std::min(std::max(tune_.tau_applied, min_tau_s_), max_tau_s_);
-    if (std::isfinite(tau) && tau > 0.0f) {
-      mekf_->set_aw_time_constant(tau);
-    }
 
     const float sigma_floor = std::max(0.05f, acc_noise_floor_sigma_);
     const float sZ = std::max(sigma_floor, tune_.sigma_applied);
     const float sH = sZ * S_factor_;
-
-    if (std::isfinite(sH) && std::isfinite(sZ) && sH > 0.0f && sZ > 0.0f) {
-      mekf_->set_aw_stationary_std(Eigen::Vector3f(sH, sH, sZ));
-    }
   }
 
   void update_tuner_(float dt, float a_vert_inertial_up) {
