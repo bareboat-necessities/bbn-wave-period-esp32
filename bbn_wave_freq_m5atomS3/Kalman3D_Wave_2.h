@@ -395,6 +395,21 @@ public:
     if constexpr (with_accel_bias) x_.template segment<3>(OFF_BA) = b0;
   }
 
+  // Set accelerometer measurement noise (BODY' frame), as per-axis std-dev.
+  void set_Racc(const Vec3& sigma_a_meas) {
+    Racc_ = sigma_a_meas.array().max(T(0)).square().matrix().asDiagonal();
+    // keep sane
+    for (int i=0;i<3;++i) Racc_(i,i) = std::max(Racc_(i,i), T(1e-12));
+  }
+
+  // Set full covariance directly (will be symmetrized + PSD-projected).
+  void set_Racc(const Mat3& Racc) {
+    Racc_ = T(0.5) * (Racc + Racc.transpose());
+    for (int i=0;i<3;++i) Racc_(i,i) = std::max(Racc_(i,i), T(1e-12));
+    project_psd<T,3>(Racc_, T(1e-18));
+    Racc_ = T(0.5) * (Racc_ + Racc_.transpose());
+  }
+
   // Stationarity gating for warmup gyro-bias learning
   void set_warmup_stationary_thresholds(T gyro_rad_s, T acc_motion_m_s2) {
     warmup_gyro_stationary_thr_ = std::max(T(0), gyro_rad_s);
