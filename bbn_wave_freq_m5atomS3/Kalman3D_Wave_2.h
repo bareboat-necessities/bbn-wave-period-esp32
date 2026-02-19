@@ -57,7 +57,7 @@ static inline Eigen::Matrix<T,3,3> skew3(const Eigen::Matrix<T,3,1>& a) {
   return S;
 }
 
-// Full exponential-map correction (Rodrigues in quaternion form). 
+// Full exponential-map correction (Rodrigues in quaternion form).
 template<typename T>
 inline Eigen::Quaternion<T> quat_from_delta_theta(const Eigen::Matrix<T,3,1>& dtheta) {
   const T theta = dtheta.norm();
@@ -584,6 +584,14 @@ public:
 
     const Vec3 acc_n = acc / an;
 
+    // (4) Convention / construction note:
+    // WORLD is NED (+X North, +Y East, +Z Down).
+    // We build WORLD basis vectors expressed in BODY' coordinates:
+    //   z_world_b = Down expressed in BODY'   (from accelerometer)
+    //   x_world_b = magnetic-north direction (mag projected horizontal)
+    //   y_world_b = East = z × x
+    // Assemble R_wb = [x_world_b, y_world_b, z_world_b] so that qref_ maps WORLD -> BODY'.
+    //
     // WORLD axes expressed in BODY coords
     const Vec3 z_world = -acc_n; // world +Z(down) expressed in body
     Vec3 mag_h = mag - (mag.dot(z_world))*z_world;
@@ -916,11 +924,18 @@ public:
       }
     }
 
-    // accel bias term (mean always includes BA, even if frozen)
+    // Accel bias handling:
+    // Mode A (normal): subtract BA mean and allow BA update.
+    // Mode B (frozen-but-uncertain): KEEP BA uncertainty in S (via Pba/Ptba below),
+    // but do NOT subtract the estimated BA mean when BA updates are disabled,
+    // otherwise you inject an un-updatable offset into the mean model.
+    // We still allow fixed calibration-only terms (e.g., temperature compensation).
     Vec3 ba_term = Vec3::Zero();
     if constexpr (with_accel_bias) {
       const Vec3 ba0 = x_.template segment<3>(OFF_BA);
-      ba_term = ba0 + k_a_ * (tempC - tempC_ref);
+      const Vec3 temp_term = k_a_ * (tempC - tempC_ref);
+      if (acc_bias_updates_enabled_) ba_term = ba0 + temp_term; // Mode A
+      else                          ba_term = temp_term;        // Mode B
     }
 
     const Vec3 g_world(0,0,+gravity_magnitude_);
@@ -949,7 +964,8 @@ public:
     const Mat3 Ptt = P_.template block<3,3>(OFF_DTH,OFF_DTH);
     S.noalias() += J_att * Ptt * J_att.transpose();
 
-    // BA (J_ba = I): marginalized through S, but only allowed to UPDATE when use_ba==true
+    // BA (J_ba = I): always contributes uncertainty to S (Mode B too),
+    // but only allowed to UPDATE when use_ba==true (Mode A).
     if constexpr (with_accel_bias) {
       const Mat3 Pba  = P_.template block<3,3>(OFF_BA,OFF_BA);
       const Mat3 Ptba = P_.template block<3,3>(OFF_DTH,OFF_BA);
@@ -1165,7 +1181,16 @@ public:
     const Mat3 J_att = du_dv * Jv;
 
     Mat3& S = S_scratch_;
-    S = Rmag_;
+
+    // (2) Direction-only residual uses dimensionless unit vectors (m_h, b_h),
+    // so we must NOT use raw magnetometer covariance directly (units mismatch).
+    // Approximate direction-domain noise as isotropic:
+    //   var_dir ≈ mean(var_raw) / |m_proj|^2
+    // where |m_proj| is the pre-normalization horizontal magnitude.
+    const T var_raw_mean = (Rmag_(0,0) + Rmag_(1,1) + Rmag_(2,2)) / T(3);
+    const T denom = std::max(T(1e-12), mnorm*mnorm);
+    const T var_dir = std::max(T(1e-18), var_raw_mean / denom);
+    S = Mat3::Identity() * var_dir;
 
     const Mat3 Ptt = P_.template block<3,3>(OFF_DTH,OFF_DTH);
     S.noalias() += J_att * Ptt * J_att.transpose();
@@ -1176,7 +1201,7 @@ public:
     Eigen::LDLT<Mat3> ldlt;
     ldlt.compute(S);
     if (ldlt.info() != Eigen::Success) {
-      const T bump = std::max(std::numeric_limits<T>::epsilon(), T(1e-6)*(Rmag_.norm()+T(1)));
+      const T bump = std::max(std::numeric_limits<T>::epsilon(), T(1e-6)*(S.norm()+T(1)));
       S.diagonal().array() += bump;
       ldlt.compute(S);
       if (ldlt.info() != Eigen::Success) return;
