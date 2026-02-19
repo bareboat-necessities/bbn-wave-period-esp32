@@ -206,6 +206,19 @@ public:
 
     // MEKF updates
     mekf_->time_update(gyro_body_ned, dt);
+
+    // Grace period after wave enable: temporarily inflate accel noise to avoid the first-enable kick
+    if (wave_enable_grace_sec_ > 0.0f) {
+      wave_enable_grace_sec_ = std::max(0.0f, wave_enable_grace_sec_ - dt);
+    
+      if (Racc_nominal_hold_.allFinite() && Racc_nominal_hold_.maxCoeff() > 0.0f) {
+        mekf_->set_Racc((3.0f * Racc_nominal_hold_).eval());  // 3x sigma -> 9x variance
+      }
+      if (wave_enable_grace_sec_ <= 0.0f) {
+        mekf_->set_Racc(Racc_nominal_hold_.eval());           // restore
+      }
+    }
+
     mekf_->measurement_update_acc_only(acc_body_ned, tempC);
 
     // Tilt reset gate
@@ -439,6 +452,9 @@ private:
     float fc_hz       = 1.0f;
     bool  initialized = false;
 
+    float wave_enable_grace_sec_ = 0.0f;
+    Eigen::Vector3f Racc_nominal_hold_ = Eigen::Vector3f::Constant(NAN);
+
     void setCutoff(float fc) {
       if (std::isfinite(fc) && fc > 0.0f) fc_hz = fc;
     }
@@ -650,7 +666,9 @@ private:
 
     mekf_->set_warmup_mode(false);
     mekf_->set_wave_block_enabled(enable_linear_block_);
-
+    wave_enable_grace_sec_ = 2.0f;             
+    Racc_nominal_hold_ = Racc_nominal_;        // keep a copy
+    
     if (freeze_acc_bias_until_live_) {
       const bool allow_bias = !accel_bias_locked_;
       mekf_->set_acc_bias_updates_enabled(allow_bias);
