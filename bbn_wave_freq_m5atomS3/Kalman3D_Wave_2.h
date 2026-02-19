@@ -328,7 +328,7 @@ public:
     use_exact_att_bias_Qd_ = true;
 
     // Warmup ON by default
-    (true);
+    set_warmup_mode(true);
 
     // Ensure trig consistent
     update_unheel_trig_();
