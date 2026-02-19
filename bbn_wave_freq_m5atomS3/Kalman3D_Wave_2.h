@@ -30,6 +30,10 @@
         * Wave states remain zero and their covariance is kept tiny.
     - After sufficient motion (distance and time thresholds), warm‑up mode is
       automatically turned off → wave block enabled, full filter runs.
+
+  Memory optimizations:
+    - All large temporary matrices are stored as class members to avoid stack
+      allocation in embedded environments.
 */
 
 #ifdef EIGEN_NON_ARDUINO
@@ -522,31 +526,29 @@ public:
     // Base covariance propagate
     Mat3 Fth = Mat3::Identity() - skew3<T>(omega_b) * Ts;
 
-    Eigen::Matrix<T,BASE_N,BASE_N> F_AA; F_AA.setIdentity();
-    F_AA.template block<3,3>(0,0) = Fth;
+    F_AA_.setIdentity();
+    F_AA_.template block<3,3>(0,0) = Fth;
     if constexpr (with_gyro_bias) {
-      F_AA.template block<3,3>(0,3) = -Mat3::Identity() * Ts;
+      F_AA_.template block<3,3>(0,3) = -Mat3::Identity() * Ts;
     }
 
-    Eigen::Matrix<T,BASE_N,BASE_N> Q_AA; Q_AA.setZero();
-    Q_AA.template block<3,3>(0,0) = Qg_ * Ts;
+    Q_AA_.setZero();
+    Q_AA_.template block<3,3>(0,0) = Qg_ * Ts;
     if constexpr (with_gyro_bias) {
-      Q_AA.template block<3,3>(3,3) = Qbg_ * Ts;
+      Q_AA_.template block<3,3>(3,3) = Qbg_ * Ts;
     }
 
     {
       auto Paa = P_.template block<BASE_N,BASE_N>(0,0);
-      Eigen::Matrix<T,BASE_N,BASE_N> tmp = F_AA * Paa;
-      Paa = tmp * F_AA.transpose() + Q_AA;
-      P_.template block<BASE_N,BASE_N>(0,0) = Paa;
+      tmp_AA_.noalias() = F_AA_ * Paa;
+      Paa = tmp_AA_ * F_AA_.transpose() + Q_AA_;
     }
 
     // Wave block (only if enabled)
     if (wave_block_enabled_) {
       for (int k=0;k<KMODES;++k) {
-        Eigen::Matrix<T,2,2> Phi2[3], Qd2[3];
         for (int ax=0; ax<3; ++ax) {
-          discretize_osc_axis_(Ts, omega_[k], zeta_[k], q_axis_[k](ax), Phi2[ax], Qd2[ax]);
+          discretize_osc_axis_(Ts, omega_[k], zeta_[k], q_axis_[k](ax), Phi2_[ax], Qd2_[ax]);
         }
 
         // mean
@@ -554,18 +556,18 @@ public:
         Vec3 v = x_.template segment<3>(OFF_Vk(k));
         for (int ax=0; ax<3; ++ax) {
           Eigen::Matrix<T,2,1> xv; xv << p(ax), v(ax);
-          xv = Phi2[ax] * xv;
+          xv = Phi2_[ax] * xv;
           p(ax) = xv(0);
           v(ax) = xv(1);
         }
         x_.template segment<3>(OFF_Pk(k)) = p;
         x_.template segment<3>(OFF_Vk(k)) = v;
 
-        Eigen::Matrix<T,6,6> Phi6; Phi6.setZero();
-        Eigen::Matrix<T,6,6> Qd6;  Qd6.setZero();
+        Phi6_.setZero();
+        Qd6_.setZero();
         for (int ax=0; ax<3; ++ax) {
-          Phi6.template block<2,2>(2*ax,2*ax) = Phi2[ax];
-          Qd6 .template block<2,2>(2*ax,2*ax) = Qd2[ax];
+          Phi6_.template block<2,2>(2*ax,2*ax) = Phi2_[ax];
+          Qd6_ .template block<2,2>(2*ax,2*ax) = Qd2_[ax];
         }
 
         const int offk = OFF_Pk(k);
@@ -573,25 +575,22 @@ public:
         // P_kk
         {
           auto Pkk = P_.template block<6,6>(offk, offk);
-          Eigen::Matrix<T,6,6> tmp = Phi6 * Pkk;
-          Pkk = tmp * Phi6.transpose() + Qd6;
-          P_.template block<6,6>(offk, offk) = Pkk;
+          tmp6_.noalias() = Phi6_ * Pkk;
+          Pkk = tmp6_ * Phi6_.transpose() + Qd6_;
         }
 
         // Cross with base
         {
           auto P_Ak = P_.template block<BASE_N,6>(0, offk);
-          Eigen::Matrix<T,BASE_N,6> tmp = F_AA * P_Ak;
-          P_Ak = tmp * Phi6.transpose();
-          P_.template block<BASE_N,6>(0, offk) = P_Ak;
+          tmp_AA_.template block<BASE_N,6>(0,0).noalias() = F_AA_ * P_Ak; // reuse tmp_AA_ as BASE_Nx6
+          P_Ak = tmp_AA_.template block<BASE_N,6>(0,0) * Phi6_.transpose();
           P_.template block<6,BASE_N>(offk, 0) = P_Ak.transpose();
         }
 
         // Cross with BA
         if constexpr (with_accel_bias) {
           auto P_BAk = P_.template block<3,6>(OFF_BA, offk);
-          P_BAk = P_BAk * Phi6.transpose();
-          P_.template block<3,6>(OFF_BA, offk) = P_BAk;
+          P_BAk = P_BAk * Phi6_.transpose();
           P_.template block<6,3>(offk, OFF_BA) = P_BAk.transpose();
         }
       }
@@ -605,8 +604,7 @@ public:
 
       // Cross BA with base
       auto P_Aba = P_.template block<BASE_N,3>(0, OFF_BA);
-      P_Aba = F_AA * P_Aba;
-      P_.template block<BASE_N,3>(0, OFF_BA) = P_Aba;
+      P_Aba = F_AA_ * P_Aba;
       P_.template block<3,BASE_N>(OFF_BA, 0) = P_Aba.transpose();
     }
 
@@ -643,16 +641,16 @@ public:
     const Vec3 f_cog_b = R_wb() * (aw - g_world);
     const Mat3 J_att = -skew3<T>(f_cog_b);
 
-    Mat3 S = Racc_;
+    S_acc_ = Racc_;
     const Mat3 Ptt = P_.template block<3,3>(OFF_DTH, OFF_DTH);
-    S.noalias() += J_att * Ptt * J_att.transpose();
+    S_acc_.noalias() += J_att * Ptt * J_att.transpose();
 
     if constexpr (with_accel_bias) {
       const Mat3 Pba  = P_.template block<3,3>(OFF_BA, OFF_BA);
       const Mat3 Ptba = P_.template block<3,3>(OFF_DTH, OFF_BA);
-      S.noalias() += Pba;
-      S.noalias() += J_att * Ptba;
-      S.noalias() += Ptba.transpose() * J_att.transpose();
+      S_acc_.noalias() += Pba;
+      S_acc_.noalias() += J_att * Ptba;
+      S_acc_.noalias() += Ptba.transpose() * J_att.transpose();
     }
 
     for (int k=0;k<KMODES;++k) {
@@ -671,39 +669,39 @@ public:
       const Mat3 Ptp = P_.template block<3,3>(OFF_DTH, op);
       const Mat3 Ptv = P_.template block<3,3>(OFF_DTH, ov);
 
-      S.noalias() += Jp * Ppp * Jp.transpose();
-      S.noalias() += Jv * Pvv * Jv.transpose();
-      S.noalias() += Jp * Ppv * Jv.transpose();
-      S.noalias() += Jv * Ppv.transpose() * Jp.transpose();
+      S_acc_.noalias() += Jp * Ppp * Jp.transpose();
+      S_acc_.noalias() += Jv * Pvv * Jv.transpose();
+      S_acc_.noalias() += Jp * Ppv * Jv.transpose();
+      S_acc_.noalias() += Jv * Ppv.transpose() * Jp.transpose();
 
-      S.noalias() += J_att * Ptp * Jp.transpose();
-      S.noalias() += Jp * Ptp.transpose() * J_att.transpose();
-      S.noalias() += J_att * Ptv * Jv.transpose();
-      S.noalias() += Jv * Ptv.transpose() * J_att.transpose();
+      S_acc_.noalias() += J_att * Ptp * Jp.transpose();
+      S_acc_.noalias() += Jp * Ptp.transpose() * J_att.transpose();
+      S_acc_.noalias() += J_att * Ptv * Jv.transpose();
+      S_acc_.noalias() += Jv * Ptv.transpose() * J_att.transpose();
 
       if constexpr (with_accel_bias) {
         const Mat3 Pbap = P_.template block<3,3>(OFF_BA, op);
         const Mat3 Pbav = P_.template block<3,3>(OFF_BA, ov);
-        S.noalias() += Pbap * Jp.transpose();
-        S.noalias() += Jp * Pbap.transpose();
-        S.noalias() += Pbav * Jv.transpose();
-        S.noalias() += Jv * Pbav.transpose();
+        S_acc_.noalias() += Pbap * Jp.transpose();
+        S_acc_.noalias() += Jp * Pbap.transpose();
+        S_acc_.noalias() += Pbav * Jv.transpose();
+        S_acc_.noalias() += Jv * Pbav.transpose();
       }
     }
 
     Eigen::LDLT<Mat3> ldlt;
-    ldlt.compute(S);
+    ldlt.compute(S_acc_);
     if (ldlt.info() != Eigen::Success) return;
 
-    last_acc_.S = S;
+    last_acc_.S = S_acc_;
     last_acc_.nis = r.dot(ldlt.solve(r));
 
-    MatX3 PCt; PCt.setZero();
-    PCt.noalias() += P_.template block<NX,3>(0, OFF_DTH) * J_att.transpose();
+    PCt_acc_.setZero();
+    PCt_acc_.noalias() += P_.template block<NX,3>(0, OFF_DTH) * J_att.transpose();
 
     if constexpr (with_accel_bias) {
       if (acc_bias_updates_enabled_) {
-        PCt.noalias() += P_.template block<NX,3>(0, OFF_BA); // J_ba = I
+        PCt_acc_.noalias() += P_.template block<NX,3>(0, OFF_BA); // J_ba = I
       }
     }
 
@@ -712,18 +710,17 @@ public:
       const T ze = zeta_[k];
       const Mat3 Jp = R_wb() * (-(om*om) * Mat3::Identity());
       const Mat3 Jv = R_wb() * (-(T(2)*ze*om) * Mat3::Identity());
-      PCt.noalias() += P_.template block<NX,3>(0, OFF_Pk(k)) * Jp.transpose();
-      PCt.noalias() += P_.template block<NX,3>(0, OFF_Vk(k)) * Jv.transpose();
+      PCt_acc_.noalias() += P_.template block<NX,3>(0, OFF_Pk(k)) * Jp.transpose();
+      PCt_acc_.noalias() += P_.template block<NX,3>(0, OFF_Vk(k)) * Jv.transpose();
     }
 
-    MatX3 K;
-    K.noalias() = PCt * ldlt.solve(Mat3::Identity());
+    K_acc_.noalias() = PCt_acc_ * ldlt.solve(Mat3::Identity());
 
-    x_.noalias() += K * r;
+    x_.noalias() += K_acc_ * r;
 
-    const MatX KSKt  = K * S * K.transpose();
-    const MatX KPCtT = K * PCt.transpose();
-    P_ = P_ - KPCtT - KPCtT.transpose() + KSKt;
+    KSKt_.noalias() = K_acc_ * S_acc_ * K_acc_.transpose();
+    KPCtT_.noalias() = K_acc_ * PCt_acc_.transpose();
+    P_ = P_ - KPCtT_ - KPCtT_.transpose() + KSKt_;
     symmetrize_P_();
 
     applyQuaternionCorrectionFromErrorState_();
@@ -755,28 +752,27 @@ public:
 
       const Mat3 J_att = -skew3<T>(v2hat);
 
-      Mat3 S = Rmag_;
+      S_mag_ = Rmag_;
       const Mat3 Ptt = P_.template block<3,3>(OFF_DTH, OFF_DTH);
-      S.noalias() += J_att * Ptt * J_att.transpose();
+      S_mag_.noalias() += J_att * Ptt * J_att.transpose();
 
-      MatX3 PCt; PCt.setZero();
-      PCt.noalias() += P_.template block<NX,3>(0, OFF_DTH) * J_att.transpose();
+      PCt_mag_.setZero();
+      PCt_mag_.noalias() += P_.template block<NX,3>(0, OFF_DTH) * J_att.transpose();
 
       Eigen::LDLT<Mat3> ldlt;
-      ldlt.compute(S);
+      ldlt.compute(S_mag_);
       if (ldlt.info() != Eigen::Success) return;
 
-      last_mag_.S = S;
+      last_mag_.S = S_mag_;
       last_mag_.nis = r.dot(ldlt.solve(r));
 
-      MatX3 K;
-      K.noalias() = PCt * ldlt.solve(Mat3::Identity());
+      K_mag_.noalias() = PCt_mag_ * ldlt.solve(Mat3::Identity());
 
-      x_.noalias() += K * r;
+      x_.noalias() += K_mag_ * r;
 
-      const MatX KSKt  = K * S * K.transpose();
-      const MatX KPCtT = K * PCt.transpose();
-      P_ = P_ - KPCtT - KPCtT.transpose() + KSKt;
+      KSKt_mag_.noalias() = K_mag_ * S_mag_ * K_mag_.transpose();
+      KPCtT_mag_.noalias() = K_mag_ * PCt_mag_.transpose();
+      P_ = P_ - KPCtT_mag_ - KPCtT_mag_.transpose() + KSKt_mag_;
       symmetrize_P_();
 
       applyQuaternionCorrectionFromErrorState_();
@@ -852,6 +848,32 @@ private:
 
   MeasDiag3 last_acc_;
   MeasDiag3 last_mag_;
+
+  // ===== Temporary matrices (memory optimizations) =====
+  // Time update
+  Eigen::Matrix<T,BASE_N,BASE_N> F_AA_;
+  Eigen::Matrix<T,BASE_N,BASE_N> Q_AA_;
+  Eigen::Matrix<T,BASE_N,BASE_N> tmp_AA_;          // general-purpose BASE_N x BASE_N temp
+  // Wave block
+  Eigen::Matrix<T,6,6> Phi6_;
+  Eigen::Matrix<T,6,6> Qd6_;
+  Eigen::Matrix<T,6,6> tmp6_;                       // general-purpose 6x6 temp
+  Eigen::Matrix<T,2,2> Phi2_[3];                    // per-axis state transition
+  Eigen::Matrix<T,2,2> Qd2_[3];                     // per-axis process noise
+
+  // Acc update
+  Mat3 S_acc_;
+  MatX3 PCt_acc_;
+  MatX3 K_acc_;
+  MatX KSKt_;
+  MatX KPCtT_;
+
+  // Mag update
+  Mat3 S_mag_;
+  MatX3 PCt_mag_;
+  MatX3 K_mag_;
+  MatX KSKt_mag_;
+  MatX KPCtT_mag_;
 
 private:
   Mat3 R_wb() const { return qref_.toRotationMatrix(); }             // world->body'
