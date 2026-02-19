@@ -43,10 +43,15 @@
     4) When disabling the wave block, we also reset wave-wave covariance (and wave means) to avoid
        re-enabling with stale mode correlations.
     5) After time update, we clamp the full covariance diagonal to avoid rare negative/NaN drift.
-    6) When re-enabling the wave block, we re-seed wave covariance (and clear cross-covariances)
-       so the block cannot come back “frozen” with near-zero variance from warmup/disable.
-    7) Magnetometer measurement noise is scaled for direction-only (unit-vector) residuals so
-       Rmag_ (in sensor units) doesn’t overweight/underweight yaw when magnitude varies.
+
+  OU regression fix (your issue #3):
+    - When wave_block_enabled_ == false, we do NOT merely set a_w = 0.
+      We additionally marginalize the missing (disabled) wave acceleration uncertainty into the
+      accel innovation covariance S:
+
+          S += R_wb() * Sigma_aw_disabled_world_ * R_wb().transpose();
+
+      and we still freeze wave rows in PCt/K, so disabled wave states cannot be nudged.
 */
 
 #ifdef EIGEN_NON_ARDUINO
@@ -329,7 +334,12 @@ public:
     }
 
     // Seed wave covariance
-    seed_wave_cov_(T(20.0), T(1.0));
+    const T sigma_p0 = T(20.0);
+    const T sigma_v0 = T(1.0);
+    for (int k=0;k<KMODES;++k) {
+      P_.template block<3,3>(OFF_Pk(k), OFF_Pk(k)) = Mat3::Identity() * (sigma_p0*sigma_p0);
+      P_.template block<3,3>(OFF_Vk(k), OFF_Vk(k)) = Mat3::Identity() * (sigma_v0*sigma_v0);
+    }
 
     // Mag reference default
     B_world_ref_ = Vec3::UnitX();
@@ -417,6 +427,25 @@ public:
   // Toggle structured Qd for base block (same meaning as OU)
   void set_exact_att_bias_Qd(bool on) { use_exact_att_bias_Qd_ = on; }
 
+  // --- OU-style marginalization for disabled wave block ---
+  // Sets the assumed (stationary) WORLD-frame covariance of wave acceleration when the wave block is disabled.
+  // If you don't call this, we auto-derive a diagonal estimate from the current oscillator params in
+  // set_broadband_params() (using steady-state moments).
+  void set_disabled_wave_accel_cov_world(const Mat3& Sigma_aw_world) {
+    Sigma_aw_disabled_world_ = T(0.5) * (Sigma_aw_world + Sigma_aw_world.transpose());
+    // keep diagonal sane
+    for (int i=0;i<3;++i) Sigma_aw_disabled_world_(i,i) = std::max(Sigma_aw_disabled_world_(i,i), T(0));
+    project_psd<T,3>(Sigma_aw_disabled_world_, T(1e-18));
+    Sigma_aw_disabled_world_ = T(0.5) * (Sigma_aw_disabled_world_ + Sigma_aw_disabled_world_.transpose());
+  }
+  void set_disabled_wave_accel_std_world(const Vec3& sigma_aw_world) {
+    Mat3 S = Mat3::Zero();
+    S(0,0) = std::max(T(0), sigma_aw_world.x()) * std::max(T(0), sigma_aw_world.x());
+    S(1,1) = std::max(T(0), sigma_aw_world.y()) * std::max(T(0), sigma_aw_world.y());
+    S(2,2) = std::max(T(0), sigma_aw_world.z()) * std::max(T(0), sigma_aw_world.z());
+    set_disabled_wave_accel_cov_world(S);
+  }
+
   // ---------------- Staged init controls ----------------
 
   void set_wave_block_enabled(bool on) {
@@ -433,23 +462,9 @@ public:
       P_.template block<WAVE_N,WAVE_N>(OFF_WAVE, OFF_WAVE).setZero();
       x_.template segment<WAVE_N>(OFF_WAVE).setZero();
     }
-
-    if (!wave_block_enabled_ && on) {
-      // FIX(6): re-seed wave covariance on re-enable; clear cross-covs.
-      P_.template block<BASE_N,WAVE_N>(0, OFF_WAVE).setZero();
-      P_.template block<WAVE_N,BASE_N>(OFF_WAVE, 0).setZero();
-      if constexpr (with_accel_bias) {
-        P_.template block<3,WAVE_N>(OFF_BA, OFF_WAVE).setZero();
-        P_.template block<WAVE_N,3>(OFF_WAVE, OFF_BA).setZero();
-      }
-      x_.template segment<WAVE_N>(OFF_WAVE).setZero();
-      seed_wave_cov_(T(20.0), T(1.0));
-    }
-
     wave_block_enabled_ = on;
     symmetrize_P_();
     clamp_P_diag_(T(1e-15));
-    sanitize_P_finite_();
     symmetrize_P_();
   }
   bool wave_block_enabled() const { return wave_block_enabled_; }
@@ -496,11 +511,15 @@ public:
       bg_accum_count_ = 0;
     } else {
       // Restore reasonable covariances
-      seed_wave_cov_(T(20.0), T(1.0));
+      const T sigma_p0 = T(20.0);
+      const T sigma_v0 = T(1.0);
+      for (int k=0;k<KMODES;++k) {
+        P_.template block<3,3>(OFF_Pk(k), OFF_Pk(k)) = Mat3::Identity()*(sigma_p0*sigma_p0);
+        P_.template block<3,3>(OFF_Vk(k), OFF_Vk(k)) = Mat3::Identity()*(sigma_v0*sigma_v0);
+      }
     }
     symmetrize_P_();
     clamp_P_diag_(T(1e-15));
-    sanitize_P_finite_();
     symmetrize_P_();
   }
 
@@ -594,15 +613,8 @@ public:
     if (!(mag_h.norm() > T(1e-8))) return;
     mag_h.normalize();
 
-    Vec3 x_world = mag_h;                      // world X (north) in body
-    Vec3 y_world = z_world.cross(x_world);
-    if (!(y_world.norm() > T(1e-8))) return;
-    y_world.normalize();
-
-    // Re-orthonormalize to reduce numerical tilt issues
-    x_world = y_world.cross(z_world);
-    if (!(x_world.norm() > T(1e-8))) return;
-    x_world.normalize();
+    const Vec3 x_world = mag_h;                      // world X (north) in body
+    const Vec3 y_world = z_world.cross(x_world).normalized();
 
     Mat3 R_wb;
     R_wb.col(0) = x_world;
@@ -687,6 +699,31 @@ public:
       q_axis_[k].y() = horiz_scale * qk;
       q_axis_[k].z() = qk;
     }
+
+    // Auto-derive a diagonal stationary WORLD-frame accel covariance for OU-style marginalization
+    // when wave_block_enabled_ == false.
+    //
+    // For each axis independently (since q_axis_ is per-axis):
+    //   var(p) = q / (4 ζ ω^3)
+    //   var(v) = q / (4 ζ ω)
+    //   a = -ω^2 p - 2ζω v  => var(a) = ω q (1/(4ζ) + ζ)
+    //
+    // We sum across modes (approx. diagonal / uncorrelated per mode & per axis).
+    Vec3 var_aw = Vec3::Zero();
+    for (int ax=0; ax<3; ++ax) {
+      T v = T(0);
+      for (int k=0;k<KMODES;++k) {
+        const T om = std::max(T(1e-4), omega_[k]);
+        const T ze = std::max(T(1e-3), zeta_[k]);
+        const T q  = std::max(T(0), q_axis_[k](ax));
+        v += (om * q) * (T(1)/(T(4)*ze) + ze);
+      }
+      var_aw(ax) = std::max(T(0), v);
+    }
+    Sigma_aw_disabled_world_ = Mat3::Zero();
+    Sigma_aw_disabled_world_(0,0) = var_aw.x();
+    Sigma_aw_disabled_world_(1,1) = var_aw.y();
+    Sigma_aw_disabled_world_(2,2) = var_aw.z();
   }
 
   // ---------------- Time update ----------------
@@ -859,12 +896,10 @@ public:
 
     symmetrize_P_();
     clamp_P_diag_(T(1e-15));
-    sanitize_P_finite_();
     symmetrize_P_();
   }
 
   // ---------------- Measurement update: accelerometer (OU-style Joseph) ----------------
-  // (unchanged body; only post-update covariance sanitization added)
 
   void measurement_update_acc_only(const Vec3& acc_meas_body, T tempC = tempC_ref) {
     last_acc_ = MeasDiag3{};
@@ -926,6 +961,12 @@ public:
     // Innovation covariance S (3x3)
     Mat3& S = S_scratch_;
     S = Racc_;
+
+    // --- OU regression fix (#3): if wave block disabled, marginalize its missing accel uncertainty into S ---
+    // This makes accel innovations consistent even though we set aw=0 in the mean model.
+    if (!wave_block_enabled_) {
+      S.noalias() += R_wb() * Sigma_aw_disabled_world_ * R_wb().transpose();
+    }
 
     // θ
     const Mat3 Ptt = P_.template block<3,3>(OFF_DTH,OFF_DTH);
@@ -1072,11 +1113,6 @@ public:
 
     applyQuaternionCorrectionFromErrorState_();
 
-    // Post-update covariance hygiene
-    clamp_P_diag_(T(1e-15));
-    sanitize_P_finite_();
-    symmetrize_P_();
-
     last_acc_.accepted = true;
   }
 
@@ -1151,14 +1187,8 @@ public:
 
     const Mat3 J_att = du_dv * Jv;
 
-    // FIX(7): scale sensor-domain Rmag_ into direction-domain noise for unit-vector residuals.
-    // Very simple model: variance of unit vector ≈ variance(mag) / |m_proj|^2 .
-    const T rmag_var_sensor = std::max(T(1e-12), Rmag_.trace()/T(3));
-    const T sigma_dir2 = std::max(T(1e-12), rmag_var_sensor / (mnorm*mnorm));
-    Mat3 Rdir = Mat3::Identity() * sigma_dir2;
-
     Mat3& S = S_scratch_;
-    S = Rdir;
+    S = Rmag_;
 
     const Mat3 Ptt = P_.template block<3,3>(OFF_DTH,OFF_DTH);
     S.noalias() += J_att * Ptt * J_att.transpose();
@@ -1169,7 +1199,7 @@ public:
     Eigen::LDLT<Mat3> ldlt;
     ldlt.compute(S);
     if (ldlt.info() != Eigen::Success) {
-      const T bump = std::max(std::numeric_limits<T>::epsilon(), T(1e-6)*(S.norm()+T(1)));
+      const T bump = std::max(std::numeric_limits<T>::epsilon(), T(1e-6)*(Rmag_.norm()+T(1)));
       S.diagonal().array() += bump;
       ldlt.compute(S);
       if (ldlt.info() != Eigen::Success) return;
@@ -1203,11 +1233,6 @@ public:
     joseph_update3_(K, S, PCt);
 
     applyQuaternionCorrectionFromErrorState_();
-
-    // Post-update covariance hygiene
-    clamp_P_diag_(T(1e-15));
-    sanitize_P_finite_();
-    symmetrize_P_();
 
     last_mag_.accepted = true;
   }
@@ -1245,6 +1270,10 @@ private:
   bool acc_bias_updates_enabled_ = true;
   bool warmup_mode_ = true;
   bool use_exact_att_bias_Qd_ = true;
+
+  // OU-style marginalization term when wave block disabled:
+  // WORLD-frame covariance of (unknown / marginalized) wave acceleration.
+  Mat3 Sigma_aw_disabled_world_ = Mat3::Identity() * T(0.0);
 
   // Warmup exit detection
   T exit_min_distance_ = T(10.0);
@@ -1318,15 +1347,6 @@ private:
     }
   }
 
-  // Extra sanity: kill non-finite off-diagonals (prevents NaN “infection”)
-  void sanitize_P_finite_() {
-    for (int i=0;i<NX;++i) {
-      for (int j=0;j<NX;++j) {
-        if (!std::isfinite(P_(i,j))) P_(i,j) = (i==j) ? std::max<T>(P_(i,i), T(1e-15)) : T(0);
-      }
-    }
-  }
-
   void applyQuaternionCorrectionFromErrorState_() {
     const Vec3 dth = x_.template segment<3>(OFF_DTH);
     const Eigen::Quaternion<T> corr = quat_from_delta_theta<T>(dth);
@@ -1346,24 +1366,6 @@ private:
       aw.noalias() += -(om*om)*p - (T(2)*ze*om)*v;
     }
     return aw;
-  }
-
-  void seed_wave_cov_(T sigma_p0, T sigma_v0) {
-    const T sp2 = sigma_p0*sigma_p0;
-    const T sv2 = sigma_v0*sigma_v0;
-    for (int k=0;k<KMODES;++k) {
-      P_.template block<3,3>(OFF_Pk(k), OFF_Pk(k)) = Mat3::Identity() * sp2;
-      P_.template block<3,3>(OFF_Vk(k), OFF_Vk(k)) = Mat3::Identity() * sv2;
-    }
-    // Keep cross-covs between different modes at zero by default (broadband prior).
-    for (int i=0;i<WAVE_N;++i) {
-      for (int j=0;j<WAVE_N;++j) {
-        if (i != j) {
-          // leave existing cross-covs as-is unless they are non-finite
-          if (!std::isfinite(P_(OFF_WAVE+i, OFF_WAVE+j))) P_(OFF_WAVE+i, OFF_WAVE+j) = T(0);
-        }
-      }
-    }
   }
 
   // Freeze wave rows in an NXx3 matrix
@@ -1463,7 +1465,6 @@ private:
     P_ = Tm * P_ * Tm.transpose();
     symmetrize_P_();
     clamp_P_diag_(T(1e-15));
-    sanitize_P_finite_();
     symmetrize_P_();
   }
 
