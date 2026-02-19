@@ -397,9 +397,11 @@ public:
 
   // Set accelerometer measurement noise (BODY' frame), as per-axis std-dev.
   void set_Racc(const Vec3& sigma_a_meas) {
-    Racc_ = sigma_a_meas.array().max(T(0)).square().matrix().asDiagonal();
-    // keep sane
-    for (int i=0;i<3;++i) Racc_(i,i) = std::max(Racc_(i,i), T(1e-12));
+    // Hard floor: do NOT let accel be "too perfect"
+    // 0.05–0.15 m/s^2 are reasonable depending on IMU
+    const Vec3 s = sigma_a_meas.array().max(T(0.05)).matrix();
+    Racc_ = s.array().square().matrix().asDiagonal();
+    for (int i=0;i<3;++i) Racc_(i,i) = std::max(Racc_(i,i), T(1e-8));
   }
 
   // Set full covariance directly (will be symmetrized + PSD-projected).
