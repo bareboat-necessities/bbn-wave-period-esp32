@@ -83,7 +83,7 @@ constexpr float ADAPT_RS_MULT              = 5.0f;   // dimensionless
 constexpr float ONLINE_TUNE_WARMUP_SEC     = 5.0f;
 constexpr float MAG_DELAY_SEC              = 8.0f;
 
-constexpr float HARMONIC_POS_SIGMA_AT_REF  = 12.0f;  // Sigma m for harmonic position correction uncertainty (at 8 m ref wave)
+constexpr float HARMONIC_POS_SIGMA_AT_REF  = 1.0f;  // Sigma m for harmonic position correction uncertainty (at 8 m ref wave)
 
 // Frequency smoother dt (SeaStateFusionFilter is designed for 240 Hz)
 constexpr float FREQ_SMOOTHER_DT = 1.0f / 240.0f;
@@ -915,7 +915,7 @@ private:
         // Harmonic pseudo-position correction should only run when there is
         // clear drift risk. If position is still inside 80% of the estimated
         // wave-height envelope, keep the correction disabled.
-        constexpr float HARMONIC_DRIFT_RISK_ENVELOPE_RATIO = 0.5f;
+        constexpr float HARMONIC_DRIFT_RISK_ENVELOPE_RATIO = 0.1f;
         if (!(absz > env_scale * HARMONIC_DRIFT_RISK_ENVELOPE_RATIO)) {
             return;
         }
@@ -1208,7 +1208,7 @@ private:
     int   harmonic_position_counter_ = 0;
     float harmonic_position_ref_envelope_m_ = 8.0f;
     float harmonic_position_sigma_m_at_ref_env_ = HARMONIC_POS_SIGMA_AT_REF;
-    float harmonic_position_sigma_min_m_ = 1.0f;
+    float harmonic_position_sigma_min_m_ = 0.05f;
     int   harmonic_despike_window_ = 5;
     float harmonic_despike_threshold_ = 4.0f;
     std::unique_ptr<TimeAwareSpikeFilter> despike_ax_;
