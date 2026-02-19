@@ -664,7 +664,6 @@ static void process_wave_file_for_tracker(const std::string &filename, float def
             << mag_bias_err.x()      << "," << mag_bias_err.y()      << "," << mag_bias_err.z()      << ","           
             << filter.getTauApplied() << ","
             << filter.getSigmaApplied() << ","
-            << filter.getRSApplied() << ","
             << filter.getFreqHz() << ","
             << filter.getPeriodSec() << ","
             << filter.getAccelVariance() << ","
@@ -840,22 +839,18 @@ static void process_wave_file_for_tracker(const std::string &filename, float def
         // Extended diagnostic summary
         float tau_target   = filter.getTauTarget();
         float sigma_target = filter.getSigmaTarget();
-        float RS_target    = filter.getRSTarget();
 
         float tau_applied   = filter.getTauApplied();
         float sigma_applied = filter.getSigmaApplied();
-        float RS_applied    = filter.getRSApplied();
 
         float f_hz          = filter.getFreqHz();
         float Tp_tuner      = filter.getPeriodSec();
         float accel_var     = filter.getAccelVariance();
 
         std::cout << "tau_target=" << tau_target
-                  << ", sigma_target=" << sigma_target
-                  << ", RS_target=" << RS_target << "\n";
+                  << ", sigma_target=" << sigma_target << "\n";
         std::cout << "tau_applied=" << tau_applied
-                  << ", sigma_applied=" << sigma_applied
-                  << ", RS_applied=" << RS_applied << "\n";
+                  << ", sigma_applied=" << sigma_applied << "\n";
         std::cout << "f_hz=" << f_hz
                   << ", Tp_tuner=" << Tp_tuner
                   << ", accel_var=" << accel_var << "\n";
