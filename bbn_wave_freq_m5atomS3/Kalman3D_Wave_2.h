@@ -524,10 +524,10 @@ public:
       bg_accum_.setZero();
       bg_accum_count_ = 0;
     } else {
-      // Restore wave covariances based on steady-state moments (from set_broadband_params)
+      // Inflate wave covariances based on steady-state moments (from set_broadband_params)
       for (int k=0;k<KMODES;++k) {
-        const T varp = std::max(T(1e-12), init_var_p_[k]);
-        const T varv = std::max(T(1e-12), init_var_v_[k]);
+        const T varp = std::max(T(1e-12), init_var_p_[k]) * T(50);
+        const T varv = std::max(T(1e-12), init_var_v_[k]) * T(10);
         P_.template block<3,3>(OFF_Pk(k), OFF_Pk(k)) = Mat3::Identity() * varp;
         P_.template block<3,3>(OFF_Vk(k), OFF_Vk(k)) = Mat3::Identity() * varv;
       }
@@ -886,6 +886,7 @@ public:
         for (int ax=0; ax<3; ++ax) {
           Phi6_.template block<2,2>(2*ax,2*ax) = Phi2_[ax];
           Qd6_ .template block<2,2>(2*ax,2*ax) = Qd2_[ax];
+          Qd6_ *= T(10);
         }
 
         // Mean
@@ -1108,21 +1109,23 @@ public:
       }
     }
   
-    // Wave columns if enabled: C_p = -Jp, C_v = -Jv
+    // Wave columns in PCt: PCt += P(:,w) * Cw^T
     if (wave_block_enabled_) {
-      for (int k=0;k<KMODES;++k) {
+      Eigen::Matrix<T,3,WAVE_N> Cw;
+      Cw.setZero();
+    
+      const Mat3 Rwb = R_wb();
+      for (int k=0; k<KMODES; ++k) {
         const T om = omega_[k];
         const T ze = zeta_[k];
-  
-        const Mat3 Jp = R_wb() * (-(om*om) * Mat3::Identity());
-        const Mat3 Jv = R_wb() * (-(T(2)*ze*om) * Mat3::Identity());
-  
-        const Mat3 Cp = -Jp;
-        const Mat3 Cv = -Jv;
-  
-        PCt.noalias() += P_.template block<NX,3>(0, OFF_Pk(k)) * Cp.transpose();
-        PCt.noalias() += P_.template block<NX,3>(0, OFF_Vk(k)) * Cv.transpose();
+    
+        const Mat3 Cp = (om*om) * Rwb;
+        const Mat3 Cv = (T(2)*ze*om) * Rwb;
+    
+        Cw.template block<3,3>(0, 6*k + 0) = Cp;
+        Cw.template block<3,3>(0, 6*k + 3) = Cv;
       }
+      PCt.noalias() += P_.template block<NX,WAVE_N>(0, OFF_WAVE) * Cw.transpose();
     } else {
       freeze_wave_rows_(PCt);
     }
