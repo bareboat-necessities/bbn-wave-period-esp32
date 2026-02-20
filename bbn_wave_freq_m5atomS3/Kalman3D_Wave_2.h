@@ -1036,9 +1036,10 @@ public:
     if constexpr (with_accel_bias) {
       const Mat3 Pba  = P_.template block<3,3>(OFF_BA,OFF_BA);
       const Mat3 Ptba = P_.template block<3,3>(OFF_DTH,OFF_BA);
-      S.noalias() += J_att * Ptba;
-      S.noalias() += Ptba.transpose() * J_att.transpose();
-      S.noalias() += Pba;
+      // C_ba = -I
+      S.noalias() -= J_att * Ptba;
+      S.noalias() -= Ptba.transpose() * J_att.transpose();
+      S.noalias() += Pba;  // (-I) Pba (-I)^T = Pba
     }
 
     // Gyro bias via lever arm
