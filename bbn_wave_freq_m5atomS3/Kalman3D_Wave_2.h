@@ -27,6 +27,11 @@
 
   Template parameters:
     T, KMODES, with_gyro_bias, with_accel_bias, with_mag
+
+  FIXES (2026-02-20):
+    1) Wave Qd6_ scaling bug: Qd6_ *= 10 was inside axis loop (=> 1000x). Moved outside.
+    2) MAG update must be BASE-ONLY (do not update wave / accel-bias via cross-covariances):
+       zero PCt/K rows for wave+BA unconditionally and add NIS gate.
 */
 
 #ifdef EIGEN_NON_ARDUINO
@@ -833,8 +838,8 @@ public:
         for (int ax=0; ax<3; ++ax) {
           Phi6_.template block<2,2>(2*ax,2*ax) = Phi2_[ax];
           Qd6_ .template block<2,2>(2*ax,2*ax) = Qd2_[ax];
-          Qd6_ *= T(10);
         }
+        Qd6_ *= T(10); // FIX: apply ONCE (was inside loop => 1000x)
 
         Vec3 p = x_.template segment<3>(OFF_Pk(k));
         Vec3 v = x_.template segment<3>(OFF_Vk(k));
@@ -930,10 +935,6 @@ public:
     const Vec3 r = z - f_pred;
     last_acc_.r = r;
 
-    // ------------------------------------------------------------
-    // Jacobians: measurement Jacobians J = ∂h/∂x, with r = z - h
-    // ------------------------------------------------------------
-
     // Attitude Jacobian (BODY' residual):
     // δ( Rwb * u ) = -[Rwb*u]x δθ  =>  J_att = ∂f_pred/∂δθ = -[f_cog_b]x
     const Mat3 J_att = -skew3<T>(f_cog_b);
@@ -948,22 +949,14 @@ public:
       for (int k=0; k<KMODES; ++k) {
         const T om = omega_[k];
         const T ze = zeta_[k];
-
-        // aw includes -(om^2) p_k -(2 ζ om) v_k  (WORLD)
-        // f_pred = Rwb*(aw-g) => ∂f/∂p_k = Rwb * (-(om^2)I) = -(om^2)Rwb
-        // similarly for v_k: ∂f/∂v_k = -(2 ζ om)Rwb
         const Mat3 Jp = -(om*om) * Rwb;
         const Mat3 Jv = -(T(2)*ze*om) * Rwb;
-
         Jw.template block<3,3>(0, 6*k + 0) = Jp;
         Jw.template block<3,3>(0, 6*k + 3) = Jv;
       }
     }
 
-    // ------------------------------------------------------------
-    // Innovation covariance S = R + J P J^T (+ special-mode terms)
-    // ------------------------------------------------------------
-
+    // Innovation covariance
     Mat3& S = S_scratch_;
     S = Racc_;
 
@@ -1002,8 +995,6 @@ public:
           S.noalias() += BW + BW.transpose();
         }
       }
-
-      // BG terms intentionally omitted (lever-arm mean uses cached omega, so J_bg forced 0 by design)
     }
 
     S = T(0.5) * (S + S.transpose());
@@ -1028,10 +1019,7 @@ public:
     const T nis_gate = T(50.0);
     if (!(last_acc_.nis < nis_gate)) return;
 
-    // ------------------------------------------------------------
-    // PCt = P J^T  (use SAME J blocks as in S)
-    // ------------------------------------------------------------
-
+    // PCt = P J^T
     MatX3& PCt = PCt_scratch_;
     PCt.setZero();
 
@@ -1049,10 +1037,7 @@ public:
       freeze_wave_rows_(PCt);
     }
 
-    // ------------------------------------------------------------
-    // Gain + state/cov update
-    // ------------------------------------------------------------
-
+    // Gain + update
     MatX3& K = K_scratch_;
     K.noalias() = PCt * ldlt.solve(Mat3::Identity());
     if (!(K.allFinite() && r.allFinite())) return;
@@ -1131,43 +1116,43 @@ public:
     {
       const Vec3 h_nom = h_dir;               // already includes the flip choice
       const T eps = T(1e-4);                  // rad (tune 1e-5..1e-3 if desired)
-    
+
       auto hdir_from_q = [&](const Eigen::Quaternion<T>& q)->Vec3 {
         const Mat3 Rq = q.toRotationMatrix();
-    
+
         // Predicted field and down in BODY'
         Vec3 b = Rq * B_world_ref_;
         Vec3 dd = Rq * Vec3(T(0), T(0), T(1));
         const T dn2 = dd.squaredNorm();
         if (!(dn2 > T(1e-12))) return h_nom;
         dd /= std::sqrt(dn2);
-    
+
         const Mat3 Ph = Mat3::Identity() - dd * dd.transpose();
-    
+
         Vec3 u2 = Ph * b;
         const T un2 = u2.norm();
         if (!(un2 > T(1e-8))) return h_nom;
-    
+
         Vec3 h2 = u2 / un2;
-    
+
         // Keep the same branch as nominal to avoid sign flips in the Jacobian
         if (h2.dot(h_nom) < T(0)) h2 = -h2;
-    
+
         return h2;
       };
-    
+
       for (int i = 0; i < 3; ++i) {
         Vec3 dth = Vec3::Zero();
         dth(i) = eps;
-    
+
         Eigen::Quaternion<T> qp = qref_ * quat_from_delta_theta<T>( dth);
         Eigen::Quaternion<T> qm = qref_ * quat_from_delta_theta<T>(-dth);
         qp.normalize();
         qm.normalize();
-    
+
         const Vec3 hp = hdir_from_q(qp);
         const Vec3 hm = hdir_from_q(qm);
-    
+
         J_att.col(i) = (hp - hm) / (T(2) * eps);
       }
     }
@@ -1201,23 +1186,28 @@ public:
       last_mag_.nis = std::isfinite(nis) ? nis : std::numeric_limits<T>::quiet_NaN();
     }
 
+    // FIX: gate mag update (prevents huge corrections)
+    const T nis_gate = T(50.0);
+    if (!(last_mag_.nis < nis_gate)) return;
+
     MatX3& PCt = PCt_scratch_;
     PCt.setZero();
     PCt.noalias() += P_.template block<NX,3>(0,OFF_DTH) * J_att.transpose();
 
-    if (!wave_block_enabled_) freeze_wave_rows_(PCt);
-
+    // FIX: MAG update must be BASE-ONLY (never update wave or accel-bias via cross-covariances)
+    PCt.template block<WAVE_N,3>(OFF_WAVE,0).setZero();
     if constexpr (with_accel_bias) {
-      if (!acc_bias_updates_enabled_) PCt.template block<3,3>(OFF_BA,0).setZero();
+      PCt.template block<3,3>(OFF_BA,0).setZero();
     }
 
     MatX3& K = K_scratch_;
     K.noalias() = PCt * ldlt.solve(Mat3::Identity());
     if (!K.allFinite() || !r.allFinite()) return;
 
-    if (!wave_block_enabled_) freeze_wave_rows_(K);
+    // belt-and-suspenders: enforce base-only on K too
+    K.template block<WAVE_N,3>(OFF_WAVE,0).setZero();
     if constexpr (with_accel_bias) {
-      if (!acc_bias_updates_enabled_) K.template block<3,3>(OFF_BA,0).setZero();
+      K.template block<3,3>(OFF_BA,0).setZero();
     }
 
     x_.noalias() += K * r;
