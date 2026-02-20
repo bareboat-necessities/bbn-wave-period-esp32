@@ -1023,58 +1023,51 @@ public:
       }
     }
   
-    // Wave contributions (IMPORTANT: wave C signs are negative)
+    // Wave contributions (FULL, includes cross-mode correlations)
     if (wave_block_enabled_) {
-      for (int k=0;k<KMODES;++k) {
+      // Build Cw: residual Jacobian wrt wave states x_w = [p1 v1 ... pK vK]
+      // Measurement model: f_pred = R_wb*(aw - g) + ...
+      // aw = Σ ( -ω^2 p - 2ζω v )
+      // residual r = z - f_pred, so:
+      //   C_p = ∂r/∂p = -∂f/∂p = -R_wb * ( -ω^2 I ) = +ω^2 R_wb
+      //   C_v = ∂r/∂v = -∂f/∂v = -R_wb * ( -2ζω I ) = +2ζω R_wb
+      Eigen::Matrix<T,3,WAVE_N> Cw;
+      Cw.setZero();
+    
+      const Mat3 Rwb = R_wb();  // compute once
+      for (int k=0; k<KMODES; ++k) {
         const T om = omega_[k];
         const T ze = zeta_[k];
-  
-        // These are df/dp and df/dv in BODY'
-        const Mat3 Jp = R_wb() * (-(om*om) * Mat3::Identity());
-        const Mat3 Jv = R_wb() * (-(T(2)*ze*om) * Mat3::Identity());
-  
-        // But residual uses C_p = -Jp, C_v = -Jv
-        const Mat3 Cp = -Jp;
-        const Mat3 Cv = -Jv;
-  
-        const int op = OFF_Pk(k);
-        const int ov = OFF_Vk(k);
-  
-        const Mat3 Ppp = P_.template block<3,3>(op,op);
-        const Mat3 Pvv = P_.template block<3,3>(ov,ov);
-        const Mat3 Ppv = P_.template block<3,3>(op,ov);
-  
-        // Pure wave variance terms
-        S.noalias() += Cp * Ppp * Cp.transpose();
-        S.noalias() += Cv * Pvv * Cv.transpose();
-        S.noalias() += Cp * Ppv * Cv.transpose();
-        S.noalias() += Cv * Ppv.transpose() * Cp.transpose();
-  
-        // Att-wave cross terms
-        const Mat3 Ptp = P_.template block<3,3>(OFF_DTH, op);
-        const Mat3 Ptv = P_.template block<3,3>(OFF_DTH, ov);
-  
-        S.noalias() += J_att * Ptp * Cp.transpose();
-        S.noalias() += Cp * Ptp.transpose() * J_att.transpose();
-        S.noalias() += J_att * Ptv * Cv.transpose();
-        S.noalias() += Cv * Ptv.transpose() * J_att.transpose();
-  
-        // BA-wave cross terms (only if BA updates enabled, otherwise BA not in C)
-        if constexpr (with_accel_bias) {
-          if (acc_bias_updates_enabled_) {
-            const Mat3 Pbap = P_.template block<3,3>(OFF_BA, op);
-            const Mat3 Pbav = P_.template block<3,3>(OFF_BA, ov);
-            // C_ba = -I
-            S.noalias() += (-Mat3::Identity()) * Pbap * Cp.transpose();
-            S.noalias() += Cp * Pbap.transpose() * (-Mat3::Identity()).transpose();
-            S.noalias() += (-Mat3::Identity()) * Pbav * Cv.transpose();
-            S.noalias() += Cv * Pbav.transpose() * (-Mat3::Identity()).transpose();
-          }
-        }
-  
-        // BG terms intentionally omitted (J_bg = 0)
-        (void)J_bg;
+    
+        const Mat3 Cp = (om*om) * Rwb;            // 3x3
+        const Mat3 Cv = (T(2)*ze*om) * Rwb;       // 3x3
+    
+        Cw.template block<3,3>(0, 6*k + 0) = Cp;  // p_k columns
+        Cw.template block<3,3>(0, 6*k + 3) = Cv;  // v_k columns
       }
+    
+      // Add full wave covariance contribution: Cw * Pww * Cw^T
+      const auto Pww = P_.template block<WAVE_N,WAVE_N>(OFF_WAVE, OFF_WAVE);
+      S.noalias() += Cw * Pww * Cw.transpose();
+    
+      // Attitude-wave cross: J_att * Ptw * Cw^T + transpose
+      const auto Ptw = P_.template block<3,WAVE_N>(OFF_DTH, OFF_WAVE);
+      const Mat3 AttWave = J_att * Ptw * Cw.transpose();
+      S.noalias() += AttWave;
+      S.noalias() += AttWave.transpose();
+    
+      // Accel-bias-wave cross (only if BA is in C, i.e. Mode A)
+      if constexpr (with_accel_bias) {
+        if (acc_bias_updates_enabled_) {
+          const auto Pbaw = P_.template block<3,WAVE_N>(OFF_BA, OFF_WAVE);
+          const Mat3 Cba = -Mat3::Identity();     // since f_pred has +ba, residual has C_ba = -I
+          const Mat3 BAWave = Cba * Pbaw * Cw.transpose();
+          S.noalias() += BAWave;
+          S.noalias() += BAWave.transpose();
+        }
+      }
+    
+      // BG terms intentionally omitted (J_bg=0)
     }
   
     // Symmetrize / floor
