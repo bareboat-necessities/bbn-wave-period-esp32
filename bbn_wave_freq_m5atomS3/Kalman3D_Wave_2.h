@@ -1,6 +1,6 @@
 #pragma once
 /*
-  Copyright (c) 2025  Mikhail Grushinskiy
+  Copyright (c) 2026  Mikhail Grushinskiy
 
   Kalman3D_Wave_2  (Broadband oscillator wave model + qMEKF attitude)
 
