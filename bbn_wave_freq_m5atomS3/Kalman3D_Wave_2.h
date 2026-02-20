@@ -236,7 +236,7 @@ static inline Eigen::Matrix<T,3,3> d_omega_x_omega_x_r_domega_(const Eigen::Matr
 // The filter
 
 template <typename T = float, int KMODES = 3,
-          bool with_gyro_bias = true, bool with_accel_bias = true, bool with_mag = false>
+          bool with_gyro_bias = true, bool with_accel_bias = true, bool with_mag = true>
 class Kalman3D_Wave_2 {
 
   static_assert(KMODES >= 1, "KMODES must be >= 1");
