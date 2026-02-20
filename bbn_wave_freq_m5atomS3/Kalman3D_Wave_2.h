@@ -524,10 +524,10 @@ public:
       bg_accum_.setZero();
       bg_accum_count_ = 0;
     } else {
-      // Restore wave covariances based on steady-state moments (from set_broadband_params)
+      // Inflate wave covariances based on steady-state moments (from set_broadband_params)
       for (int k=0;k<KMODES;++k) {
-        const T varp = std::max(T(1e-12), init_var_p_[k]);
-        const T varv = std::max(T(1e-12), init_var_v_[k]);
+        const T varp = std::max(T(1e-12), init_var_p_[k]) * T(50);
+        const T varv = std::max(T(1e-12), init_var_v_[k]) * T(10);
         P_.template block<3,3>(OFF_Pk(k), OFF_Pk(k)) = Mat3::Identity() * varp;
         P_.template block<3,3>(OFF_Vk(k), OFF_Vk(k)) = Mat3::Identity() * varv;
       }
