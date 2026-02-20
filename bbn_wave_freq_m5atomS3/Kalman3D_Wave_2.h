@@ -1163,90 +1163,78 @@ public:
   void measurement_update_mag_only(const Vec3& mag_meas_body) {
     last_mag_ = MeasDiag3{};
     last_mag_.accepted = false;
-
+  
     if constexpr (!with_mag) {
       (void)mag_meas_body;
       return;
     }
-
+  
     const Vec3 mag_meas = deheel_vector_(mag_meas_body);
     if (!mag_meas.allFinite()) return;
+  
     const T n = mag_meas.norm();
     if (!(n > T(1e-6))) return;
-
+  
     // Predicted field in BODY'
     const Vec3 b_pred = R_wb() * B_world_ref_;
-
+  
     // Predicted down direction in BODY' (world is NED, +Z down)
-    const Vec3 down_b = (R_wb() * Vec3(T(0), T(0), T(1))).normalized();
-
+    Vec3 down_b = R_wb() * Vec3(T(0), T(0), T(1));
+    const T dn = down_b.norm();
+    if (!(dn > T(1e-9))) return;
+    down_b /= dn;
+  
     // Horizontal projection matrix: P_h = I - d d^T
     const Mat3 P_h = Mat3::Identity() - down_b * down_b.transpose();
-
+  
     // Project and normalize both (direction-only)
     Vec3 m_proj = P_h * mag_meas;
     Vec3 b_proj = P_h * b_pred;
-
+  
     const T mnorm = m_proj.norm();
     const T bnorm = b_proj.norm();
     if (!(mnorm > T(1e-6) && bnorm > T(1e-6))) return;
-
+  
     Vec3 m_h = m_proj / mnorm;
     Vec3 b_h = b_proj / bnorm;
-
+  
     // Resolve 180° ambiguity (choose closer direction)
     if (m_h.dot(b_h) < T(0)) {
       b_h = -b_h;
       b_proj = -b_proj;
     }
-
+  
     const Vec3 r = m_h - b_h;
     last_mag_.r = r;
-
-    // Jacobian wrt attitude:
-    // b_proj = P_h * (R_wb * B)
-    // u = b_h = b_proj/|b_proj|
-    // du/d(b_proj) = (I - u u^T)/|b_proj|
-    //
-    // Robust Jacobian includes the dependence of P_h on down_b (tilt-compensation):
-    //   down_b = R_wb * e3  (unit for a rotation)
-    //   d(down_b)/dθ ≈ -[down_b]x
-    //   P_h = I - d d^T  => dP_h = -(d d'^T + d' d^T)
-    //
-    // For v = P_h * b_pred:
-    //   dv/dθ = (dP_h/dθ)*b_pred + P_h * d(b_pred)/dθ
-    //         = - d (d×b_pred)^T + (d·b_pred) [d]x + P_h * ( -[b_pred]x )
+  
+    // Jacobian wrt attitude (your robust form)
     const Mat3 du_dv = (Mat3::Identity() - b_h*b_h.transpose()) / bnorm;
-
+  
     const Vec3 d = down_b;
     const T d_dot_b = d.dot(b_pred);
     const Vec3 d_cross_b = d.cross(b_pred);
-
+  
     const Mat3 Jv =
         (- d * d_cross_b.transpose())
       + (d_dot_b) * skew3<T>(d)
       + P_h * (-skew3<T>(b_pred));
-
+  
     const Mat3 J_att = du_dv * Jv;
-
+  
     Mat3& S = S_scratch_;
-
-    // (2) Direction-only residual uses dimensionless unit vectors (m_h, b_h),
-    // so we must NOT use raw magnetometer covariance directly (units mismatch).
-    // Approximate direction-domain noise as isotropic:
-    //   var_dir ≈ mean(var_raw) / |m_proj|^2
-    // where |m_proj| is the pre-normalization horizontal magnitude.
+  
+    // Direction-domain noise scaling
     const T var_raw_mean = (Rmag_(0,0) + Rmag_(1,1) + Rmag_(2,2)) / T(3);
     const T denom = std::max(T(1e-12), mnorm*mnorm);
     const T var_dir = std::max(T(1e-18), var_raw_mean / denom);
     S = Mat3::Identity() * var_dir;
-
+  
     const Mat3 Ptt = P_.template block<3,3>(OFF_DTH,OFF_DTH);
     S.noalias() += J_att * Ptt * J_att.transpose();
-
+  
     S = T(0.5)*(S + S.transpose());
     for (int i=0;i<3;++i) S(i,i) = std::max(S(i,i), T(1e-12));
-
+  
     Eigen::LDLT<Mat3> ldlt;
     ldlt.compute(S);
     if (ldlt.info() != Eigen::Success) {
@@ -1255,36 +1243,41 @@ public:
       ldlt.compute(S);
       if (ldlt.info() != Eigen::Success) return;
     }
-
+  
     last_mag_.S = S;
     {
       const Vec3 sol = ldlt.solve(r);
       const T nis = r.dot(sol);
       last_mag_.nis = std::isfinite(nis) ? nis : std::numeric_limits<T>::quiet_NaN();
     }
-
+  
     MatX3& PCt = PCt_scratch_;
     PCt.setZero();
     PCt.noalias() += P_.template block<NX,3>(0,OFF_DTH) * J_att.transpose();
-
+  
     if (!wave_block_enabled_) freeze_wave_rows_(PCt);
+  
+    // If accel-bias updates disabled, ensure BA does not move via mag update
     if constexpr (with_accel_bias) {
       if (!acc_bias_updates_enabled_) PCt.template block<3,3>(OFF_BA,0).setZero();
     }
-
+  
     MatX3& K = K_scratch_;
     K.noalias() = PCt * ldlt.solve(Mat3::Identity());
-
+    if (!K.allFinite() || !r.allFinite()) return;
+  
     if (!wave_block_enabled_) freeze_wave_rows_(K);
     if constexpr (with_accel_bias) {
       if (!acc_bias_updates_enabled_) K.template block<3,3>(OFF_BA,0).setZero();
     }
-
+  
     x_.noalias() += K * r;
+    if (!x_.allFinite()) return;
+  
     joseph_update3_(K, S, PCt);
-
+  
     applyQuaternionCorrectionFromErrorState_();
-
+  
     last_mag_.accepted = true;
   }
 
