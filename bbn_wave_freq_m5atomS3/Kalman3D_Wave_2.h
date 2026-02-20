@@ -1137,7 +1137,7 @@ public:
 
     // BA column (J_ba = I) but allow update only if use_ba
     if constexpr (with_accel_bias) {
-      PCt.noalias() += P_.template block<NX,3>(0,OFF_BA);
+      PCt.noalias() -= P_.block<NX,3>(0,OFF_BA);
       if (!use_ba) PCt.template block<3,3>(OFF_BA,0).setZero();
     }
 
