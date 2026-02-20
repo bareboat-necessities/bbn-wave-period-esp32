@@ -1207,19 +1207,43 @@ public:
     const Vec3 r = m_h - b_h;
     last_mag_.r = r;
   
-    // Jacobian wrt attitude (your robust form)
-    const Mat3 du_dv = (Mat3::Identity() - b_h*b_h.transpose()) / bnorm;
-  
-    const Vec3 d = down_b;
-    const T d_dot_b = d.dot(b_pred);
-    const Vec3 d_cross_b = d.cross(b_pred);
-  
-    const Mat3 Jv =
-        (- d * d_cross_b.transpose())
-      + (d_dot_b) * skew3<T>(d)
-      + P_h * (-skew3<T>(b_pred));
-  
-    const Mat3 J_att = -(du_dv * Jv);
+    // Jacobian wrt attitude (chain rule on exactly what we compute)
+    const Mat3 R = R_wb();
+    const Vec3 e3w(T(0), T(0), T(1));
+
+    // b_pred already computed as: b_pred = R * B_world_ref_;
+    // down_b already computed as: down_b = R * e3w; (and normalized)
+    // Prefer exact unit (R is orthonormal): do not renormalize unless you must.
+    const Vec3 d = (R * e3w);                 // world +Z (down) expressed in BODY'
+    const Mat3 P_h = Mat3::Identity() - d * d.transpose();
+
+    // Use the SAME u/b_h you used for residual
+    const Vec3 u = P_h * b_pred;
+    const T   un = u.norm();
+    if (!(un > T(1e-6))) return;
+    const Vec3 b_h = u / un;
+
+    // Right-multiply convention => δ(R v) = -R [v]x δθ
+    const Mat3 db_dth = -R * skew3<T>(B_world_ref_);
+    const Mat3 dd_dth = -R * skew3<T>(e3w);
+
+    // dPh * b = -( (dd d^T + d dd^T) * b )
+    const T  d_dot_b = d.dot(b_pred);
+    const Vec3 tmp = dd_dth.transpose() * b_pred;     // = A^T b  (3x1)
+
+    // du = dPh*b + Ph*db
+    // dPh*b as a matrix times δθ:
+    //   -( d_dot_b * dd_dth + d * (A^T b)^T )
+    const Mat3 du_dth =
+        -(d_dot_b * dd_dth + d * tmp.transpose())
+        + (P_h * db_dth);
+
+    // Normalize: b_h = u/||u||  => db_h = (I - b_h b_h^T)/||u|| * du
+    const Mat3 Dnorm = (Mat3::Identity() - b_h*b_h.transpose()) / un;
+    const Mat3 dbh_dth = Dnorm * du_dth;
+
+    // residual r = m_h - b_h  => dr/dθ = -db_h/dθ
+    const Mat3 J_att = -dbh_dth;
   
     Mat3& S = S_scratch_;
   
