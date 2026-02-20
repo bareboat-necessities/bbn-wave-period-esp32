@@ -524,10 +524,10 @@ public:
       bg_accum_.setZero();
       bg_accum_count_ = 0;
     } else {
-      // Inflate wave covariances based on steady-state moments (from set_broadband_params)
+      // Restore wave covariances based on steady-state moments (from set_broadband_params)
       for (int k=0;k<KMODES;++k) {
-        const T varp = std::max(T(1e-12), init_var_p_[k]) * T(50);
-        const T varv = std::max(T(1e-12), init_var_v_[k]) * T(10);
+        const T varp = std::max(T(1e-12), init_var_p_[k]);
+        const T varv = std::max(T(1e-12), init_var_v_[k]);
         P_.template block<3,3>(OFF_Pk(k), OFF_Pk(k)) = Mat3::Identity() * varp;
         P_.template block<3,3>(OFF_Vk(k), OFF_Vk(k)) = Mat3::Identity() * varv;
       }
@@ -886,7 +886,6 @@ public:
         for (int ax=0; ax<3; ++ax) {
           Phi6_.template block<2,2>(2*ax,2*ax) = Phi2_[ax];
           Qd6_ .template block<2,2>(2*ax,2*ax) = Qd2_[ax];
-          Qd6_ *= T(10);
         }
 
         // Mean
@@ -1109,23 +1108,21 @@ public:
       }
     }
   
-    // Wave columns in PCt: PCt += P(:,w) * Cw^T
+    // Wave columns if enabled: C_p = -Jp, C_v = -Jv
     if (wave_block_enabled_) {
-      Eigen::Matrix<T,3,WAVE_N> Cw;
-      Cw.setZero();
-    
-      const Mat3 Rwb = R_wb();
-      for (int k=0; k<KMODES; ++k) {
+      for (int k=0;k<KMODES;++k) {
         const T om = omega_[k];
         const T ze = zeta_[k];
-    
-        const Mat3 Cp = (om*om) * Rwb;
-        const Mat3 Cv = (T(2)*ze*om) * Rwb;
-    
-        Cw.template block<3,3>(0, 6*k + 0) = Cp;
-        Cw.template block<3,3>(0, 6*k + 3) = Cv;
+  
+        const Mat3 Jp = R_wb() * (-(om*om) * Mat3::Identity());
+        const Mat3 Jv = R_wb() * (-(T(2)*ze*om) * Mat3::Identity());
+  
+        const Mat3 Cp = -Jp;
+        const Mat3 Cv = -Jv;
+  
+        PCt.noalias() += P_.template block<NX,3>(0, OFF_Pk(k)) * Cp.transpose();
+        PCt.noalias() += P_.template block<NX,3>(0, OFF_Vk(k)) * Cv.transpose();
       }
-      PCt.noalias() += P_.template block<NX,WAVE_N>(0, OFF_WAVE) * Cw.transpose();
     } else {
       freeze_wave_rows_(PCt);
     }
@@ -1203,19 +1200,39 @@ public:
     const Vec3 r = m_h - b_h;
     last_mag_.r = r;
   
-    // Jacobian wrt attitude (your robust form)
-    const Mat3 du_dv = (Mat3::Identity() - b_h*b_h.transpose()) / bnorm;
-  
-    const Vec3 d = down_b;
-    const T d_dot_b = d.dot(b_pred);
-    const Vec3 d_cross_b = d.cross(b_pred);
-  
-    const Mat3 Jv =
-        (- d * d_cross_b.transpose())
-      + (d_dot_b) * skew3<T>(d)
-      + P_h * (-skew3<T>(b_pred));
-  
-    const Mat3 J_att = -(du_dv * Jv);
+    // Jacobian wrt attitude (chain rule consistent with your computed b_h)
+    // Uses existing variables already defined above in your function:
+    //   b_pred (Vec3), down_b (Vec3, normalized), P_h (Mat3),
+    //   b_proj (Vec3), bnorm (T), b_h (Vec3)
+    
+    // R is WORLD->BODY'
+    const Mat3 R = R_wb();
+    const Vec3 e3w(T(0), T(0), T(1));
+    
+    // Use the SAME d and u you used to form P_h and b_h
+    const Vec3 d = down_b;        // already normalized
+    const Vec3 u = b_proj;        // = P_h * b_pred
+    const T   un = bnorm;         // = ||u||
+    
+    // Right-multiply convention: δ(R v) = -R [v]× δθ
+    const Mat3 db_dth = -R * skew3<T>(B_world_ref_);
+    const Mat3 dd_dth = -R * skew3<T>(e3w);
+    
+    // du = δ(P_h b) = δP_h * b + P_h * δb
+    // δP_h = -(δd d^T + d δd^T)
+    const T  d_dot_b = d.dot(b_pred);
+    const Vec3 tmp = dd_dth.transpose() * b_pred;   // (3x1)
+    
+    const Mat3 du_dth =
+        -(d_dot_b * dd_dth + d * tmp.transpose())
+        + (P_h * db_dth);
+    
+    // Normalize: b_h = u/||u||  => db_h = (I - b_h b_h^T)/||u|| * du
+    const Mat3 Dnorm = (Mat3::Identity() - b_h*b_h.transpose()) / un;
+    const Mat3 dbh_dth = Dnorm * du_dth;
+    
+    // residual r = m_h - b_h  => dr/dθ = -db_h/dθ
+    const Mat3 J_att = -dbh_dth;
 
     Mat3& S = S_scratch_;
   
