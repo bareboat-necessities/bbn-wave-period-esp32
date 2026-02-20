@@ -886,6 +886,7 @@ public:
         for (int ax=0; ax<3; ++ax) {
           Phi6_.template block<2,2>(2*ax,2*ax) = Phi2_[ax];
           Qd6_ .template block<2,2>(2*ax,2*ax) = Qd2_[ax];
+          Qd6_ *= T(10);
         }
 
         // Mean
