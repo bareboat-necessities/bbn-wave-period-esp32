@@ -1326,7 +1326,7 @@ public:
     PCt.setZero();
     for (int k=0;k<KMODES;++k) {
       const int opk = OFF_Pk(k);
-      PCt.noalias() += P_.template block<NX,3>(0, opk); // * I
+      PCt.noalias() -= P_.template block<NX,3>(0, opk); // C = -I
     }
   
     MatX3& K = K_scratch_;
