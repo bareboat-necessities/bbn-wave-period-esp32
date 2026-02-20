@@ -1289,18 +1289,17 @@ public:
                                           const Mat3& Rpos_world)
   {
     if (!wave_block_enabled_) return;
-
-    // Residual in WORLD
+  
     const Vec3 p_pred = get_position();
     const Vec3 r = p_meas_world - p_pred;
-
-    // Innovation covariance: S = R + C P C^T, where C sums the p_k blocks.
+    if (!r.allFinite()) return;
+  
     Mat3& S = S_scratch_;
     S = T(0.5) * (Rpos_world + Rpos_world.transpose());
     for (int i=0;i<3;++i) S(i,i) = std::max(S(i,i), T(1e-12));
     project_psd<T,3>(S, T(1e-18));
     S = T(0.5) * (S + S.transpose());
-
+  
     // Add Σ_{k,m} P(p_k, p_m)
     for (int k=0;k<KMODES;++k) {
       const int opk = OFF_Pk(k);
@@ -1309,10 +1308,10 @@ public:
         S.noalias() += P_.template block<3,3>(opk, opm);
       }
     }
-
+  
     S = T(0.5) * (S + S.transpose());
     for (int i=0;i<3;++i) S(i,i) = std::max(S(i,i), T(1e-12));
-
+  
     Eigen::LDLT<Mat3> ldlt;
     ldlt.compute(S);
     if (ldlt.info() != Eigen::Success) {
@@ -1321,27 +1320,26 @@ public:
       ldlt.compute(S);
       if (ldlt.info() != Eigen::Success) return;
     }
-
-    // PCt = P C^T, where C^T has identity at each p_k, summed.
+  
+    // PCt = P C^T, where C sums p_k (WORLD) blocks
     MatX3& PCt = PCt_scratch_;
     PCt.setZero();
     for (int k=0;k<KMODES;++k) {
       const int opk = OFF_Pk(k);
-      PCt.noalias() += P_.template block<NX,3>(0, opk); // times I
+      PCt.noalias() += P_.template block<NX,3>(0, opk); // * I
     }
-
-    // K = PCt S^{-1}
+  
     MatX3& K = K_scratch_;
     K.noalias() = PCt * ldlt.solve(Mat3::Identity());
-    if (!K.allFinite() || !r.allFinite() || !S.allFinite()) return;
-
-    // Only update wave states (keep base/bias untouched)
-    K.template block<BASE_N,3>(0,0).setZero();                 // freeze base
-    if constexpr (with_accel_bias) K.template block<3,3>(OFF_BA,0).setZero();  // freeze accel bias
-
+    if (!K.allFinite()) return;
+  
+    // Only update wave states
+    K.template block<BASE_N,3>(0,0).setZero();
+    if constexpr (with_accel_bias) K.template block<3,3>(OFF_BA,0).setZero();
+  
     x_.noalias() += K * r;
     if (!x_.allFinite()) return;
-
+  
     joseph_update3_(K, S, PCt);
   }
 
