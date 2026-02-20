@@ -950,51 +950,29 @@ public:
   }
 
   // Measurement update: accelerometer (Joseph)
-
   void measurement_update_acc_only(const Vec3& acc_meas_body, T tempC = tempC_ref) {
     last_acc_ = MeasDiag3{};
     last_acc_.accepted = false;
-
-    const bool use_ba = (with_accel_bias && acc_bias_updates_enabled_);
-
+  
+    const bool ba_updates = (with_accel_bias && acc_bias_updates_enabled_);
+  
     const Vec3 acc_meas = deheel_vector_(acc_meas_body);
-
-    // Lever arm term
+    if (!acc_meas.allFinite()) return;
+  
+    // Lever arm term (mean only)
     Vec3 lever = Vec3::Zero();
     if (use_imu_lever_arm_) {
       const Vec3 r_imu_bprime = deheel_vector_(r_imu_wrt_cog_body_phys_);
       lever.noalias() += alpha_b_.cross(r_imu_bprime)
                       +  last_gyr_bias_corrected_.cross(last_gyr_bias_corrected_.cross(r_imu_bprime));
     }
-
-    // J_bg
-    Mat3 J_bg = Mat3::Zero();
-    if constexpr (with_gyro_bias) {
-      if (use_imu_lever_arm_) {
-        const Vec3 r_imu_bprime = deheel_vector_(r_imu_wrt_cog_body_phys_);
-        const Vec3& w = last_gyr_bias_corrected_; // ω = gyr - b_g
-
-        T k_alpha = T(0);
-        if (have_prev_omega_ && last_dt_ > T(0)) {
-          if (alpha_smooth_tau_ > T(0)) {
-            const T a = T(1) - std::exp(-last_dt_ / alpha_smooth_tau_);
-            k_alpha = a / last_dt_;
-          } else {
-            k_alpha = T(1) / last_dt_;
-          }
-        }
-        const Mat3 J_alpha_part = k_alpha * skew3<T>(r_imu_bprime);
-        const Mat3 J_omega_part = d_omega_x_omega_x_r_domega_<T>(w, r_imu_bprime);
-        J_bg = J_alpha_part - J_omega_part;
-      }
-    }
-
-    // Accel bias handling:
-    // Mode A (normal): subtract BA mean and allow BA update.
-    // Mode B (frozen-but-uncertain): KEEP BA uncertainty in S (via Pba/Ptba below),
-    // but do NOT subtract the estimated BA mean when BA updates are disabled,
-    // otherwise inject an un-updatable offset into the mean model.
-    // We still allow fixed calibration-only terms (e.g., temperature compensation).
+  
+    // IMPORTANT CONSISTENCY CHOICE:
+    // Do NOT use BG sensitivity in accel update when lever-arm
+    // mean uses cached (time_update) values not recomputed wrt BG.
+    Mat3 J_bg = Mat3::Zero(); // intentionally zero
+  
+    // Accel bias handling (mean)
     Vec3 ba_term = Vec3::Zero();
     if constexpr (with_accel_bias) {
       const Vec3 ba0 = x_.template segment<3>(OFF_BA);
@@ -1002,180 +980,181 @@ public:
       if (acc_bias_updates_enabled_) ba_term = ba0 + temp_term; // Mode A
       else                          ba_term = temp_term;        // Mode B
     }
-
+  
+    // Predicted specific force
     const Vec3 g_world(0,0,+gravity_magnitude_);
     const Vec3 aw = wave_world_accel_(); // zero if wave block disabled
-
+  
     const Vec3 f_pred = R_wb() * (aw - g_world) + lever + ba_term;
     const Vec3 r = acc_meas - f_pred;
-
+  
     last_acc_.r = r;
-
+  
     // Jacobian wrt attitude
-    // Innovation residual is in BODY'.
-    // Right-multiply error δθ is in BODY' (because qref_ = qref_ * Exp(δθ)).
     const Vec3 f0_b = R_wb() * (aw - g_world);   // BODY'
-    const Mat3 J_att = -skew3<T>(f0_b);
-
-    // Innovation covariance S (3x3)
+    const Mat3 J_att = -skew3<T>(f0_b);          // C_theta
+  
+    // Innovation covariance S
     Mat3& S = S_scratch_;
     S = Racc_;
-
-    // if wave block disabled, marginalize its missing accel uncertainty into S
-    // This makes accel innovations consistent even though we set aw=0 in the mean model.
+  
+    // If wave block disabled, marginalize missing WORLD wave accel uncertainty
     if (!wave_block_enabled_) {
       S.noalias() += R_wb() * Sigma_aw_disabled_world_ * R_wb().transpose();
     }
-
-    // θ
+  
+    // Attitude contribution
     const Mat3 Ptt = P_.template block<3,3>(OFF_DTH,OFF_DTH);
     S.noalias() += J_att * Ptt * J_att.transpose();
-
-    // BA (J_ba = I): always contributes uncertainty to S (Mode B too),
-    // but only allowed to UPDATE when use_ba==true (Mode A).
+  
+    // Accel bias contribution:
+    // - Mode A: include BA cross terms and allow BA update via PCt
+    // - Mode B: treat BA as nuisance noise only (+Pba) with NO cross-terms and NO PCt BA column
     if constexpr (with_accel_bias) {
-      const Mat3 Pba  = P_.template block<3,3>(OFF_BA,OFF_BA);
-      const Mat3 Ptba = P_.template block<3,3>(OFF_DTH,OFF_BA);
-      // C_ba = -I
-      S.noalias() -= J_att * Ptba;
-      S.noalias() -= Ptba.transpose() * J_att.transpose();
-      S.noalias() += Pba;  // (-I) Pba (-I)^T = Pba
-    }
-
-    // Gyro bias via lever arm
-    if constexpr (with_gyro_bias) {
-      if (use_imu_lever_arm_) {
-        const Mat3 Pth_bg = P_.template block<3,3>(OFF_DTH, OFF_BG);
-        const Mat3 Pbg_bg = P_.template block<3,3>(OFF_BG, OFF_BG);
-        S.noalias() += J_att * Pth_bg * J_bg.transpose();
-        S.noalias() += J_bg * Pth_bg.transpose() * J_att.transpose();
-        S.noalias() += J_bg * Pbg_bg * J_bg.transpose();
-
-        if constexpr (with_accel_bias) {
-          const Mat3 Pbg_ba = P_.template block<3,3>(OFF_BG, OFF_BA);
-          S.noalias() += J_bg * Pbg_ba;
-          S.noalias() += Pbg_ba.transpose() * J_bg.transpose();
-        }
+      const Mat3 Pba = P_.template block<3,3>(OFF_BA,OFF_BA);
+      if (acc_bias_updates_enabled_) {
+        const Mat3 Ptba = P_.template block<3,3>(OFF_DTH,OFF_BA);
+        // residual r = z - f, f has +ba_term => C_ba = -I
+        S.noalias() -= J_att * Ptba;
+        S.noalias() -= Ptba.transpose() * J_att.transpose();
+        S.noalias() += Pba;
+      } else {
+        S.noalias() += Pba;
       }
     }
-
-    // Wave contributions
+  
+    // Wave contributions (IMPORTANT: wave C signs are negative)
     if (wave_block_enabled_) {
       for (int k=0;k<KMODES;++k) {
         const T om = omega_[k];
         const T ze = zeta_[k];
-
+  
+        // These are df/dp and df/dv in BODY'
         const Mat3 Jp = R_wb() * (-(om*om) * Mat3::Identity());
         const Mat3 Jv = R_wb() * (-(T(2)*ze*om) * Mat3::Identity());
-
+  
+        // But residual uses C_p = -Jp, C_v = -Jv
+        const Mat3 Cp = -Jp;
+        const Mat3 Cv = -Jv;
+  
         const int op = OFF_Pk(k);
         const int ov = OFF_Vk(k);
-
+  
         const Mat3 Ppp = P_.template block<3,3>(op,op);
         const Mat3 Pvv = P_.template block<3,3>(ov,ov);
         const Mat3 Ppv = P_.template block<3,3>(op,ov);
-
-        S.noalias() += Jp * Ppp * Jp.transpose();
-        S.noalias() += Jv * Pvv * Jv.transpose();
-        S.noalias() += Jp * Ppv * Jv.transpose();
-        S.noalias() += Jv * Ppv.transpose() * Jp.transpose();
-
+  
+        // Pure wave variance terms
+        S.noalias() += Cp * Ppp * Cp.transpose();
+        S.noalias() += Cv * Pvv * Cv.transpose();
+        S.noalias() += Cp * Ppv * Cv.transpose();
+        S.noalias() += Cv * Ppv.transpose() * Cp.transpose();
+  
+        // Att-wave cross terms
         const Mat3 Ptp = P_.template block<3,3>(OFF_DTH, op);
         const Mat3 Ptv = P_.template block<3,3>(OFF_DTH, ov);
-
-        S.noalias() += J_att * Ptp * Jp.transpose();
-        S.noalias() += Jp * Ptp.transpose() * J_att.transpose();
-        S.noalias() += J_att * Ptv * Jv.transpose();
-        S.noalias() += Jv * Ptv.transpose() * J_att.transpose();
-
+  
+        S.noalias() += J_att * Ptp * Cp.transpose();
+        S.noalias() += Cp * Ptp.transpose() * J_att.transpose();
+        S.noalias() += J_att * Ptv * Cv.transpose();
+        S.noalias() += Cv * Ptv.transpose() * J_att.transpose();
+  
+        // BA-wave cross terms (only if BA updates enabled, otherwise BA not in C)
         if constexpr (with_accel_bias) {
-          const Mat3 Pbap = P_.template block<3,3>(OFF_BA, op);
-          const Mat3 Pbav = P_.template block<3,3>(OFF_BA, ov);
-          S.noalias() += Pbap * Jp.transpose();
-          S.noalias() += Jp * Pbap.transpose();
-          S.noalias() += Pbav * Jv.transpose();
-          S.noalias() += Jv * Pbav.transpose();
-        }
-
-        if constexpr (with_gyro_bias) {
-          if (use_imu_lever_arm_) {
-            const Mat3 Pbgp = P_.template block<3,3>(OFF_BG, op);
-            const Mat3 Pbgv = P_.template block<3,3>(OFF_BG, ov);
-            S.noalias() += J_bg * Pbgp * Jp.transpose();
-            S.noalias() += Jp * Pbgp.transpose() * J_bg.transpose();
-            S.noalias() += J_bg * Pbgv * Jv.transpose();
-            S.noalias() += Jv * Pbgv.transpose() * J_bg.transpose();
+          if (acc_bias_updates_enabled_) {
+            const Mat3 Pbap = P_.template block<3,3>(OFF_BA, op);
+            const Mat3 Pbav = P_.template block<3,3>(OFF_BA, ov);
+            // C_ba = -I
+            S.noalias() += (-Mat3::Identity()) * Pbap * Cp.transpose();
+            S.noalias() += Cp * Pbap.transpose() * (-Mat3::Identity()).transpose();
+            S.noalias() += (-Mat3::Identity()) * Pbav * Cv.transpose();
+            S.noalias() += Cv * Pbav.transpose() * (-Mat3::Identity()).transpose();
           }
         }
+  
+        // BG terms intentionally omitted (J_bg = 0)
+        (void)J_bg;
       }
     }
-
+  
+    // Symmetrize / floor
     S = T(0.5)*(S + S.transpose());
     for (int i=0;i<3;++i) S(i,i) = std::max(S(i,i), T(1e-12));
-
+  
     Eigen::LDLT<Mat3> ldlt;
     ldlt.compute(S);
     if (ldlt.info() != Eigen::Success) {
-      const T bump = std::max(std::numeric_limits<T>::epsilon(), T(1e-6)*(Racc_.norm()+T(1)));
+      const T bump = std::max(std::numeric_limits<T>::epsilon(), T(1e-6)*(S.norm()+T(1)));
       S.diagonal().array() += bump;
       ldlt.compute(S);
       if (ldlt.info() != Eigen::Success) return;
     }
-
+  
     last_acc_.S = S;
     {
       const Vec3 sol = ldlt.solve(r);
       const T nis = r.dot(sol);
       last_acc_.nis = std::isfinite(nis) ? nis : std::numeric_limits<T>::quiet_NaN();
     }
-
+  
+    // Optional NIS gate (prevents one bad update from detonating attitude)
+    const T nis_gate = T(50.0); // tune; set huge to effectively disable
+    if (!(last_acc_.nis < nis_gate)) return;
+  
     // PCt = P C^T (NXx3)
     MatX3& PCt = PCt_scratch_;
     PCt.setZero();
-
+  
+    // Attitude column
     PCt.noalias() += P_.template block<NX,3>(0,OFF_DTH) * J_att.transpose();
-
-    // BA column (J_ba = I) but allow update only if use_ba
+  
+    // BA column only in Mode A (updates enabled): C_ba = -I
     if constexpr (with_accel_bias) {
-      PCt.noalias() -= P_.template block<NX,3>(0,OFF_BA);
-      if (!use_ba) PCt.template block<3,3>(OFF_BA,0).setZero();
-    }
-
-    // BG via lever Jacobian
-    if constexpr (with_gyro_bias) {
-      if (use_imu_lever_arm_) {
-        PCt.noalias() += P_.template block<NX,3>(0,OFF_BG) * J_bg.transpose();
+      if (acc_bias_updates_enabled_) {
+        PCt.noalias() += P_.template block<NX,3>(0,OFF_BA) * (-Mat3::Identity()).transpose();
       }
     }
-
-    // Wave states
+  
+    // Wave columns if enabled: C_p = -Jp, C_v = -Jv
     if (wave_block_enabled_) {
       for (int k=0;k<KMODES;++k) {
         const T om = omega_[k];
         const T ze = zeta_[k];
+  
         const Mat3 Jp = R_wb() * (-(om*om) * Mat3::Identity());
         const Mat3 Jv = R_wb() * (-(T(2)*ze*om) * Mat3::Identity());
-        PCt.noalias() += P_.template block<NX,3>(0, OFF_Pk(k)) * Jp.transpose();
-        PCt.noalias() += P_.template block<NX,3>(0, OFF_Vk(k)) * Jv.transpose();
+  
+        const Mat3 Cp = -Jp;
+        const Mat3 Cv = -Jv;
+  
+        PCt.noalias() += P_.template block<NX,3>(0, OFF_Pk(k)) * Cp.transpose();
+        PCt.noalias() += P_.template block<NX,3>(0, OFF_Vk(k)) * Cv.transpose();
       }
     } else {
       freeze_wave_rows_(PCt);
     }
-
+  
+    // K = PCt * S^{-1}
     MatX3& K = K_scratch_;
     K.noalias() = PCt * ldlt.solve(Mat3::Identity());
     if (!(K.allFinite() && r.allFinite())) return;
-
+  
     if (!wave_block_enabled_) freeze_wave_rows_(K);
-    if constexpr (with_accel_bias) if (!use_ba) K.template block<3,3>(OFF_BA,0).setZero();
-
+  
+    // If BA updates disabled, ensure BA rows do not move (Mode B)
+    if constexpr (with_accel_bias) {
+      if (!acc_bias_updates_enabled_) {
+        K.template block<3,3>(OFF_BA,0).setZero();
+      }
+    }
+  
     x_.noalias() += K * r;
-    if (!x_.allFinite()) return; // or reset wave block + re-enter warmup
-
+    if (!x_.allFinite()) return;
+  
     joseph_update3_(K, S, PCt);
-
+  
     applyQuaternionCorrectionFromErrorState_();
-
+  
     last_acc_.accepted = true;
   }
 
