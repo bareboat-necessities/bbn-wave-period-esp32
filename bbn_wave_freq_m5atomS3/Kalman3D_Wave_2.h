@@ -991,8 +991,8 @@ public:
     last_acc_.r = r;
   
     // Jacobian wrt attitude (RIGHT-multiply convention)
-    const Vec3 v_world = (aw - g_world);
-    const Mat3 J_att = -R_wb() * skew3<T>(v_world);
+        const Vector3 f_cog_b = R_wb() * (aw - g_world);
+        J_att = -skew3<T>(f_cog_b);
   
     // Innovation covariance S
     Mat3& S = S_scratch_;
