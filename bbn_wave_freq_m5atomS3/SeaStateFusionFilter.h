@@ -212,7 +212,7 @@ public:
       wave_enable_grace_sec_ = std::max(0.0f, wave_enable_grace_sec_ - dt);
     
       if (Racc_nominal_hold_.allFinite() && Racc_nominal_hold_.maxCoeff() > 0.0f) {
-        mekf_->set_Racc((3.0f * Racc_nominal_hold_).eval());  // 3x sigma -> 9x variance
+        mekf_->set_Racc((4.0f * Racc_nominal_hold_).eval());  // 4x sigma -> 16x variance
       }
       if (wave_enable_grace_sec_ <= 0.0f) {
         mekf_->set_Racc(Racc_nominal_hold_.eval());           // restore
@@ -663,7 +663,7 @@ private:
 
     mekf_->set_warmup_mode(false);
     mekf_->set_wave_block_enabled(enable_linear_block_);
-    wave_enable_grace_sec_ = 2.0f;             
+    wave_enable_grace_sec_ = 4.0f;             
     Racc_nominal_hold_ = Racc_nominal_;        // keep a copy
     
     if (freeze_acc_bias_until_live_) {
