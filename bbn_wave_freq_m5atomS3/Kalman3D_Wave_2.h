@@ -544,8 +544,8 @@ public:
       bg_accum_count_ = 0;
     } else {
       for (int k=0;k<KMODES;++k) {
-        const T varp = std::max(T(1e-12), init_var_p_[k]) * T(50);
-        const T varv = std::max(T(1e-12), init_var_v_[k]) * T(10);
+        const T varp = std::max(T(1e-12), init_var_p_[k]) * T(100);
+        const T varv = std::max(T(1e-12), init_var_v_[k]) * T(20);
         P_.template block<3,3>(OFF_Pk(k), OFF_Pk(k)) = Mat3::Identity() * varp;
         P_.template block<3,3>(OFF_Vk(k), OFF_Vk(k)) = Mat3::Identity() * varv;
       }
@@ -892,7 +892,7 @@ public:
           Qd6_(3+ax, ax  ) = q01;
           Qd6_(3+ax, 3+ax) = q11;
         }
-        Qd6_ *= T(10); // apply once (tuning knob)
+        Qd6_ *= T(20); // apply once (tuning knob)
 
         // State propagate (already per-axis correct)
         Vec3 p = x_.template segment<3>(OFF_Pk(k));
