@@ -1014,8 +1014,8 @@ public:
     // Jacobian wrt attitude
     // Innovation residual is in BODY'.
     // Right-multiply error δθ is in BODY' (because qref_ = qref_ * Exp(δθ)).
-    const Vec3 v_world = (aw - g_world);              // WORLD
-    const Mat3 J_att   = - (R_wb() * skew3<T>(v_world));
+    const Vec3 f0_b = R_wb() * (aw - g_world);   // BODY'
+    const Mat3 J_att = -skew3<T>(f0_b);
 
     // Innovation covariance S (3x3)
     Mat3& S = S_scratch_;
