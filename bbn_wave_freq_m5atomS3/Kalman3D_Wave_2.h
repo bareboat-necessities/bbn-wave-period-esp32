@@ -1124,25 +1124,53 @@ public:
     const Vec3 r = z_dir - h_dir;
     last_mag_.r = r;
 
-    // use δ(R v) = -[R v]x δθ consistently
-    // and build J_att for h_dir = normalize(P_h * (R*Bref)).
-
-    const Mat3 db_dth = -R * skew3<T>(B_world_ref_);
-    const Mat3 dd_dth = -R * skew3<T>(Vec3(T(0),T(0),T(1)));
-
-    // u = (I - d d^T) b = P_h b
-    // du = P_h db - ( (d·b) I + d b^T ) dd
-    const T s = d.dot(b_pred);
-    const Mat3 du_dth = (P_h * db_dth) - ( (s * I) + (d * b_pred.transpose()) ) * dd_dth;
-
-    // h_dir = u / ||u||  => dh = (I - h h^T)/||u|| * du
-    const Mat3 Dnorm = (I - h_dir*h_dir.transpose()) / un;
-
-    Mat3 J_att = Dnorm * du_dth;  // J = ∂h_dir/∂δθ
-
-    // If we flipped h_dir -> -h_dir, the chosen measurement function branch is h = -normalize(u),
-    // so its Jacobian must also flip sign.
-    if (flipped) J_att = -J_att;
+    // finite-difference ∂h_dir/∂δθ
+    // Matches your correction convention: qref_ = qref_ * exp(δθ)
+    // and keeps the same 180° branch as the nominal (post-flip) h_dir.
+    Mat3 J_att;
+    {
+      const Vec3 h_nom = h_dir;               // already includes the flip choice
+      const T eps = T(1e-4);                  // rad (tune 1e-5..1e-3 if desired)
+    
+      auto hdir_from_q = [&](const Eigen::Quaternion<T>& q)->Vec3 {
+        const Mat3 Rq = q.toRotationMatrix();
+    
+        // Predicted field and down in BODY'
+        Vec3 b = Rq * B_world_ref_;
+        Vec3 dd = Rq * Vec3(T(0), T(0), T(1));
+        const T dn2 = dd.squaredNorm();
+        if (!(dn2 > T(1e-12))) return h_nom;
+        dd /= std::sqrt(dn2);
+    
+        const Mat3 Ph = Mat3::Identity() - dd * dd.transpose();
+    
+        Vec3 u2 = Ph * b;
+        const T un2 = u2.norm();
+        if (!(un2 > T(1e-8))) return h_nom;
+    
+        Vec3 h2 = u2 / un2;
+    
+        // Keep the same branch as nominal to avoid sign flips in the Jacobian
+        if (h2.dot(h_nom) < T(0)) h2 = -h2;
+    
+        return h2;
+      };
+    
+      for (int i = 0; i < 3; ++i) {
+        Vec3 dth = Vec3::Zero();
+        dth(i) = eps;
+    
+        Eigen::Quaternion<T> qp = qref_ * quat_from_delta_theta<T>( dth);
+        Eigen::Quaternion<T> qm = qref_ * quat_from_delta_theta<T>(-dth);
+        qp.normalize();
+        qm.normalize();
+    
+        const Vec3 hp = hdir_from_q(qp);
+        const Vec3 hm = hdir_from_q(qm);
+    
+        J_att.col(i) = (hp - hm) / (T(2) * eps);
+      }
+    }
 
     // Direction-domain noise scaling
     Mat3& S = S_scratch_;
