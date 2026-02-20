@@ -1124,16 +1124,11 @@ public:
     const Vec3 r = z_dir - h_dir;
     last_mag_.r = r;
 
-    // ------------------------------------------------------------
-    // FIXED Jacobian bug: use δ(R v) = -[R v]x δθ consistently
+    // use δ(R v) = -[R v]x δθ consistently
     // and build J_att for h_dir = normalize(P_h * (R*Bref)).
-    // ------------------------------------------------------------
 
-    // db_pred/dθ = -[b_pred]x
-    const Mat3 db_dth = -skew3<T>(b_pred);
-
-    // dd/dθ = -[d]x   (d = R*e3)
-    const Mat3 dd_dth = -skew3<T>(d);
+    const Mat3 db_dth = -R * skew3<T>(B_world_ref_);
+    const Mat3 dd_dth = -R * skew3<T>(Vec3(T(0),T(0),T(1)));
 
     // u = (I - d d^T) b = P_h b
     // du = P_h db - ( (d·b) I + d b^T ) dd
