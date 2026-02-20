@@ -951,208 +951,207 @@ public:
   }
 
   // Measurement update: accelerometer (Joseph)
-  void measurement_update_acc_only(const Vec3& acc_meas_body, T tempC = tempC_ref) {
-    last_acc_ = MeasDiag3{};
-    last_acc_.accepted = false;
-  
-    const bool ba_updates = (with_accel_bias && acc_bias_updates_enabled_);
-  
-    const Vec3 acc_meas = deheel_vector_(acc_meas_body);
-    if (!acc_meas.allFinite()) return;
-  
-    // Lever arm term (mean only)
-    Vec3 lever = Vec3::Zero();
-    if (use_imu_lever_arm_) {
-      const Vec3 r_imu_bprime = deheel_vector_(r_imu_wrt_cog_body_phys_);
-      lever.noalias() += alpha_b_.cross(r_imu_bprime)
-                      +  last_gyr_bias_corrected_.cross(last_gyr_bias_corrected_.cross(r_imu_bprime));
-    }
-  
-    // IMPORTANT CONSISTENCY CHOICE:
-    // Do NOT use BG sensitivity in accel update when lever-arm
-    // mean uses cached (time_update) values not recomputed wrt BG.
-    Mat3 J_bg = Mat3::Zero(); // intentionally zero
-  
-    // Accel bias handling (mean)
-    Vec3 ba_term = Vec3::Zero();
-    if constexpr (with_accel_bias) {
-      const Vec3 ba0 = x_.template segment<3>(OFF_BA);
-      const Vec3 temp_term = k_a_ * (tempC - tempC_ref);
-      if (acc_bias_updates_enabled_) ba_term = ba0 + temp_term; // Mode A
-      else                          ba_term = temp_term;        // Mode B
-    }
-  
-    // Predicted specific force
-    const Vec3 g_world(0,0,+gravity_magnitude_);
-    const Vec3 aw = wave_world_accel_(); // zero if wave block disabled
-  
-    const Vec3 f_pred = R_wb() * (aw - g_world) + lever + ba_term;
-    const Vec3 r = acc_meas - f_pred;
-  
-    last_acc_.r = r;
-  
-    // Jacobian wrt attitude (RIGHT-multiply convention)
-    const Vec3 f_cog_b = R_wb() * (aw - g_world);
-    const Mat3 J_att = -skew3<T>(f_cog_b);
-  
-    // Innovation covariance S
-    Mat3& S = S_scratch_;
-    S = Racc_;
-  
-    // If wave block disabled, marginalize missing WORLD wave accel uncertainty
-    if (!wave_block_enabled_) {
-      S.noalias() += R_wb() * Sigma_aw_disabled_world_ * R_wb().transpose();
-    }
-  
-    // Attitude contribution
-    const Mat3 Ptt = P_.template block<3,3>(OFF_DTH,OFF_DTH);
-    S.noalias() += J_att * Ptt * J_att.transpose();
-  
-    // Accel bias contribution:
-    // - Mode A: include BA cross terms and allow BA update via PCt
-    // - Mode B: treat BA as nuisance noise only (+Pba) with NO cross-terms and NO PCt BA column
-    if constexpr (with_accel_bias) {
-      const Mat3 Pba = P_.template block<3,3>(OFF_BA,OFF_BA);
-      if (acc_bias_updates_enabled_) {
-        const Mat3 Ptba = P_.template block<3,3>(OFF_DTH,OFF_BA);
-        // residual r = z - f, f has +ba_term => C_ba = -I
-        S.noalias() -= J_att * Ptba;
-        S.noalias() -= Ptba.transpose() * J_att.transpose();
-        S.noalias() += Pba;
-      } else {
-        S.noalias() += Pba;
-      }
-    }
-  
-    // Wave contributions (FULL, includes cross-mode correlations)
-    if (wave_block_enabled_) {
-      // Build Cw: residual Jacobian wrt wave states x_w = [p1 v1 ... pK vK]
-      // Measurement model: f_pred = R_wb*(aw - g) + ...
-      // aw = Σ ( -ω^2 p - 2ζω v )
-      // residual r = z - f_pred, so:
-      //   C_p = ∂r/∂p = -∂f/∂p = -R_wb * ( -ω^2 I ) = +ω^2 R_wb
-      //   C_v = ∂r/∂v = -∂f/∂v = -R_wb * ( -2ζω I ) = +2ζω R_wb
-      Eigen::Matrix<T,3,WAVE_N> Cw;
-      Cw.setZero();
-    
-      const Mat3 Rwb = R_wb();  // compute once
-      for (int k=0; k<KMODES; ++k) {
-        const T om = omega_[k];
-        const T ze = zeta_[k];
-    
-        const Mat3 Cp = (om*om) * Rwb;            // 3x3
-        const Mat3 Cv = (T(2)*ze*om) * Rwb;       // 3x3
-    
-        Cw.template block<3,3>(0, 6*k + 0) = Cp;  // p_k columns
-        Cw.template block<3,3>(0, 6*k + 3) = Cv;  // v_k columns
-      }
-    
-      // Add full wave covariance contribution: Cw * Pww * Cw^T
-      const auto Pww = P_.template block<WAVE_N,WAVE_N>(OFF_WAVE, OFF_WAVE);
-      S.noalias() += Cw * Pww * Cw.transpose();
-    
-      // Attitude-wave cross: J_att * Ptw * Cw^T + transpose
-      const auto Ptw = P_.template block<3,WAVE_N>(OFF_DTH, OFF_WAVE);
-      const Mat3 AttWave = J_att * Ptw * Cw.transpose();
-      S.noalias() += AttWave;
-      S.noalias() += AttWave.transpose();
-    
-      // Accel-bias-wave cross (only if BA is in C, i.e. Mode A)
-      if constexpr (with_accel_bias) {
-        if (acc_bias_updates_enabled_) {
-          const auto Pbaw = P_.template block<3,WAVE_N>(OFF_BA, OFF_WAVE);
-          const Mat3 Cba = -Mat3::Identity();     // since f_pred has +ba, residual has C_ba = -I
-          const Mat3 BAWave = Cba * Pbaw * Cw.transpose();
-          S.noalias() += BAWave;
-          S.noalias() += BAWave.transpose();
-        }
-      }
-    
-      // BG terms intentionally omitted (J_bg=0)
-    }
-  
-    // Symmetrize / floor
-    S = T(0.5)*(S + S.transpose());
-    for (int i=0;i<3;++i) S(i,i) = std::max(S(i,i), T(1e-12));
-  
-    Eigen::LDLT<Mat3> ldlt;
-    ldlt.compute(S);
-    if (ldlt.info() != Eigen::Success) {
-      const T bump = std::max(std::numeric_limits<T>::epsilon(), T(1e-6)*(S.norm()+T(1)));
-      S.diagonal().array() += bump;
-      ldlt.compute(S);
-      if (ldlt.info() != Eigen::Success) return;
-    }
-  
-    last_acc_.S = S;
-    {
-      const Vec3 sol = ldlt.solve(r);
-      const T nis = r.dot(sol);
-      last_acc_.nis = std::isfinite(nis) ? nis : std::numeric_limits<T>::quiet_NaN();
-    }
-  
-    // Optional NIS gate (prevents one bad update from detonating attitude)
-    const T nis_gate = T(50.0); // tune; set huge to effectively disable
-    if (!(last_acc_.nis < nis_gate)) return;
-  
-    // PCt = P C^T (NXx3)
-    MatX3& PCt = PCt_scratch_;
-    PCt.setZero();
-  
-    // Attitude column
-    PCt.noalias() += P_.template block<NX,3>(0,OFF_DTH) * J_att.transpose();
-  
-    // BA column only in Mode A (updates enabled): C_ba = -I
-    if constexpr (with_accel_bias) {
-      if (acc_bias_updates_enabled_) {
-        PCt.noalias() += P_.template block<NX,3>(0,OFF_BA) * (-Mat3::Identity()).transpose();
-      }
-    }
-  
-    // Wave columns in PCt: PCt += P(:,w) * Cw^T
-    if (wave_block_enabled_) {
-      Eigen::Matrix<T,3,WAVE_N> Cw;
-      Cw.setZero();
-    
-      const Mat3 Rwb = R_wb();
-      for (int k=0; k<KMODES; ++k) {
-        const T om = omega_[k];
-        const T ze = zeta_[k];
-    
-        const Mat3 Cp = (om*om) * Rwb;
-        const Mat3 Cv = (T(2)*ze*om) * Rwb;
-    
-        Cw.template block<3,3>(0, 6*k + 0) = Cp;
-        Cw.template block<3,3>(0, 6*k + 3) = Cv;
-      }
-      PCt.noalias() += P_.template block<NX,WAVE_N>(0, OFF_WAVE) * Cw.transpose();
-    } else {
-      freeze_wave_rows_(PCt);
-    }
-  
-    // K = PCt * S^{-1}
-    MatX3& K = K_scratch_;
-    K.noalias() = PCt * ldlt.solve(Mat3::Identity());
-    if (!(K.allFinite() && r.allFinite())) return;
-  
-    if (!wave_block_enabled_) freeze_wave_rows_(K);
-  
-    // If BA updates disabled, ensure BA rows do not move (Mode B)
-    if constexpr (with_accel_bias) {
-      if (!acc_bias_updates_enabled_) {
-        K.template block<3,3>(OFF_BA,0).setZero();
-      }
-    }
-  
-    x_.noalias() += K * r;
-    if (!x_.allFinite()) return;
-  
-    joseph_update3_(K, S, PCt);
-  
-    applyQuaternionCorrectionFromErrorState_();
-  
-    last_acc_.accepted = true;
+// Measurement update: accelerometer (Joseph)
+void measurement_update_acc_only(const Vec3& acc_meas_body, T tempC = tempC_ref) {
+  last_acc_ = MeasDiag3{};
+  last_acc_.accepted = false;
+
+  const Vec3 z = deheel_vector_(acc_meas_body);
+  if (!z.allFinite()) return;
+
+  // ------------------------------------------------------------
+  // Build predicted measurement f_pred (BODY') and residual r
+  // ------------------------------------------------------------
+
+  // Lever arm term (mean only)
+  Vec3 lever = Vec3::Zero();
+  if (use_imu_lever_arm_) {
+    const Vec3 r_imu_bprime = deheel_vector_(r_imu_wrt_cog_body_phys_);
+    lever.noalias() += alpha_b_.cross(r_imu_bprime)
+                    +  last_gyr_bias_corrected_.cross(last_gyr_bias_corrected_.cross(r_imu_bprime));
   }
+
+  // Accel-bias handling (mean)
+  Vec3 ba_term = Vec3::Zero();
+  if constexpr (with_accel_bias) {
+    const Vec3 temp_term = k_a_ * (tempC - tempC_ref);
+    if (acc_bias_updates_enabled_) {
+      const Vec3 ba0 = x_.template segment<3>(OFF_BA);
+      ba_term = ba0 + temp_term;     // Mode A
+    } else {
+      ba_term = temp_term;           // Mode B
+    }
+  }
+
+  const Vec3 g_world(0,0,+gravity_magnitude_);
+  const Vec3 aw = wave_world_accel_();  // WORLD (zero if wave block disabled)
+  const Mat3 Rwb = R_wb();
+
+  // Predicted specific force (BODY')
+  const Vec3 f_cog_b = Rwb * (aw - g_world);          // body-frame term affected by attitude
+  const Vec3 f_pred  = f_cog_b + lever + ba_term;
+
+  const Vec3 r = z - f_pred;
+
+  last_acc_.r = r;
+
+  // ------------------------------------------------------------
+  // Jacobians: ALWAYS as residual Jacobians C = ∂r/∂x
+  // ------------------------------------------------------------
+
+  // Attitude residual Jacobian (right-multiply convention, residual in BODY'):
+  // δ( Rwb * u ) = -[Rwb*u]x δθ  =>  ∂f/∂δθ = -[f_cog_b]x  =>  ∂r/∂δθ = +[f_cog_b]x
+  const Mat3 C_att = +skew3<T>(f_cog_b);
+
+  // Bias residual Jacobian (Mode A only): f_pred has +b_a => r = z - ... - b_a => C_ba = -I
+  const Mat3 C_ba = -Mat3::Identity();
+
+  // Wave residual Jacobian Cw = ∂r/∂x_wave
+  Eigen::Matrix<T,3,WAVE_N> Cw;
+  Cw.setZero();
+  if (wave_block_enabled_) {
+    for (int k=0; k<KMODES; ++k) {
+      const T om = omega_[k];
+      const T ze = zeta_[k];
+
+      // aw includes -(om^2) p_k -(2 ζ om) v_k  (WORLD)
+      // f_pred = Rwb*(aw-g) => ∂f/∂p_k = Rwb * (-(om^2)I) => ∂r/∂p_k = +om^2 Rwb
+      // similarly for v_k: ∂r/∂v_k = +2 ζ om Rwb
+      const Mat3 Cp = (om*om) * Rwb;
+      const Mat3 Cv = (T(2)*ze*om) * Rwb;
+
+      Cw.template block<3,3>(0, 6*k + 0) = Cp;
+      Cw.template block<3,3>(0, 6*k + 3) = Cv;
+    }
+  }
+
+  // ------------------------------------------------------------
+  // Innovation covariance S = R + C P C^T (consistent cross-terms)
+  // ------------------------------------------------------------
+
+  Mat3& S = S_scratch_;
+  S = Racc_;
+
+  // If wave block disabled, marginalize missing WORLD wave accel uncertainty
+  if (!wave_block_enabled_) {
+    S.noalias() += Rwb * Sigma_aw_disabled_world_ * Rwb.transpose();
+  }
+
+  // Attitude contribution
+  const Mat3 Ptt = P_.template block<3,3>(OFF_DTH, OFF_DTH);
+  S.noalias() += C_att * Ptt * C_att.transpose();
+
+  // Accel bias contribution:
+  // Mode A: include full cross terms with attitude and wave (via P blocks)
+  // Mode B: treat Pba as nuisance noise only
+  if constexpr (with_accel_bias) {
+    const Mat3 Pba = P_.template block<3,3>(OFF_BA, OFF_BA);
+    if (acc_bias_updates_enabled_) {
+      const Mat3 Ptba = P_.template block<3,3>(OFF_DTH, OFF_BA);
+      // + C_att*Ptba*C_ba^T + transpose + C_ba*Pba*C_ba^T
+      const Mat3 X = C_att * Ptba * C_ba.transpose();
+      S.noalias() += X + X.transpose();
+      S.noalias() += C_ba * Pba * C_ba.transpose(); // == Pba
+    } else {
+      S.noalias() += Pba;
+    }
+  }
+
+  // Wave contributions (full, includes cross-mode correlations)
+  if (wave_block_enabled_) {
+    const auto Pww = P_.template block<WAVE_N, WAVE_N>(OFF_WAVE, OFF_WAVE);
+    S.noalias() += Cw * Pww * Cw.transpose();
+
+    // Attitude-wave cross
+    const auto Ptw = P_.template block<3, WAVE_N>(OFF_DTH, OFF_WAVE);
+    const Mat3 AW = C_att * Ptw * Cw.transpose();
+    S.noalias() += AW + AW.transpose();
+
+    // BA-wave cross (Mode A only)
+    if constexpr (with_accel_bias) {
+      if (acc_bias_updates_enabled_) {
+        const auto Pbaw = P_.template block<3, WAVE_N>(OFF_BA, OFF_WAVE);
+        const Mat3 BW = C_ba * Pbaw * Cw.transpose();
+        S.noalias() += BW + BW.transpose();
+      }
+    }
+
+    // BG terms intentionally omitted (lever-arm mean uses cached omega, so J_bg forced 0 by design)
+  }
+
+  // Symmetrize / floor
+  S = T(0.5) * (S + S.transpose());
+  for (int i=0;i<3;++i) S(i,i) = std::max(S(i,i), T(1e-12));
+
+  Eigen::LDLT<Mat3> ldlt;
+  ldlt.compute(S);
+  if (ldlt.info() != Eigen::Success) {
+    const T bump = std::max(std::numeric_limits<T>::epsilon(), T(1e-6)*(S.norm()+T(1)));
+    S.diagonal().array() += bump;
+    ldlt.compute(S);
+    if (ldlt.info() != Eigen::Success) return;
+  }
+
+  last_acc_.S = S;
+  {
+    const Vec3 sol = ldlt.solve(r);
+    const T nis = r.dot(sol);
+    last_acc_.nis = std::isfinite(nis) ? nis : std::numeric_limits<T>::quiet_NaN();
+  }
+
+  // Optional NIS gate
+  const T nis_gate = T(50.0);
+  if (!(last_acc_.nis < nis_gate)) return;
+
+  // ------------------------------------------------------------
+  // PCt = P C^T (built from the SAME C blocks as S)
+  // ------------------------------------------------------------
+
+  MatX3& PCt = PCt_scratch_;
+  PCt.setZero();
+
+  // Attitude
+  PCt.noalias() += P_.template block<NX,3>(0, OFF_DTH) * C_att.transpose();
+
+  // Accel bias (Mode A only)
+  if constexpr (with_accel_bias) {
+    if (acc_bias_updates_enabled_) {
+      PCt.noalias() += P_.template block<NX,3>(0, OFF_BA) * C_ba.transpose();
+    }
+  }
+
+  // Wave
+  if (wave_block_enabled_) {
+    PCt.noalias() += P_.template block<NX, WAVE_N>(0, OFF_WAVE) * Cw.transpose();
+  } else {
+    freeze_wave_rows_(PCt);
+  }
+
+  // ------------------------------------------------------------
+  // Gain, freeze rows as needed, state/cov update
+  // ------------------------------------------------------------
+
+  MatX3& K = K_scratch_;
+  K.noalias() = PCt * ldlt.solve(Mat3::Identity());
+  if (!(K.allFinite() && r.allFinite())) return;
+
+  if (!wave_block_enabled_) freeze_wave_rows_(K);
+
+  // If BA updates disabled, ensure BA rows do not move (Mode B)
+  if constexpr (with_accel_bias) {
+    if (!acc_bias_updates_enabled_) {
+      K.template block<3,3>(OFF_BA,0).setZero();
+    }
+  }
+
+  x_.noalias() += K * r;
+  if (!x_.allFinite()) return;
+
+  joseph_update3_(K, S, PCt);
+  applyQuaternionCorrectionFromErrorState_();
+
+  last_acc_.accepted = true;
+}
 
   // Measurement update: magnetometer (robust tilt-compensated direction-only)
 
