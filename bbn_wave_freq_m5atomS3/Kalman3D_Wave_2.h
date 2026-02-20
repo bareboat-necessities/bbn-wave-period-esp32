@@ -1219,7 +1219,7 @@ public:
       + (d_dot_b) * skew3<T>(d)
       + P_h * (-skew3<T>(b_pred));
   
-    const Mat3 J_att = du_dv * Jv;
+    const Mat3 J_att = -(du_dv * Jv);
   
     Mat3& S = S_scratch_;
   
