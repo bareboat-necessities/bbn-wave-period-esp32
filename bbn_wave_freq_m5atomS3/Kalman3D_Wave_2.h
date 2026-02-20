@@ -1001,7 +1001,7 @@ void measurement_update_acc_only(const Vec3& acc_meas_body, T tempC = tempC_ref)
 
   // Attitude residual Jacobian (right-multiply convention, residual in BODY'):
   // δ( Rwb * u ) = -[Rwb*u]x δθ  =>  ∂f/∂δθ = -[f_cog_b]x  =>  ∂r/∂δθ = +[f_cog_b]x
-  const Mat3 C_att = +skew3<T>(f_cog_b);
+  const Mat3 C_att = skew3<T>(f_cog_b);
 
   // Bias residual Jacobian (Mode A only): f_pred has +b_a => r = z - ... - b_a => C_ba = -I
   const Mat3 C_ba = -Mat3::Identity();
