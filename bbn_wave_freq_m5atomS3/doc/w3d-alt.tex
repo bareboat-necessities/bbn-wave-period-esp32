@@ -1,244 +1,404 @@
 \documentclass[10pt,twocolumn]{article}
 
-% -------------------- Packages --------------------
+% ===================== Packages =====================
 \usepackage[T1]{fontenc}
 \usepackage{lmodern}
 \usepackage{microtype}
 \usepackage{mathtools,amssymb,amsfonts}
 \usepackage{bm}
+\usepackage{physics}      % \norm{}, \qty{}
+\usepackage{siunitx}
 \usepackage{geometry}
 \usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{enumitem}
 
-\geometry{margin=0.7in}
+\geometry{margin=0.68in}
 \setlength{\columnsep}{0.22in}
+\setlist[itemize]{leftmargin=*,itemsep=2pt,topsep=2pt}
+\setlist[enumerate]{leftmargin=*,itemsep=2pt,topsep=2pt}
 
-% -------------------- Macros --------------------
+% ===================== Macros =====================
 \newcommand{\R}{\mathbb{R}}
 \newcommand{\SO}{\mathrm{SO}}
-\newcommand{\skew}[1]{\left[#1\right]_\times}
+\newcommand{\skew}[1]{\left[#1\right]_{\times}}
 \newcommand{\diag}{\mathrm{diag}}
 \newcommand{\E}{\mathbb{E}}
 \newcommand{\I}{\mathbf{I}}
 \newcommand{\0}{\mathbf{0}}
-\newcommand{\q}{\mathbf{q}}
-\newcommand{\w}{\bm{\omega}}
-\newcommand{\ba}{\mathbf{b}_a}
-\newcommand{\bg}{\mathbf{b}_g}
+
+\newcommand{\qref}{\mathbf{q}_{\text{ref}}}
 \newcommand{\dth}{\delta\bm{\theta}}
+\newcommand{\bg}{\mathbf{b}_g}
+\newcommand{\ba}{\mathbf{b}_a}
 \newcommand{\aw}{\mathbf{a}_w}
 \newcommand{\gvec}{\mathbf{g}}
-\newcommand{\uvec}{\mathbf{u}}
-\newcommand{\vvec}{\mathbf{v}}
-\newcommand{\pvec}{\mathbf{p}}
-\newcommand{\norm}[1]{\left\lVert #1 \right\rVert}
+\newcommand{\RwB}{\mathbf{R}_{wb}}
+\newcommand{\RbW}{\mathbf{R}_{bw}}
+\newcommand{\eThree}{\mathbf{e}_3}
 
-\title{\vspace{-0.3in}Kalman3D\_Wave\_2: Broadband Wave Oscillator + Error-State Attitude Filter\\
-with Axis-Independent Covariance Enforcement}
+\newcommand{\pvec}{\mathbf{p}}
+\newcommand{\vvec}{\mathbf{v}}
+\newcommand{\w}{\bm{\omega}}
+\newcommand{\accm}{\mathbf{a}_m}
+\newcommand{\magm}{\mathbf{m}_m}
+
+\newcommand{\Hs}{H_s}
+\newcommand{\Ts}{\Delta t}
+
+\title{\vspace{-0.35in}\bfseries
+Kalman3D\_Wave\_2: A Broadband Wave Oscillator + Quaternion Error-State Filter\\
+Implementation-Matched Mathematics and Design Notes
+}
 \author{Mikhail Grushinskiy}
-\date{\vspace{-0.25in}}
+\date{\vspace{-0.3in}}
 
 \begin{document}
 \maketitle
 \vspace{-0.25in}
 
 \begin{abstract}
-This document describes a two-stage marine IMU fusion method that estimates attitude (via an error-state quaternion filter) and linear sea-motion (via a bank of damped harmonic oscillators). The filter supports optional gyro bias and accelerometer bias states, staged warmup behavior, and a robust magnetometer update that corrects yaw using a tilt-compensated direction-only residual. A practical stabilization modification is included: all cross-axis covariances are removed so that the covariance becomes block-diagonal across the X/Y/Z axis groups.
+This note documents the math and implementation details of a marine IMU fusion filter that combines:
+(i) a quaternion error-state attitude filter (qMEKF style), (ii) a broadband sea-motion model implemented as a bank of damped oscillators producing wave displacement/velocity/acceleration in WORLD, and (iii) robust tilt-compensated magnetometer yaw correction using a direction-only residual.
+It also describes the staged warmup policy (wave block disabled and bias learning gated), innovation gating (NIS), and an optional stabilization approximation that forces axis-independent covariances by removing cross-axis blocks in the covariance matrix.
 \end{abstract}
 
-\vspace{-0.15in}
-\section{Frames and Conventions}
-We use a world frame \emph{W} (typically NED, $+Z$ down) and a virtual body frame \emph{B'} that is ``un-heeled'' (the physical heel is handled separately). The filter stores a reference quaternion
+% ==============================================================================
+\section{Frames, State Convention, and Update Order}
+\paragraph{Frames.}
+WORLD is NED by default: $+Z$ points \emph{down}. BODY' is a \emph{virtual} body frame with heel removed (the physical heel can be re-applied externally).
+
+\paragraph{Reference quaternion convention.}
+The filter stores
 \[
-\q_{\text{ref}} \;:\; \text{WORLD} \rightarrow \text{BODY'}.
+\qref:\; \text{WORLD}\rightarrow \text{BODY'}.
 \]
-The user-facing orientation (BODY'$\rightarrow$WORLD) is $\q = \q_{\text{ref}}^{*}$ (conjugate). Error-state attitude uses a small rotation vector $\dth\in\R^3$ applied by right-multiplication:
+Thus the direction-cosine matrix is
 \[
-\q_{\text{ref}} \leftarrow \q_{\text{ref}}\otimes \exp(\tfrac12\dth), \qquad \dth \leftarrow \0.
+\RwB = \mathbf{R}(\qref)\in\SO(3),\qquad \RbW = \RwB^\top.
 \]
 
-\section{State Vector}
-Let $K$ be the number of oscillator modes (\texttt{KMODES}). For each mode $k$ we maintain position and velocity in WORLD, $\pvec_k,\vvec_k\in\R^3$.
+\paragraph{Error state and correction.}
+The small attitude error is $\dth\in\R^3$. The implementation uses \emph{right-multiplication} correction:
+\[
+\qref \leftarrow \qref \otimes \delta q,\quad \delta q = \exp\!\left(\frac{1}{2}\dth\right),
+\qquad \dth \leftarrow \0.
+\]
+For small angles, $\delta q \approx \begin{bmatrix}1 & \tfrac12\dth^\top\end{bmatrix}^\top$.
 
-\subsection{State Definition}
+\paragraph{One-step processing order (per IMU sample).}
+\begin{enumerate}
+\item Time update: propagate $\qref$, wave states, and covariance.
+\item Accelerometer measurement update (and optional warmup logic/bias gating).
+\item Magnetometer update (delayed, robust direction-only, typically base-only update).
+\end{enumerate}
+
+% ==============================================================================
+\section{State Vector and Dimension}
+Let $K$ be \texttt{KMODES}. For each mode $k\in\{1,\dots,K\}$, the wave block stores $\pvec_k,\vvec_k\in\R^3$ in WORLD.
+
+\paragraph{State definition.}
 The error-state vector is
 \[
-\mathbf{x} \;=\;
+\mathbf{x}=
 \begin{bmatrix}
 \dth \\
-(\bg)\; \\
-\pvec_1 \\ \vvec_1 \\
-\vdots \\
-\pvec_K \\ \vvec_K \\
+(\bg) \\
+\pvec_1\\ \vvec_1\\
+\vdots\\
+\pvec_K\\ \vvec_K\\
 (\ba)
-\end{bmatrix}
+\end{bmatrix}.
 \]
-where $\bg\in\R^3$ is optional gyro bias and $\ba\in\R^3$ is optional accelerometer bias.
+$\bg,\ba$ are optional (compile-time toggles).
 
-\subsection{Dimension}
+\paragraph{Dimension.}
 \[
-N_X \;=\; (\,\text{gyro bias? }6:3\,)\;+\;6K\;+\;(\,\text{acc bias? }3:0\,).
+N_X = (\texttt{with\_gyro\_bias ? }6:3) + 6K + (\texttt{with\_accel\_bias ? }3:0).
 \]
-With defaults $K=3$, gyro bias on, accel bias on: $N_X=6+18+3=27$.
+With defaults $K=3$, gyro bias on, accel bias on: $N_X=27$.
 
-\section{Process Model}
-\subsection{Attitude Propagation}
-Given measured body angular rate $\w_m$ (BODY') and gyro bias estimate $\bg$, the bias-corrected rate is
+\paragraph{State ordering (implementation-relevant).}
+Within each mode block, the implementation stores \emph{p first, then v}:
 \[
-\w = \w_m - \bg.
+\text{mode }k:\quad
+[\;p_{k,x},p_{k,y},p_{k,z},\,v_{k,x},v_{k,y},v_{k,z}\;]^\top.
 \]
-The reference quaternion is propagated by
-\[
-\q_{\text{ref}} \leftarrow \q_{\text{ref}} \otimes \exp\!\left(\tfrac12 \w \Delta t\right).
-\]
-The attitude error-state transition is approximated by the rotation matrix induced by $\w$ over $\Delta t$, and gyro-bias enters as a first-order term (when enabled):
-\[
-\dth_{k+1} \approx \mathbf{F}_{\theta\theta}\dth_k \;+\; \mathbf{F}_{\theta b_g}\bg_k \;+\; \cdots
-\]
-with the common small-angle structure $\mathbf{F}_{\theta b_g}\approx -\I\,\Delta t$.
+This matters when assembling $6\times6$ discretizations from per-axis $2\times2$ blocks.
 
-\subsection{Broadband Wave Oscillator Bank}
-For each mode $k$ and each axis independently, the continuous dynamics are
+% ==============================================================================
+\section{Broadband Wave Oscillator Model}
+\subsection{Continuous-time dynamics (per axis)}
+For each mode $k$ and each axis independently:
 \begin{align}
-\dot{p}_{k} &= v_{k},\\
-\dot{v}_{k} &= -\omega_k^2 p_{k} - 2\zeta_k\omega_k v_{k} + \xi_k(t),
+\dot p_k &= v_k,\\
+\dot v_k &= -\omega_k^2 p_k - 2\zeta_k\omega_k v_k + \xi_k(t),
 \end{align}
-where $\xi_k(t)$ is white acceleration-noise driving $v_k$ (units $\mathrm{m/s^3}$). In vector form per axis this is a linear time-invariant (LTI) oscillator.
+where $\xi_k(t)$ is white noise driving \emph{acceleration} in the $v$ equation (units $\mathrm{m/s^3}$).
+A mode has parameters $(\omega_k,\zeta_k,q_k)$, where
+\[
+\E[\xi_k(t)\xi_k(\tau)] = q_k \delta(t-\tau),\qquad q_k\;\;[\mathrm{m^2/s^5}].
+\]
 
-The \emph{wave acceleration in WORLD} is reconstructed from the oscillator states:
+\subsection{Wave acceleration reconstruction}
+The WORLD wave acceleration produced by the oscillator bank is
 \begin{equation}
-\aw \;=\; \sum_{k=1}^{K}\left(-\omega_k^2 \pvec_k - 2\zeta_k\omega_k \vvec_k\right).
+\aw = \sum_{k=1}^{K}\bigl(-\omega_k^2\pvec_k - 2\zeta_k\omega_k\vvec_k\bigr).
 \label{eq:aw}
 \end{equation}
 
-\subsection{Discretization}
-Each axis uses a $2\times2$ state transition $\Phi(\Delta t)$ (exact/closed-form for damped oscillators) and a discrete noise covariance $Q_d(\Delta t)$ computed by numerical integration (Simpson rule). The 3D mode block is assembled as a $6\times6$ block consistent with the state order $(p_x,p_y,p_z,v_x,v_y,v_z)$:
+\subsection{Broadband parameterization}
+A ``broadband'' tuning selects $\omega_k$ in a log-spread around a base frequency $f_0$,
+with weights $w_k$ such that the total displacement variance matches the significant height $\Hs$ via
 \[
-\Phi_{6}=
+\sigma_{\text{disp}} \approx \Hs/4,\qquad
+\sum_k \Var(\pvec_k)\approx \sigma_{\text{disp}}^2.
+\]
+A common steady-state relationship for a driven oscillator implies a mapping from displacement variance to the driving intensity $q_k$ (implementation uses a closed-form steady-state moment relationship).
+The same steady-state moments can also produce a diagonal \emph{disabled-wave} acceleration covariance $\Sigma_{\aw}^{(\text{disabled})}$.
+
+% ==============================================================================
+\section{Discrete-Time Propagation}
+\subsection{Attitude propagation}
+Given measured gyro $\w_m$ and estimated bias $\bg$, the bias-corrected rate is
+\[
+\w = \w_m - \bg.
+\]
+Update:
+\[
+\qref \leftarrow \qref \otimes \exp\!\left(\frac{1}{2}\w\,\Ts\right).
+\]
+The base error-state transition is the standard small-error linearization; importantly,
+\[
+\dth_{k+1} \approx \mathbf{F}_{\theta\theta}\dth_k - \I\,\Ts\,\delta\bg_k + \cdots
+\]
+(when gyro bias is enabled).
+
+\subsection{Oscillator discretization}
+For each mode $k$ and axis $a\in\{x,y,z\}$, define $\mathbf{s}_{k,a}=[p_{k,a}, v_{k,a}]^\top$.
+The implementation computes a $2\times2$ transition $\Phi_{k,a}(\Ts)$ in closed form for under/critical/over-damped cases and a discrete covariance $Q_{d,k,a}(\Ts)$.
+
+\paragraph{Noise covariance by integration (Simpson).}
+Let $\mathbf{u}(t)$ be the second column of $\Phi(t)$ for the continuous-time system (the impulse response from $\xi$ into state).
+Then
+\[
+Q_d = q\int_0^{\Ts} \mathbf{u}(t)\mathbf{u}(t)^\top dt
+\approx q\cdot\frac{\Ts}{6}\bigl(f(0)+4f(\Ts/2)+f(\Ts)\bigr),
+\]
+where $f(t)=\mathbf{u}(t)\mathbf{u}(t)^\top$.
+
+\paragraph{$6\times6$ assembly matched to state ordering.}
+The mode state is ordered as $(\pvec_k,\vvec_k)$, so the correct assembly is
+\[
+\Phi_{6,k}=
 \begin{bmatrix}
 A & B\\
 C & D
-\end{bmatrix},\quad
-A=\diag(\phi_{00}^x,\phi_{00}^y,\phi_{00}^z),\;\;
-B=\diag(\phi_{01}^x,\phi_{01}^y,\phi_{01}^z),
+\end{bmatrix},
+\quad
+A=\diag(\Phi_{00}^x,\Phi_{00}^y,\Phi_{00}^z),\;\;
+B=\diag(\Phi_{01}^x,\Phi_{01}^y,\Phi_{01}^z),
 \]
-(and similarly for $C,D$). $Q_{d,6}$ is assembled analogously from per-axis $Q_d$.
-
-\subsection{Bias Random Walks}
-When enabled:
+and similarly $C=\diag(\Phi_{10}^a)$, $D=\diag(\Phi_{11}^a)$.
+$Q_{d,6,k}$ is assembled the same way from $Q_{d,k,a}$ entries:
 \[
-\bg_{k+1} = \bg_k + \eta_g,\quad
-\ba_{k+1} = \ba_k + \eta_a,
-\]
-with diagonal process covariances $Q_{b_g}\Delta t$ and $Q_{b_a}\Delta t$.
-
-\section{Accelerometer Measurement Model}
-The accelerometer measures \emph{specific force} in BODY' (including gravity in the raw IMU convention). Let $\mathbf{R}_{wb}\in\SO(3)$ map WORLD$\rightarrow$BODY' (this is $\q_{\text{ref}}$ as a rotation matrix). Let world gravity be
-\[
-\gvec = \begin{bmatrix}0&0&g\end{bmatrix}^\top \quad (\text{WORLD, } +Z\text{ down}).
-\]
-The predicted specific force at the IMU (ignoring optional lever-arm terms for brevity) is
-\begin{equation}
-\hat{\mathbf{f}} \;=\; \mathbf{R}_{wb}\left(\aw - \gvec\right) + \ba_{\text{term}},
-\label{eq:acc_pred}
-\end{equation}
-where $\ba_{\text{term}}$ may include temperature compensation and staged enabling logic.
-
-The residual is
-\[
-\mathbf{r}_a = \mathbf{z}_a - \hat{\mathbf{f}}.
-\]
-The attitude Jacobian uses the standard perturbation $\delta(\mathbf{R}_{wb}\uvec) = -\skew{\mathbf{R}_{wb}\uvec}\dth$, giving
-\[
-\mathbf{J}_{\theta} = -\skew{\mathbf{f}_{\text{cog}}},\qquad \mathbf{J}_{b_a}=\I,
-\]
-and wave Jacobians follow from \eqref{eq:aw}.
-
-\subsection{Disabled Wave Marginalization}
-If the wave block is disabled (e.g., warmup), the missing wave acceleration uncertainty is injected into the innovation covariance:
-\[
-\mathbf{S} \leftarrow \mathbf{S} + \mathbf{R}_{wb}\,\Sigma_{\aw}^{(\text{disabled})}\,\mathbf{R}_{wb}^\top,
-\]
-with diagonal $\Sigma_{\aw}^{(\text{disabled})}$ derived from steady-state oscillator moments.
-
-\subsection{Joseph Covariance Update}
-After a measurement update with gain $\mathbf{K}$ and innovation covariance $\mathbf{S}$, the covariance is updated in Joseph form to reduce numerical asymmetry:
-\[
-\mathbf{P} \leftarrow \mathbf{P} - \mathbf{K}\mathbf{P}\mathbf{H}^\top
-                 - (\mathbf{K}\mathbf{P}\mathbf{H}^\top)^\top
-                 + \mathbf{K}\mathbf{S}\mathbf{K}^\top.
+Q_{d,6,k}=
+\begin{bmatrix}
+Q_{00} & Q_{01}\\
+Q_{10} & Q_{11}
+\end{bmatrix},
+\quad
+Q_{00}=\diag(Q_{00}^x,Q_{00}^y,Q_{00}^z),\;\;
+Q_{01}=\diag(Q_{01}^x,Q_{01}^y,Q_{01}^z),\;\;Q_{10}=Q_{01}^\top.
 \]
 
-\section{Magnetometer Update (Direction-Only)}
-The magnetometer update uses only the \emph{horizontal direction} of the magnetic field to avoid sensitivity to magnitude errors. Let $\mathbf{b}_W$ be the world magnetic reference (learned or configured). The predicted field in BODY' is
+\subsection{Covariance propagation (block form)}
+Let the full covariance be $\mathbf{P}\in\R^{N_X\times N_X}$. Propagation uses the usual
 \[
-\hat{\mathbf{b}} = \mathbf{R}_{wb}\mathbf{b}_W.
+\mathbf{P}\leftarrow \mathbf{F}\mathbf{P}\mathbf{F}^\top+\mathbf{Q}_d,
 \]
-Let $\mathbf{d}=\mathbf{R}_{wb}\mathbf{e}_3$ be the predicted down direction in BODY' ($\mathbf{e}_3=[0,0,1]^\top$ in WORLD). Define the horizontal projection
+implemented by propagating the base block with its own $\mathbf{F}_{AA},\mathbf{Q}_{AA}$, each wave mode block with $\Phi_{6,k},Q_{d,6,k}$, and cross-blocks with the appropriate left/right multiplications.
+
+% ==============================================================================
+\section{Accelerometer Measurement Update}
+\subsection{Measurement model}
+The accelerometer measures specific force in BODY' (after de-heel):
+\[
+\accm = \RwB(\aw - \gvec) + \text{lever-arm} + \text{bias/temperature} + \eta_a,
+\]
+where $\gvec=[0,0,g]^\top$ in WORLD ($+Z$ down). The predicted mean (with lever-arm/bias terms) is $\hat{\accm}$.
+Residual:
+\[
+\mathbf{r}_a = \accm - \hat{\accm}.
+\]
+
+\subsection{Key Jacobians}
+Let $\mathbf{f}_{\text{cog}} = \RwB(\aw - \gvec)$ (the COG specific force in BODY').
+Using $\delta(\RwB \uvec) = -\skew{\RwB\uvec}\,\dth$, the attitude Jacobian is
+\[
+\mathbf{J}_{\theta} = -\skew{\mathbf{f}_{\text{cog}}}.
+\]
+Wave Jacobians follow from \eqref{eq:aw}:
+\[
+\frac{\partial \aw}{\partial \pvec_k} = -\omega_k^2 \I,\qquad
+\frac{\partial \aw}{\partial \vvec_k} = -2\zeta_k\omega_k \I,
+\]
+so in BODY':
+\[
+\frac{\partial \hat{\accm}}{\partial \pvec_k} = \RwB(-\omega_k^2 \I),\qquad
+\frac{\partial \hat{\accm}}{\partial \vvec_k} = \RwB(-2\zeta_k\omega_k \I).
+\]
+If accel bias updates are enabled, $\partial \hat{\accm}/\partial \ba = \I$; if disabled, $\ba$ is treated as nuisance (mean may omit it while its covariance inflates innovation).
+
+\subsection{Innovation covariance and disabled-wave marginalization}
+Let $\mathbf{R}_{acc}$ be accelerometer measurement noise.
+Innovation covariance:
+\[
+\mathbf{S} = \mathbf{R}_{acc} + \mathbf{J}\mathbf{P}\mathbf{J}^\top,
+\]
+with additional term when the wave block is disabled:
+\[
+\mathbf{S}\leftarrow \mathbf{S} + \RwB\,\Sigma_{\aw}^{(\text{disabled})}\,\RwB^\top.
+\]
+This approximates the missing wave acceleration as extra measurement noise.
+
+\subsection{NIS gate and Joseph-form covariance update}
+Compute NIS:
+\[
+\text{NIS}=\mathbf{r}_a^\top \mathbf{S}^{-1}\mathbf{r}_a.
+\]
+If NIS is too large, reject the update.
+Otherwise gain:
+\[
+\mathbf{K}=\mathbf{P}\mathbf{J}^\top\mathbf{S}^{-1}.
+\]
+State update $\mathbf{x}\leftarrow\mathbf{x}+\mathbf{K}\mathbf{r}_a$, then covariance update in Joseph form:
+\[
+\mathbf{P}\leftarrow \mathbf{P} - \mathbf{K}(\mathbf{P}\mathbf{J}^\top)
+                        - (\mathbf{K}(\mathbf{P}\mathbf{J}^\top))^\top
+                        + \mathbf{K}\mathbf{S}\mathbf{K}^\top,
+\]
+followed by quaternion correction from $\dth$ and clearing $\dth$.
+
+% ==============================================================================
+\section{Magnetometer Update: Tilt-Compensated Direction-Only}
+The magnetometer is used to correct yaw without relying on magnitude.
+Let $\mathbf{B}_W$ be the world magnetic reference (fixed or learned). Predicted field in BODY':
+\[
+\hat{\mathbf{b}} = \RwB \mathbf{B}_W.
+\]
+Predicted down direction in BODY':
+\[
+\mathbf{d} = \RwB \eThree,\qquad \eThree=[0,0,1]^\top.
+\]
+Horizontal projector:
 \[
 \mathbf{P}_h = \I - \mathbf{d}\mathbf{d}^\top.
 \]
 Project and normalize:
 \[
-\mathbf{z} = \frac{\mathbf{P}_h \mathbf{m}}{\|\mathbf{P}_h\mathbf{m}\|},\qquad
-\mathbf{h} = \frac{\mathbf{P}_h \hat{\mathbf{b}}}{\|\mathbf{P}_h\hat{\mathbf{b}}\|}.
+\mathbf{z}=\frac{\mathbf{P}_h \magm}{\norm{\mathbf{P}_h \magm}},\qquad
+\mathbf{h}=\frac{\mathbf{P}_h \hat{\mathbf{b}}}{\norm{\mathbf{P}_h \hat{\mathbf{b}}}}.
 \]
-Resolve the $180^\circ$ ambiguity by flipping $\mathbf{h}$ if needed to minimize residual:
-\[
-\text{if }\mathbf{z}^\top\mathbf{h}<0 \;\Rightarrow\; \mathbf{h}\leftarrow -\mathbf{h}.
-\]
+Resolve $180^\circ$ ambiguity:
+if $\mathbf{z}^\top\mathbf{h}<0$, set $\mathbf{h}\leftarrow-\mathbf{h}$.
 Residual:
 \[
 \mathbf{r}_m = \mathbf{z}-\mathbf{h}.
 \]
-A practical Jacobian is computed by finite differences with the same correction convention
-$\q_{\text{ref}}\leftarrow \q_{\text{ref}}\otimes \exp(\tfrac12\dth)$.
-The magnetometer update is applied to the \emph{base attitude block only} (no wave/bias updates via cross-covariances).
 
-\section{Warmup and Staged Enabling}
-In warmup:
-\begin{itemize}\itemsep2pt
-\item wave block disabled and its state/covariance is reset to small values,
-\item accelerometer-bias updates can be frozen,
-\item gyro-bias can be learned only under stationarity gating.
+\paragraph{Jacobian.}
+A reliable implementation strategy is finite-difference w.r.t. $\dth$ using the same correction convention
+$\qref \leftarrow \qref \otimes \exp(\tfrac12\dth)$,
+\emph{while keeping the same branch choice} (i.e., enforce $\mathbf{h}$ sign to match nominal).
+
+\paragraph{Direction-domain noise.}
+Because only direction is used, the measurement noise is scaled by the projected magnitude:
+\[
+\mathbf{S} \approx \sigma_{\text{dir}}^2 \I + \mathbf{J}_{\theta}\mathbf{P}_{\theta\theta}\mathbf{J}_{\theta}^\top,
+\qquad
+\sigma_{\text{dir}}^2 \propto \frac{\sigma_m^2}{\norm{\mathbf{P}_h \magm}^2}.
+\]
+NIS gating is applied as for the accelerometer.
+
+\paragraph{Base-only update (recommended).}
+To prevent magnetometer updates from coupling into wave/bias states via cross-covariances, the update may be restricted to the base attitude block (and optionally gyro bias). In matrix terms, only the corresponding rows of $\mathbf{K}$ are allowed to be nonzero.
+
+% ==============================================================================
+\section{Warmup Policy and Bias Gating}
+The implementation supports a staged warmup mode:
+\begin{itemize}
+\item \textbf{Warmup ON:} wave block disabled, wave states/cov reset small; accel-bias updates disabled (optional); lever-arm disabled; gyro-bias may be learned only when stationarity tests pass.
+\item \textbf{Warmup exit:} detect sufficient motion (time/distance heuristics from integrated non-gravity acceleration); then enable wave block and restore nominal settings.
+\item \textbf{Mag delay:} magnetometer updates start after a configurable delay to avoid early transients.
 \end{itemize}
-The filter exits warmup when sufficient motion is detected (time/distance thresholds), then enables the wave block and restores nominal measurement noise.
 
-\section{Axis-Independent Covariance Enforcement}
-To remove all cross-axis covariances, define axis index sets
+% ==============================================================================
+\section{Axis-Independent Covariance Approximation}
+Sometimes the filter is more stable if cross-axis covariances are forcibly removed. Define axis index sets
 \[
 \mathcal{I}_x,\;\mathcal{I}_y,\;\mathcal{I}_z
 \]
-containing the state indices for $(\dth_x, (b_{g,x}), p_{1,x},v_{1,x},\ldots,p_{K,x},v_{K,x}, (b_{a,x}))$,
-and similarly for $y,z$.
+containing the indices for $(\dth_a, (b_{g,a}), p_{1,a},v_{1,a},\dots,p_{K,a},v_{K,a}, (b_{a,a}))$ for axis $a\in\{x,y,z\}$.
 
-After each propagation and each measurement update:
-\begin{enumerate}\itemsep2pt
-\item Zero all cross-axis covariance blocks:
-\[
-\mathbf{P}_{\mathcal{I}_a,\mathcal{I}_b} \leftarrow \0 \quad \forall a\neq b.
-\]
-\item For each axis $a\in\{x,y,z\}$, extract the axis submatrix
-$\mathbf{P}^{(a)} = \mathbf{P}_{\mathcal{I}_a,\mathcal{I}_a}$,
-symmetrize it, clamp its diagonal, and project it to PSD.
-\item Write back each $\mathbf{P}^{(a)}$ and symmetrize the full $\mathbf{P}$.
+After each propagation and measurement update:
+\begin{enumerate}
+\item \textbf{Zero cross-axis blocks:} $\mathbf{P}_{\mathcal{I}_a,\mathcal{I}_b}\leftarrow \0$ for $a\neq b$.
+\item \textbf{PSD per axis:} symmetrize each $\mathbf{P}^{(a)}=\mathbf{P}_{\mathcal{I}_a,\mathcal{I}_a}$, clamp diagonal, project to PSD, write back.
+\item Symmetrize the full $\mathbf{P}$ again.
 \end{enumerate}
-This makes the covariance block-diagonal across axes:
+This enforces
 \[
-\mathbf{P} \approx \diag\!\left(\mathbf{P}^{(x)},\mathbf{P}^{(y)},\mathbf{P}^{(z)}\right),
+\mathbf{P}\approx \diag\bigl(\mathbf{P}^{(x)},\mathbf{P}^{(y)},\mathbf{P}^{(z)}\bigr).
 \]
-which is a stabilizing approximation when cross-axis correlations are numerically problematic.
+\textbf{Important:} this is an approximation. The measurement residuals are still 3D, but cross-axis correlations are discarded afterward.
 
-\section{Notes}
-\begin{itemize}\itemsep2pt
-\item Axis-independent covariance is an approximation: the 3D measurement residual is still computed in full, but cross-axis correlations are discarded afterward.
-\item Innovation gates (e.g., NIS thresholds) are recommended for both accel and mag updates.
+% ==============================================================================
+\section{Implementation Checklist (What Must Match Code)}
+This section exists because most ``docs'' fail by drifting from the code.
+
+\begin{itemize}
+\item \textbf{Quaternion convention:} $\qref$ is WORLD$\rightarrow$BODY' and correction is \emph{right-multiply}.
+\item \textbf{WORLD is NED:} gravity is $\gvec=[0,0,g]^\top$ with $+Z$ down.
+\item \textbf{Wave state ordering:} $(\pvec_k,\vvec_k)$ with p(3) then v(3). Your $\Phi_6,Q_{d,6}$ assembly must reflect this (A/B/C/D diagonal blocks).
+\item \textbf{Wave acceleration:} $\aw$ is computed in WORLD as \eqref{eq:aw}, then rotated into BODY' only inside measurement prediction.
+\item \textbf{Warmup behavior:} wave disabled implies innovation inflation by $\Sigma_{\aw}^{(\text{disabled})}$, and wave rows in gains are frozen/zeroed.
+\item \textbf{Mag update:} direction-only, tilt-compensated using projector $\mathbf{P}_h=\I-\mathbf{d}\mathbf{d}^\top$, with $180^\circ$ ambiguity handling.
+\item \textbf{Stability steps:} symmetrize, clamp diagonal, PSD projection (local blocks), and (optionally) axis-independence enforcement.
 \end{itemize}
 
-\vspace{-0.1in}
+% ==============================================================================
+\section{Typical Parameters and Scaling (Quick Reference)}
+\begin{table}[h]
+\centering
+\begin{tabular}{@{}ll@{}}
+\toprule
+Symbol / knob & Meaning \\ \midrule
+$K$ & number of oscillator modes (\texttt{KMODES}) \\
+$\omega_k,\zeta_k$ & mode frequency/damping \\
+$q_k$ & acceleration-drive intensity into $v'$ \\
+$\mathbf{R}_{acc}$ & accel measurement covariance (BODY') \\
+$\mathbf{R}_{mag}$ & mag measurement covariance (BODY') \\
+$\Sigma_{\aw}^{(\text{disabled})}$ & missing wave-accel covariance (WORLD) \\
+NIS gate & reject outlier measurements \\
+\bottomrule
+\end{tabular}
+\vspace{-2pt}
+\end{table}
+
+% ==============================================================================
+\section{What This Filter Is (and Is Not)}
+\paragraph{What it is.}
+A physically interpretable, low-state-count sea-motion model that estimates heave and wave acceleration by maintaining a driven oscillator bank, while simultaneously running an attitude filter with bias states and robust yaw correction.
+
+\paragraph{What it is not.}
+Not a full INS with position integration and GPS constraints. Also, if axis-independence is enabled, it is no longer statistically optimal---it is a stability approximation.
+
+\vspace{2pt}
 \hrule
-\vspace{0.05in}
+\vspace{4pt}
 \small
 \noindent
-This document is intended as a practical mathematical reference for the implementation and can be expanded with specific tuning rules for $(\omega_k,\zeta_k,q_k)$ and the adaptive tuner if desired.
+If you want, I can extend this into a \emph{paper-style} description with: (i) a full block-matrix derivation of $\mathbf{F},\mathbf{Q}_d$ for the base error-state, (ii) explicit forms of the LTI oscillator $\Phi(t)$ for each damping regime, and (iii) a complete ``algorithm'' listing with pseudocode that is line-by-line traceable to the implementation.
 
 \end{document}
