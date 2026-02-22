@@ -151,7 +151,7 @@ public:
   {
     mekf_ = std::make_unique<Kalman3D_Wave_2<float>>(sigma_a, sigma_g, sigma_m);
     enterCold_();
-    apply_ou_tune_();
+    apply_oscillators_tune_();
     mekf_->set_exact_att_bias_Qd(true);
   }
 
@@ -165,7 +165,7 @@ public:
     mekf_ = std::make_unique<Kalman3D_Wave_2<float>>(sigma_a, sigma_g, sigma_m,
                                                     Pq0, Pb0, b0, gravity_magnitude);
     enterCold_();
-    apply_ou_tune_();
+    apply_oscillators_tune_();
     mekf_->set_exact_att_bias_Qd(true);
   }
 
@@ -520,7 +520,7 @@ private:
   };
 
   // Apply OU tuning into Kalman3D_Wave_2 (guarded)
-  void apply_ou_tune_() {
+  void apply_oscillators_tune_() {
     if (!mekf_) return;
   
     const float tau   = std::clamp(tune_.tau_applied, min_tau_s_, max_tau_s_);
@@ -600,7 +600,7 @@ private:
     tune_.sigma_applied += alpha * (sigma_t - tune_.sigma_applied);
 
     if (time_ - last_adapt_time_sec_ > adapt_every_secs_) {
-      if (tuner_.isFreqReady()) apply_ou_tune_();
+      if (tuner_.isFreqReady()) apply_oscillators_tune_();
       last_adapt_time_sec_ = time_;
     }
   }
@@ -672,7 +672,7 @@ private:
       warmup_Racc_active_ = false;
     }
 
-    apply_ou_tune_();
+    apply_oscillators_tune_();
     last_adapt_time_sec_ = time_;
   }
 
