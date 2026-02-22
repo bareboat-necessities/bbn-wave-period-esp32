@@ -322,7 +322,7 @@ static inline Vector3f get_mag_bias_est_uT(const MekfT& mekf)
 }
 
 //  Main processing
-static void process_wave_file_for_tracker(const std::string &filename, float default_dt, bool with_mag)
+static void process_wave_file_for_tracker(const std::string &filename, float dt, bool with_mag)
 {
     auto parsed = WaveFileNaming::parse_to_params(filename);
     if (!parsed) return;
@@ -362,7 +362,7 @@ static void process_wave_file_for_tracker(const std::string &filename, float def
         << "mag_bias_x,mag_bias_y,mag_bias_z,"                          // TRUE (uT), BODY-NED
         << "mag_bias_est_x,mag_bias_est_y,mag_bias_est_z,"              // EST  (uT), BODY-NED
         << "mag_bias_err_x,mag_bias_err_y,mag_bias_err_z,"              // EST-TRUE (uT)       
-        << "tau_applied,sigma_a_applied,"
+        << "tau_applied,sigma_a_applied,R_S_applied,"
         << "freq_tracker_hz,Tp_tuner_s,accel_var_tuner,"
         << "disp_scale_m,"
         << "dir_phase,"
@@ -445,11 +445,13 @@ static void process_wave_file_for_tracker(const std::string &filename, float def
         filter.mekf().set_initial_acc_bias(Vector3f::Zero());
         filter.mekf().set_initial_acc_bias_std(0.0f);
         filter.mekf().set_Q_bacc_rw(Vector3f::Zero());
-        filter.mekf().set_Racc(Vector3f::Constant(0.5f).eval());
+        filter.mekf().set_Racc(Vector3f::Constant(0.5f));
     } else {
         filter.enableLinearBlock(true);
-        filter.enableTuner(true);                    // keep adaptive tuning active
+        filter.enableTuner(true);                    // keep adaptive R_S/tuning active
         filter.enableClamp(true);
+        filter.setEnvelopeStateCorrectionEnabled(false); // envelope state gate 
+        filter.setEnvelopeRSCorrectionEnabled(false);    // envelope-driven R_S modulation
     }
     
     WaveDataCSVReader reader(filename);
@@ -470,15 +472,7 @@ static void process_wave_file_for_tracker(const std::string &filename, float def
     std::vector<float> dir_deg_hist, dir_unc_hist, dir_conf_hist, dir_amp_hist, dir_phase_hist;
     std::vector<int>   dir_sign_num_hist;
     
-    bool have_prev_time = false;
-    float prev_time = 0.0f;
-    float dt_last = default_dt;
-
     reader.for_each_record([&](const Wave_Data_Sample &rec) {
-        float dt = default_dt;
-        dt_last = dt;
-        prev_time = static_cast<float>(rec.time);
-        have_prev_time = true;
 
         // Body-frame raw sensors (Z-up body from CSV)
         Vector3f acc_b(rec.imu.acc_bx, rec.imu.acc_by, rec.imu.acc_bz);
@@ -498,9 +492,6 @@ static void process_wave_file_for_tracker(const std::string &filename, float def
         float p_ref_out = rec.imu.pitch_deg;
         float y_ref_out = rec.imu.yaw_deg;
 
-        // One time update per sample (propagate + accel update)
-        fusion.update(dt, gyr_meas_ned, acc_meas_ned, 35.0f);
-
         // Simulated magnetometer (BODY, then axis-map to NED body)
         if (with_mag) {
             // BMM150-style ODR, independent of whether the filter is using mag yet.
@@ -517,10 +508,13 @@ static void process_wave_file_for_tracker(const std::string &filename, float def
                 }
                 mag_body_ned_hold = zu_to_ned(mag_b_enu);
 
-                // Feed mag after current IMU update so tuner/init gets synchronous acc/gyro context.
+                // Wrapper decides if/when it’s allowed to use mag
                 fusion.updateMag(mag_body_ned_hold);
             }
         }
+
+        // One time update per sample (propagate + accel update)
+        fusion.update(dt, gyr_meas_ned, acc_meas_ned, 35.0f);
         
         // Reference (world Z-up)
         Vector3f disp_ref(rec.wave.disp_x, rec.wave.disp_y, rec.wave.disp_z);
@@ -658,6 +652,7 @@ static void process_wave_file_for_tracker(const std::string &filename, float def
             << mag_bias_err.x()      << "," << mag_bias_err.y()      << "," << mag_bias_err.z()      << ","           
             << filter.getTauApplied() << ","
             << filter.getSigmaApplied() << ","
+            << filter.getRSApplied() << ","
             << filter.getFreqHz() << ","
             << filter.getPeriodSec() << ","
             << filter.getAccelVariance() << ","
@@ -671,8 +666,7 @@ static void process_wave_file_for_tracker(const std::string &filename, float def
     std::cout << "Wrote " << outname << "\n";
 
     //  RMS summary (last 60 s)
-    const float rms_dt = (std::isfinite(dt_last) && dt_last > 0.0f) ? dt_last : default_dt;
-    int N_last = static_cast<int>(RMS_WINDOW_SEC / rms_dt);
+    int N_last = static_cast<int>(RMS_WINDOW_SEC / dt);
     if (errs_z.size() > static_cast<size_t>(N_last)) {
         size_t start = errs_z.size() - N_last;
 
@@ -833,18 +827,22 @@ static void process_wave_file_for_tracker(const std::string &filename, float def
         // Extended diagnostic summary
         float tau_target   = filter.getTauTarget();
         float sigma_target = filter.getSigmaTarget();
+        float RS_target    = filter.getRSTarget();
 
         float tau_applied   = filter.getTauApplied();
         float sigma_applied = filter.getSigmaApplied();
+        float RS_applied    = filter.getRSApplied();
 
         float f_hz          = filter.getFreqHz();
         float Tp_tuner      = filter.getPeriodSec();
         float accel_var     = filter.getAccelVariance();
 
         std::cout << "tau_target=" << tau_target
-                  << ", sigma_target=" << sigma_target << "\n";
+                  << ", sigma_target=" << sigma_target
+                  << ", RS_target=" << RS_target << "\n";
         std::cout << "tau_applied=" << tau_applied
-                  << ", sigma_applied=" << sigma_applied << "\n";
+                  << ", sigma_applied=" << sigma_applied
+                  << ", RS_applied=" << RS_applied << "\n";
         std::cout << "f_hz=" << f_hz
                   << ", Tp_tuner=" << Tp_tuner
                   << ", accel_var=" << accel_var << "\n";
@@ -887,7 +885,7 @@ static void process_wave_file_for_tracker(const std::string &filename, float def
                 auto pct = [&](int n){ return (nWin > 0) ? (100.0 * double(n) / double(nWin)) : 0.0; };
 
                 std::cout << "=== Direction Report (last 60 s only) for " << outname << " ===\n";
-                std::cout << "window_s: " << (float(i1 - i0) * dt_last)
+                std::cout << "window_s: " << (float(i1 - i0) * dt)
                           << " samples: " << (i1 - i0) << "\n";
                 std::cout << "freq_hz: mean=" << mean_vec(vf)
                           << " median=" << median_vec(vf)
