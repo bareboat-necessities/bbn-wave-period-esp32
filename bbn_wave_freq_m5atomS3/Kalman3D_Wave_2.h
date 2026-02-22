@@ -892,7 +892,7 @@ public:
           Qd6_(3+ax, ax  ) = q01;
           Qd6_(3+ax, 3+ax) = q11;
         }
-        Qd6_ *= T(2); // apply once (tuning knob)
+        Qd6_ *= T(0.5); // apply once (tuning knob)
 
         // State propagate (already per-axis correct)
         Vec3 p = x_.template segment<3>(OFF_Pk(k));
