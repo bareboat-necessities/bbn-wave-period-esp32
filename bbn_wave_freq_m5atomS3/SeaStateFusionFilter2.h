@@ -321,10 +321,6 @@ public:
 
   void setWithMag(bool with_mag) { with_mag_ = with_mag; }
 
-  void setSFactor(float s) {
-    if (std::isfinite(s) && s > 0.0f) S_factor_ = s;
-  }
-
   void setTauCoeff(float c)   { if (std::isfinite(c) && c > 0.0f) tau_coeff_   = c; }
   void setSigmaCoeff(float c) { if (std::isfinite(c) && c > 0.0f) sigma_coeff_ = c; }
 
@@ -525,7 +521,7 @@ private:
   
     const float tau   = std::clamp(tune_.tau_applied, min_tau_s_, max_tau_s_);
     const float sZ    = std::max(std::max(0.05f, acc_noise_floor_sigma_), tune_.sigma_applied);
-    const float Hs_m  = std::max(0.0f, /* S_factor_ * */ (2.0f * std::sqrt(2.0f) / (float(M_PI)*float(M_PI))) * sZ * tau * tau);
+    const float Hs_m  = std::max(0.0f, (2.0f * std::sqrt(2.0f) / (float(M_PI)*float(M_PI))) * sZ * tau * tau);
     const float f0_hz = std::clamp(0.5f / tau, min_freq_hz_, max_freq_hz_);
   
     mekf_->set_broadband_params(f0_hz, Hs_m, 0.14f);
@@ -721,8 +717,6 @@ private:
   float adapt_every_secs_       = ADAPT_EVERY_SECS;
   float online_tune_warmup_sec_ = ONLINE_TUNE_WARMUP_SEC;
   float mag_delay_sec_          = MAG_DELAY_SEC;
-
-  float S_factor_      = 1.7f;
 
   TrackingPolicy               tracker_policy_{};
   FirstOrderIIRSmoother<float> freq_fast_smoother_{FREQ_SMOOTHER_DT, 3.5f};
