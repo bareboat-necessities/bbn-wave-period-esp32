@@ -519,7 +519,7 @@ private:
     float getEnergyEma() const { return energy_ema; }
   };
 
-  // Apply OU tuning into Kalman3D_Wave_2 (guarded)
+  // Apply tuning into Kalman3D_Wave_2 (guarded)
   void apply_oscillators_tune_() {
     if (!mekf_) return;
   
