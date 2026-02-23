@@ -244,19 +244,21 @@ public:
       const float gyro_n = gyro_body_ned.norm();
       const float accel_dev_g = (std::isfinite(an) ? std::fabs(an - g_std) / g_std : 0.0f);
       const float gyro_dps    = gyro_n * 57.295779513f;
-  
-      // 0..1-ish dynamic factor
-      const float dyn = std::clamp(std::max(accel_dev_g / 0.18f, gyro_dps / 25.0f), 0.0f, 1.0f);
-  
-      // Inflate XY more (attitude path), Z less (heave path)
-      const float infl_xy_base = std::clamp(1.0f + 0.35f * sea, 1.0f, 2.8f);
-      const float infl_xy      = std::clamp(infl_xy_base * (1.0f + 1.2f * dyn), 1.0f, 4.5f);
-      const float infl_z       = std::clamp(1.0f + 0.10f * sea + 0.15f * dyn, 1.0f, 1.9f);
-  
+      
+      // Make gating a bit more aggressive for violent motion
+      const float dyn = std::clamp(std::max(accel_dev_g / 0.12f, gyro_dps / 18.0f), 0.0f, 1.0f);
+      
+      // Inflate XY strongly (attitude path), but keep Z inflation mild (preserve heave)
+      const float infl_xy_base = std::clamp(1.10f + 0.65f * std::min(sea, 3.0f), 1.10f, 3.20f);
+      const float infl_xy      = std::clamp(infl_xy_base * (1.0f + 2.0f * dyn), 1.0f, 8.0f);
+      
+      // Keep Z much less inflated than XY so heave doesn't get overdamped
+      const float infl_z       = std::clamp(1.0f + 0.04f * sea + 0.08f * dyn, 1.0f, 1.35f);
+      
       const Eigen::Vector3f sig_live(sig_nom.x() * infl_xy,
                                      sig_nom.y() * infl_xy,
                                      sig_nom.z() * infl_z);
-  
+      
       mekf_->set_Racc(sig_live);
     }
   
