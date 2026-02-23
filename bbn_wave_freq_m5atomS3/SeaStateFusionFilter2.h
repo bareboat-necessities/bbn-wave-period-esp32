@@ -566,16 +566,24 @@ private:
   void apply_oscillators_tune_() {
     if (!mekf_) return;
   
-    const float tau   = std::clamp(tune_.tau_applied, min_tau_s_, max_tau_s_);
-    const float sZ    = std::max(std::max(0.05f, acc_noise_floor_sigma_), tune_.sigma_applied);
-    constexpr float C_HS = 2.0f * std::sqrt(2.0f) / (float(M_PI) * float(M_PI));
-    constexpr float HS_GAIN = 1.6f;   // start here, tune 1.6..2.5
-    const float Hs_m = std::max(0.0f, HS_GAIN * C_HS * sZ * tau * tau);
-    const float f0_hz = std::clamp(freq_hz_slow_, min_freq_hz_, max_freq_hz_); // std::clamp(0.5f / tau, min_freq_hz_, max_freq_hz_);
+    const float tau = std::clamp(tune_.tau_applied, min_tau_s_, max_tau_s_);
+    const float sZ  = std::max(std::max(0.05f, acc_noise_floor_sigma_), tune_.sigma_applied);
   
-    mekf_->set_broadband_params(f0_hz, Hs_m, 0.21f, 0.45f);
-    // (optional) if you want to override/guard marginalization explicitly:
-    // mekf_->set_disabled_wave_accel_cov_world(...derived or custom...);
+    constexpr float C_HS = 2.0f * std::sqrt(2.0f) / (float(M_PI) * float(M_PI));
+  
+    // Less damping => less "overdamped" Z feel
+    // Slightly reduce horizontal energy so Z dominates more naturally
+    const float sea = std::max(0.0f, tune_.sigma_applied);
+    const float zeta_mid    = std::clamp(0.12f + 0.01f * std::min(sea, 2.0f), 0.10f, 0.14f);
+    const float horiz_scale = std::clamp(0.26f + 0.03f * std::min(sea, 2.0f), 0.24f, 0.32f);
+  
+    // Hs gain compensates RMS without making waveform too damped
+    const float hs_gain = std::clamp(2.00f - 0.08f * std::max(0.0f, sea - 1.0f), 1.80f, 2.05f);
+  
+    const float Hs_m  = std::max(0.0f, hs_gain * C_HS * sZ * tau * tau);
+    const float f0_hz = std::clamp(freq_hz_slow_, min_freq_hz_, max_freq_hz_);
+  
+    mekf_->set_broadband_params(f0_hz, Hs_m, zeta_mid, horiz_scale);
   }
 
   // Adaptive knobs that depend on current sea-state energy.
