@@ -541,7 +541,30 @@ private:
     mekf_->set_broadband_params(f0_hz, Hs_m, 0.14f, 0.4f);
     // (optional) if you want to override/guard marginalization explicitly:
     // mekf_->set_disabled_wave_accel_cov_world(...derived or custom...);
-}
+  }
+
+  // Adaptive knobs that depend on current sea-state energy.
+  // Call this right after you update tune_.tau_applied / tune_.sigma_applied
+  // and right before/after apply_oscillators_tune_().
+  void apply_adaptive_rms_tuning_() {
+    if (!mekf_) return;
+  
+    // Use the applied (smoothed) estimate so it doesn't jump.
+    const float sig = std::max(0.20f, tune_.sigma_applied);
+  
+    // Wave process driving (bigger seas need bigger Q)
+    // Reference point: sig≈0.45 worked well with q_scale≈0.20 in small seas.
+    const float q_scale = std::clamp(0.20f * (sig / 0.45f), 0.18f, 0.65f);
+    mekf_->set_wave_Q_scale(q_scale);
+  
+    // Accel-bias gain (bigger seas => bias should chase less)
+    // Keep BA from absorbing wave energy, which inflates RMS and corrupts attitude.
+    const float ba_gain = std::clamp(0.55f * (0.45f / sig), 0.20f, 0.55f);
+    mekf_->set_accel_bias_update_scale(ba_gain);
+  
+    // Hard clamp to prevent occasional runaway.
+    mekf_->set_accel_bias_abs_max(0.08f);
+  }
 
   void update_tuner_(float dt, float a_vert_inertial_up) {
     tuner_.update(dt, a_vert_inertial_up, freq_hz_slow_);
@@ -610,7 +633,8 @@ private:
     tune_.sigma_applied += alpha * (sigma_t - tune_.sigma_applied);
 
     if (time_ - last_adapt_time_sec_ > adapt_every_secs_) {
-      if (tuner_.isFreqReady()) apply_oscillators_tune_();
+      if (tuner_.isFreqReady()) apply_oscillators_tune_();  // Update broadband oscillator params
+      apply_adaptive_rms_tuning_(); // apply adaptive RMS-focused scaling knobs
       last_adapt_time_sec_ = time_;
     }
   }
