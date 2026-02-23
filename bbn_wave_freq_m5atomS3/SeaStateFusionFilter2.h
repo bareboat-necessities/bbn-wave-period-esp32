@@ -148,10 +148,10 @@ public:
   void tune_for_wave_RMS_() {
     // RMS-focused tuning:
     // after mekf_ construction (initialize / initialize_ext)
-    mekf_->set_wave_Q_scale(0.28f);             // 0.15 .. 0.35 is the sane range, key knob
-    mekf_->set_accel_bias_update_scale(0.12f);  // BA gain scaling (your 0.02 hurts RMS)
-    mekf_->set_accel_bias_abs_max(0.05f);       // prevents crazy BA
-    mekf_->set_Q_bacc_rw(Eigen::Vector3f::Constant(1.0e-4f)); // lower BA random-walk (std / sqrt(s))  
+    mekf_->set_wave_Q_scale(0.32f);             // 0.15 .. 0.35 is the sane range, key knob
+    mekf_->set_accel_bias_update_scale(0.08f);  // BA gain scaling
+    mekf_->set_accel_bias_abs_max(0.045f);       // prevents crazy BA
+    mekf_->set_Q_bacc_rw(Eigen::Vector3f::Constant(7.5e-5f)); // lower BA random-walk (std / sqrt(s))  
   }
 
   void initialize(const Eigen::Vector3f& sigma_a,
@@ -573,7 +573,7 @@ private:
     const float Hs_m = std::max(0.0f, HS_GAIN * C_HS * sZ * tau * tau);
     const float f0_hz = std::clamp(freq_hz_slow_, min_freq_hz_, max_freq_hz_); // std::clamp(0.5f / tau, min_freq_hz_, max_freq_hz_);
   
-    mekf_->set_broadband_params(f0_hz, Hs_m, 0.18f, 0.5f);
+    mekf_->set_broadband_params(f0_hz, Hs_m, 0.21f, 0.45f);
     // (optional) if you want to override/guard marginalization explicitly:
     // mekf_->set_disabled_wave_accel_cov_world(...derived or custom...);
   }
