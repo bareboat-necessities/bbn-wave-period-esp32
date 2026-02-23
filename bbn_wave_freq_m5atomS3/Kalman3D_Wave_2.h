@@ -485,6 +485,17 @@ public:
     upright_enabled_ = true;
   }
 
+  // -------- Extra tuning knobs (RMS-focused) --------
+
+  // Wave process-noise scale (multiplies Qd6). Larger => wave states follow accel more.
+  void set_wave_Q_scale(T s) { wave_Q_scale_ = std::clamp(s, T(0), T(50)); }
+
+  // Scale accel-bias mean update (0 = freeze BA mean, but keep BA covariance in S as nuisance).
+  void set_accel_bias_update_scale(T s) { ba_update_scale_ = std::clamp(s, T(0), T(1)); }
+
+  // Clamp accel-bias mean magnitude (prevents BA from absorbing wave accel).
+  void set_accel_bias_abs_max(T m) { ba_abs_max_ = std::max(T(0), m); }      
+
   // ------------------------ Staged init controls ------------------------
 
   void set_wave_block_enabled(bool on) {
@@ -893,7 +904,8 @@ public:
           Qd6_(3+ax, ax  ) = q01;
           Qd6_(3+ax, 3+ax) = q11;
         }
-        Qd6_ *= T(0.25); // tuning knob
+      
+        Qd6_ *= wave_Q_scale_; // tuned: let wave states absorb accel instead of BA
 
         Vec3 p = x_.template segment<3>(OFF_Pk(k));
         Vec3 v = x_.template segment<3>(OFF_Vk(k));
@@ -1038,10 +1050,28 @@ public:
     K.noalias() = PCt * ldlt.solve(Mat3::Identity());
     if (!K.allFinite() || !r.allFinite()) return;
 
+    if constexpr (with_accel_bias) {
+      // Make BA mean update weak so it doesn't eat wave accel.
+      if (acc_bias_updates_enabled_) {
+        K.template block<3,3>(OFF_BA,0) *= ba_update_scale_;
+      } else {
+        K.template block<3,3>(OFF_BA,0).setZero();
+      }
+    }
+      
     if constexpr (WAVE_N > 0) K.template block<WAVE_N,3>(OFF_WAVE,0).setZero();
     if constexpr (with_accel_bias) K.template block<3,3>(OFF_BA,0).setZero();
 
     x_.noalias() += K * r;
+    if constexpr (with_accel_bias) {
+      if (ba_abs_max_ > T(0)) {
+        auto ba = x_.template segment<3>(OFF_BA);
+        for (int i=0;i<3;++i) {
+          ba(i) = std::clamp(ba(i), -ba_abs_max_, ba_abs_max_);
+        }
+        x_.template segment<3>(OFF_BA) = ba;
+      }
+    }      
     if (!x_.allFinite()) return;
 
     joseph_update3_(K, S, PCt);
@@ -1494,6 +1524,11 @@ private:
   T init_var_p_[KMODES]{};
   T init_var_v_[KMODES]{};
 
+  // -------- RMS tuning defaults --------
+  T wave_Q_scale_   = T(1.5);   // was effectively 0.25 before -> too stiff
+  T ba_update_scale_= T(0.02);  // make BA mean updates very weak
+  T ba_abs_max_     = T(0.08);  // m/s^2 clamp (true max in your run ~0.05)
+      
   // Lever arm caches
   bool use_imu_lever_arm_ = false;
   Vec3 r_imu_wrt_cog_body_phys_ = Vec3::Zero();
@@ -1531,7 +1566,7 @@ private:
   Mat3   S_scratch_;
   MatX3  PCt_scratch_;
   MatX3  K_scratch_;
-
+      
 private:
   // ------------------------ Frame helpers ------------------------
 
