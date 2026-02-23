@@ -573,17 +573,25 @@ private:
   
     constexpr float C_HS = 2.0f * std::sqrt(2.0f) / (float(M_PI) * float(M_PI));
   
-    // Less damping => less "overdamped" Z feel
-    // Slightly reduce horizontal energy so Z dominates more naturally
     const float sea = std::max(0.0f, tune_.sigma_applied);
-    const float zeta_mid    = std::clamp(0.04f + 0.01f * std::min(sea, 2.0f), 0.08f, 0.14f);
-    const float horiz_scale = std::clamp(0.26f + 0.03f * std::min(sea, 2.0f), 0.24f, 0.32f);
   
-    // Hs gain compensates RMS without making waveform too damped
-    const float hs_gain = std::clamp(2.00f - 0.08f * std::max(0.0f, sea - 1.0f), 1.80f, 2.05f);
+    // Make damping actually adaptive (lower damping = less lag/ringing in heave estimate)
+    const float zeta_mid    = std::clamp(0.06f + 0.015f * std::min(sea, 2.5f), 0.06f, 0.12f);
   
-    const float Hs_m  = std::max(0.0f, hs_gain * C_HS * sZ * tau * tau);
-    const float f0_hz = std::clamp(freq_hz_slow_, min_freq_hz_, max_freq_hz_);
+    // Keep horizontal energy modest so Z dominates
+    const float horiz_scale = std::clamp(0.20f + 0.02f * std::min(sea, 2.0f), 0.18f, 0.26f);
+  
+    // Slightly stronger Hs gain to reduce under-amplitude in larger seas
+    const float hs_gain = std::clamp(2.15f - 0.06f * std::max(0.0f, sea - 1.0f), 1.95f, 2.20f);
+  
+    const float Hs_m = std::max(0.0f, hs_gain * C_HS * sZ * tau * tau);
+  
+    float f0_hz = freq_hz_slow_;
+    //if (tuner_.isFreqReady()) {
+    //  const float ft = tuner_.getFrequencyHz();
+    //  if (std::isfinite(ft)) f0_hz = ft;
+    //}
+    f0_hz = std::clamp(f0_hz, min_freq_hz_, max_freq_hz_);
   
     mekf_->set_broadband_params(f0_hz, Hs_m, zeta_mid, horiz_scale);
   }
