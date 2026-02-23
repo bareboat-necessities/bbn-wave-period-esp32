@@ -1158,6 +1158,32 @@ public:
     const Mat3 Ptt = P_.template block<3,3>(OFF_DTH, OFF_DTH);
     S.noalias() += J_att * Ptt * J_att.transpose();
 
+    if constexpr (with_gyro_bias) {
+      if (use_imu_lever_arm_) {
+        const Mat3 Pbg  = P_.template block<3,3>(OFF_BG, OFF_BG);
+        const Mat3 Ptbg = P_.template block<3,3>(OFF_DTH, OFF_BG);
+    
+        S.noalias() += J_bg * Pbg * J_bg.transpose();
+    
+        const Mat3 TB = J_att * Ptbg * J_bg.transpose();
+        S.noalias() += TB + TB.transpose();
+    
+        if constexpr (with_accel_bias) {
+          if (acc_bias_updates_enabled_) {
+            const Mat3 Pbgba = P_.template block<3,3>(OFF_BG, OFF_BA);
+            const Mat3 BB = J_bg * Pbgba * J_ba.transpose();
+            S.noalias() += BB + BB.transpose();
+          }
+        }
+    
+        if (wave_block_enabled_) {
+          const auto Pbgw = P_.template block<3,WAVE_N>(OFF_BG, OFF_WAVE);
+          const Mat3 BWg = J_bg * Pbgw * Jw.transpose();
+          S.noalias() += BWg + BWg.transpose();
+        }
+      }
+    }
+      
     if constexpr (with_accel_bias) {
       const Mat3 Pba = P_.template block<3,3>(OFF_BA, OFF_BA);
       if (acc_bias_updates_enabled_) {
@@ -1215,6 +1241,12 @@ public:
 
     PCt.noalias() += P_.template block<NX,3>(0, OFF_DTH) * J_att.transpose();
 
+    if constexpr (with_gyro_bias) {
+      if (use_imu_lever_arm_) {
+        PCt.noalias() += P_.template block<NX,3>(0, OFF_BG) * J_bg.transpose();
+      }
+    }
+      
     if constexpr (with_accel_bias) {
       if (acc_bias_updates_enabled_) {
         PCt.noalias() += P_.template block<NX,3>(0, OFF_BA) * J_ba.transpose();
