@@ -153,9 +153,10 @@ public:
 
     // RMS-focused tuning:
     // after mekf_ construction (initialize / initialize_ext)
-    mekf_->set_wave_Q_scale(0.20f);            // 0.15 .. 0.35 is the sane range, key knob
-    mekf_->set_accel_bias_update_scale(1.0f);  // undo BA gain scaling (your 0.02 hurts RMS)
-    mekf_->set_accel_bias_abs_max(0.12f);      // keep only the clamp (prevents crazy BA)
+    mekf_->set_wave_Q_scale(0.20f);             // 0.15 .. 0.35 is the sane range, key knob
+    mekf_->set_accel_bias_update_scale(0.55f);  // BA gain scaling (your 0.02 hurts RMS)
+    mekf_->set_accel_bias_abs_max(0.08f);       // prevents crazy BA
+    mekf_->set_accel_bias_update_scale(0.40f);
     
     enterCold_();
     apply_oscillators_tune_();
@@ -172,10 +173,11 @@ public:
     mekf_ = std::make_unique<Kalman3D_Wave_2<float>>(sigma_a, sigma_g, sigma_m,
                                                     Pq0, Pb0, b0, gravity_magnitude);
     // RMS-focused tuning:
-    mekf_->set_wave_Q_scale(1.5f);           // key knob
-    mekf_->set_accel_bias_update_scale(0.02f);
-    mekf_->set_accel_bias_abs_max(0.08f);
-  
+    mekf_->set_wave_Q_scale(0.20f);             // 0.15 .. 0.35 is the sane range, key knob
+    mekf_->set_accel_bias_update_scale(0.55f);  // BA gain scaling (your 0.02 hurts RMS)
+    mekf_->set_accel_bias_abs_max(0.08f);       // prevents crazy BA
+    mekf_->set_accel_bias_update_scale(0.40f);
+    
     enterCold_();
     apply_oscillators_tune_();
     mekf_->set_exact_att_bias_Qd(true);
