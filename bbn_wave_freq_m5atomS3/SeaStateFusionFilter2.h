@@ -534,7 +534,9 @@ private:
   
     const float tau   = std::clamp(tune_.tau_applied, min_tau_s_, max_tau_s_);
     const float sZ    = std::max(std::max(0.05f, acc_noise_floor_sigma_), tune_.sigma_applied);
-    const float Hs_m  = std::max(0.0f, (2.0f * std::sqrt(2.0f) / (float(M_PI)*float(M_PI))) * sZ * tau * tau);
+    constexpr float C_HS = 2.0f * std::sqrt(2.0f) / (float(M_PI) * float(M_PI));
+    constexpr float HS_GAIN = 1.6f;   // start here, tune 1.6..2.5
+    const float Hs_m = std::max(0.0f, HS_GAIN * C_HS * sZ * tau * tau);
     const float f0_hz = std::clamp(freq_hz_slow_, min_freq_hz_, max_freq_hz_); // std::clamp(0.5f / tau, min_freq_hz_, max_freq_hz_);
   
     mekf_->set_broadband_params(f0_hz, Hs_m, 0.18f, 0.5f);
