@@ -1122,6 +1122,17 @@ public:
     // Accel bias Jacobian (Mode A only): +I
     const Mat3 J_ba = Mat3::Identity();
 
+    // Gyro-bias Jacobian from lever-arm centripetal term (approx: alpha term omitted)
+    // lever = alpha x r + omega x (omega x r), omega = gyr - bg
+    // ∂lever/∂bg = - d/domega [omega x (omega x r)]
+    Mat3 J_bg = Mat3::Zero();
+    if constexpr (with_gyro_bias) {
+      if (use_imu_lever_arm_) {
+        const Vec3 r_imu_bprime = deheel_vector_(r_imu_wrt_cog_body_phys_);
+        J_bg = -d_omega_x_omega_x_r_domega_(last_gyr_bias_corrected_, r_imu_bprime);
+      }
+    }
+      
     // Wave Jacobian
     Eigen::Matrix<T,3,WAVE_N> Jw;
     Jw.setZero();
