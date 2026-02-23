@@ -229,7 +229,28 @@ public:
     }
 
     mekf_->measurement_update_acc_only(acc_body_ned, tempC);
-
+    
+    // Adaptive accel measurement noise in Live (set_Racc expects std-dev, not variance)
+    // Inflates X/Y more than Z to calm attitude without killing heave amplitude.
+    if (startup_stage_ == StartupStage::Live && wave_enable_grace_sec_ <= 0.0f) {
+      Eigen::Vector3f sig_nom = Racc_nominal_;
+      if (!sig_nom.allFinite() || sig_nom.maxCoeff() <= 0.0f) {
+        sig_nom = Eigen::Vector3f::Constant(std::max(0.12f, acc_noise_floor_sigma_));
+      }
+    
+      const float sea = std::max(0.0f, tune_.sigma_applied);
+    
+      // More inflation on lateral axes (roll/pitch contamination path), gentler on Z (heave path)
+      const float infl_xy = std::clamp(1.0f + 0.30f * sea, 1.0f, 2.6f);
+      const float infl_z  = std::clamp(1.0f + 0.12f * sea, 1.0f, 1.8f);
+    
+      const Eigen::Vector3f sig_live(sig_nom.x() * infl_xy,
+                                     sig_nom.y() * infl_xy,
+                                     sig_nom.z() * infl_z);
+    
+      mekf_->set_Racc(sig_live);
+    }
+    
     // Tilt reset gate
     {
       Eigen::Quaternionf q_bw = mekf_->quaternion_boat();
