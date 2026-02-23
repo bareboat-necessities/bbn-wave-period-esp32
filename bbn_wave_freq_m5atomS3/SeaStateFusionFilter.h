@@ -1493,7 +1493,7 @@ public:
                     if (cfg_.mag_world_ref.allFinite() && cfg_.mag_world_ref.norm() > 1e-3f) {
                         impl_.mekf().set_mag_world_ref(cfg_.mag_world_ref);
                         mag_ref_set_ = true;
-                    } else if (fallback_mean_count_ >= 25 &&
+                    } else if (fallback_mean_count_ >= 200 &&
                                fallback_acc_mean_.allFinite() && fallback_acc_mean_.norm() > 1e-3f &&
                                fallback_mag_mean_.allFinite() && fallback_mag_mean_.norm() > 1e-3f)
                     {
