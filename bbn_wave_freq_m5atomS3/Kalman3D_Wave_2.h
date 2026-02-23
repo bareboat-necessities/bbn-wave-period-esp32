@@ -1825,6 +1825,7 @@ private:
     x_.template segment<3>(OFF_DTH) = R * x_.template segment<3>(OFF_DTH);
     if constexpr (with_gyro_bias)  x_.template segment<3>(OFF_BG) = R * x_.template segment<3>(OFF_BG);
     if constexpr (with_accel_bias) x_.template segment<3>(OFF_BA) = R * x_.template segment<3>(OFF_BA);
+    clamp_accel_bias_mean_();
 
     last_gyr_bias_corrected_ = R * last_gyr_bias_corrected_;
     prev_omega_b_            = R * prev_omega_b_;
