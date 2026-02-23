@@ -576,7 +576,7 @@ private:
     // Less damping => less "overdamped" Z feel
     // Slightly reduce horizontal energy so Z dominates more naturally
     const float sea = std::max(0.0f, tune_.sigma_applied);
-    const float zeta_mid    = std::clamp(0.12f + 0.01f * std::min(sea, 2.0f), 0.10f, 0.14f);
+    const float zeta_mid    = std::clamp(0.08f + 0.01f * std::min(sea, 2.0f), 0.08f, 0.14f);
     const float horiz_scale = std::clamp(0.26f + 0.03f * std::min(sea, 2.0f), 0.24f, 0.32f);
   
     // Hs gain compensates RMS without making waveform too damped
