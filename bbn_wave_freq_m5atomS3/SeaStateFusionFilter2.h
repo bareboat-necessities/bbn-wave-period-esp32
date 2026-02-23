@@ -575,22 +575,26 @@ private:
   
     const float sea = std::max(0.0f, tune_.sigma_applied);
   
-    // Make damping actually adaptive (lower damping = less lag/ringing in heave estimate)
-    const float zeta_mid    = std::clamp(0.06f + 0.015f * std::min(sea, 2.5f), 0.06f, 0.12f);
+    // Lower damping -> less phase lag and less underfit in heave
+    const float zeta_mid = std::clamp(0.045f + 0.010f * std::min(sea, 3.0f), 0.045f, 0.085f);
   
-    // Keep horizontal energy modest so Z dominates
-    const float horiz_scale = std::clamp(0.20f + 0.02f * std::min(sea, 2.0f), 0.18f, 0.26f);
+    // Keep horizontal wave energy smaller so vertical estimate dominates
+    const float horiz_scale = std::clamp(0.12f + 0.015f * std::min(sea, 2.0f), 0.10f, 0.16f);
   
-    // Slightly stronger Hs gain to reduce under-amplitude in larger seas
-    const float hs_gain = std::clamp(2.15f - 0.06f * std::max(0.0f, sea - 1.0f), 1.95f, 2.20f);
+    // Stronger Hs gain (avoid Z underfit across all sea states)
+    const float hs_gain = std::clamp(2.45f - 0.08f * std::max(0.0f, sea - 1.0f), 2.20f, 2.55f);
   
     const float Hs_m = std::max(0.0f, hs_gain * C_HS * sZ * tau * tau);
   
+    // Use tuner frequency when ready (critical for Z)
     float f0_hz = freq_hz_slow_;
-    //if (tuner_.isFreqReady()) {
-    //  const float ft = tuner_.getFrequencyHz();
-    //  if (std::isfinite(ft)) f0_hz = ft;
-    //}
+    if (tuner_.isFreqReady()) {
+      const float ft = tuner_.getFrequencyHz();
+      if (std::isfinite(ft)) {
+        // Blend a bit for stability, but mostly trust tuner
+        f0_hz = 0.2f * freq_hz_slow_ + 0.8f * ft;
+      }
+    }
     f0_hz = std::clamp(f0_hz, min_freq_hz_, max_freq_hz_);
   
     mekf_->set_broadband_params(f0_hz, Hs_m, zeta_mid, horiz_scale);
