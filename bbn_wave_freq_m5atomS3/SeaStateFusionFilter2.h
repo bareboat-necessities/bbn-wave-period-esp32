@@ -725,7 +725,7 @@ private:
 
   bool accel_bias_locked_ = true;
   int  mag_updates_applied_ = 0;
-  static constexpr int MAG_UPDATES_TO_UNLOCK = 5;
+  static constexpr int MAG_UPDATES_TO_UNLOCK = 80;
 
   bool   with_mag_;
   double time_;
