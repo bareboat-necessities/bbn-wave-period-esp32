@@ -30,7 +30,7 @@
 
 // Shared constants
 
-constexpr float ACC_NOISE_FLOOR_SIGMA_DEFAULT = 0.15f;
+constexpr float ACC_NOISE_FLOOR_SIGMA_DEFAULT = 0.12f;
 
 constexpr float MIN_FREQ_HZ = 0.2f;
 constexpr float MAX_FREQ_HZ = 6.0f;
@@ -548,21 +548,22 @@ private:
   void apply_adaptive_rms_tuning_() {
     if (!mekf_) return;
   
-    // Use the applied (smoothed) estimate so it doesn't jump.
-    const float sig = std::max(0.20f, tune_.sigma_applied);
+    const float sig = std::max(0.15f, tune_.sigma_applied);
   
-    // Wave process driving (bigger seas need bigger Q)
-    // Reference point: sig≈0.45 worked well with q_scale≈0.20 in small seas.
-    const float q_scale = std::clamp(0.20f * (sig / 0.45f), 0.18f, 0.65f);
+    // Wave Q scale: moderate, not too stiff, not too loose
+    const float q_scale = std::clamp(0.26f * std::sqrt(sig / 0.45f), 0.20f, 0.45f);
     mekf_->set_wave_Q_scale(q_scale);
   
-    // Accel-bias gain (bigger seas => bias should chase less)
-    // Keep BA from absorbing wave energy, which inflates RMS and corrupts attitude.
-    const float ba_gain = std::clamp(0.55f * (0.45f / sig), 0.20f, 0.55f);
+    // Accel-bias gain: keep low so BA doesn't eat wave energy
+    const float ba_gain = std::clamp(0.18f * (0.35f / sig), 0.08f, 0.22f);
     mekf_->set_accel_bias_update_scale(ba_gain);
   
-    // Hard clamp to prevent occasional runaway.
-    mekf_->set_accel_bias_abs_max(0.08f);
+    // Tight BA clamp
+    mekf_->set_accel_bias_abs_max(0.05f);
+  
+    // Lower BA RW than default (optional but recommended)
+    const float ba_rw = std::clamp(1.5e-4f * (0.45f / sig), 8e-5f, 2.5e-4f);
+    mekf_->set_Q_bacc_rw(Eigen::Vector3f::Constant(ba_rw));
   }
 
   void update_tuner_(float dt, float a_vert_inertial_up) {
