@@ -150,6 +150,11 @@ public:
                   const Eigen::Vector3f& sigma_m)
   {
     mekf_ = std::make_unique<Kalman3D_Wave_2<float>>(sigma_a, sigma_g, sigma_m);
+    // RMS-focused tuning:
+    mekf_->set_wave_Q_scale(1.5f);           // key knob
+    mekf_->set_accel_bias_update_scale(0.02f);
+    mekf_->set_accel_bias_abs_max(0.08f);
+    
     enterCold_();
     apply_oscillators_tune_();
     mekf_->set_exact_att_bias_Qd(true);
@@ -164,6 +169,11 @@ public:
   {
     mekf_ = std::make_unique<Kalman3D_Wave_2<float>>(sigma_a, sigma_g, sigma_m,
                                                     Pq0, Pb0, b0, gravity_magnitude);
+    // RMS-focused tuning:
+    mekf_->set_wave_Q_scale(1.5f);           // key knob
+    mekf_->set_accel_bias_update_scale(0.02f);
+    mekf_->set_accel_bias_abs_max(0.08f);
+  
     enterCold_();
     apply_oscillators_tune_();
     mekf_->set_exact_att_bias_Qd(true);
