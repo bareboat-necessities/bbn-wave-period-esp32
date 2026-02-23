@@ -28,16 +28,6 @@
   Template parameters:
     T, KMODES, with_gyro_bias, with_accel_bias, with_mag
 
-  FIXES:
-    - Wave Phi6/Qd6 assembly corrected for state ordering (p(3) then v(3)).
-    - Qd6 scaling applied once (not inside axis loop).
-    - MAG update is BASE-only (no wave/BA updates via cross-covariances) + NIS gate.
-    - Axis-independence enforcement: removes all cross-axis covariances in P
-      (P becomes block-diagonal across X/Y/Z axis groups), with per-axis PSD projection.
-    - set_Racc(Mat3) and set_disabled_wave_accel_cov_world(Mat3) keep DIAGONAL only.
-    - **UPRIGHT (righting) pseudo-measurement**: optional soft restoring for roll/pitch
-      using predicted BODY' down direction, BASE-only update. Can run as fallback
-      when accel update is rejected.
 */
 
 #ifdef EIGEN_NON_ARDUINO
