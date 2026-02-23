@@ -1522,16 +1522,7 @@ public:
             }
         }
         if (mag_ref_set_) {
-          const float an = last_acc_body_ned_.norm();
-          const float g  = 9.80665f;
-          const float gyro_n = last_gyro_body_ned_.norm();
-          const bool accel_ok = last_acc_body_ned_.allFinite() &&
-                                std::fabs(an - g) < 0.30f * g;   // looser than init
-          const bool gyro_ok  = last_gyro_body_ned_.allFinite() &&
-                                (gyro_n < (40.0f * float(M_PI) / 180.0f)); // 40 deg/s
-          if (accel_ok && gyro_ok && mag_body_ned.allFinite()) {
-            impl_.updateMag(mag_body_ned);
-          }
+          impl_.updateMag(mag_body_ned);
         }
     }
 
