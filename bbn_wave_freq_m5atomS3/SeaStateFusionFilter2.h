@@ -707,6 +707,7 @@ private:
     }
 
     apply_oscillators_tune_();
+    apply_adaptive_rms_tuning_();
     last_adapt_time_sec_ = time_;
   }
 
