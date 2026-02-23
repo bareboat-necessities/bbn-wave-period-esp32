@@ -551,7 +551,7 @@ private:
     const float sig = std::max(0.15f, tune_.sigma_applied);
   
     // Wave Q scale: moderate, not too stiff, not too loose
-    const float q_scale = std::clamp(0.26f * std::sqrt(sig / 0.45f), 0.20f, 0.45f);
+    const float q_scale = std::clamp(0.22f * std::sqrt(sig / 0.45f), 0.16f, 0.34f);
     mekf_->set_wave_Q_scale(q_scale);
   
     // Accel-bias gain: keep low so BA doesn't eat wave energy
