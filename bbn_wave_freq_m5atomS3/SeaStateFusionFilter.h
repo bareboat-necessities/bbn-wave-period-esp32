@@ -1441,7 +1441,7 @@ public:
             const float an = last_acc_body_ned_.norm();
             const float mn = mag_body_ned.norm();
             const float g = 9.80665f;
-            const bool accel_ok = last_acc_body_ned_.allFinite() && (an > 0.85f * g) && (an < 1.15f * g);
+            const bool accel_ok = last_acc_body_ned_.allFinite() && std::fabs(an - g) < 0.12f * g;
             const bool mag_ok   = mag_body_ned.allFinite() && (mn > 1e-3f);
             if (accel_ok && mag_ok) {
                 fallback_mean_count_++;
