@@ -806,7 +806,7 @@ public:
     Eigen::Vector3f sigma_g = Eigen::Vector3f(0.01f,0.01f,0.01f);
     Eigen::Vector3f sigma_m = Eigen::Vector3f(0.3f,0.3f,0.3f);
 
-    float mag_ref_timeout_sec = 1.5f;
+    float mag_ref_timeout_sec = 4.5f;
     float mag_odr_guess_hz = 80.0f;
 
     bool use_custom_mag_tuner_cfg = false;
