@@ -1062,7 +1062,8 @@ public:
   
     x_.noalias() += K * r;
     if (!x_.allFinite()) return;
-  
+    clamp_accel_bias_mean_();
+      
     joseph_update3_(K, S, PCt);
     applyQuaternionCorrectionFromErrorState_();
   
@@ -1286,19 +1287,7 @@ public:
     
     x_.noalias() += Kx * r;
     if (!x_.allFinite()) { maybe_upright_fallback(); return; }
-    
-    // Clamp accel-bias mean so it cannot absorb wave acceleration
-    if constexpr (with_accel_bias) {
-      if (ba_abs_max_ <= T(0)) {
-        x_.template segment<3>(OFF_BA).setZero();
-      } else {
-        auto ba = x_.template segment<3>(OFF_BA);
-        ba.x() = std::clamp(ba.x(), -ba_abs_max_, ba_abs_max_);
-        ba.y() = std::clamp(ba.y(), -ba_abs_max_, ba_abs_max_);
-        ba.z() = std::clamp(ba.z(), -ba_abs_max_, ba_abs_max_);
-        x_.template segment<3>(OFF_BA) = ba;
-      }
-    }
+    clamp_accel_bias_mean_();
     
     joseph_update3_(K, S, PCt);
     applyQuaternionCorrectionFromErrorState_();
@@ -1442,6 +1431,7 @@ public:
 
     x_.noalias() += K * r;
     if (!x_.allFinite()) return;
+    clamp_accel_bias_mean_();
 
     joseph_update3_(K, S, PCt);
     applyQuaternionCorrectionFromErrorState_();
@@ -1503,6 +1493,7 @@ public:
 
     x_.noalias() += K * r;
     if (!x_.allFinite()) return;
+    clamp_accel_bias_mean_();
 
     joseph_update3_(K, S, PCt);
     enforce_axis_independence_P_();
@@ -1711,6 +1702,20 @@ private:
     symmetrize_P_();
   }
 
+  EIGEN_STRONG_INLINE void clamp_accel_bias_mean_() {
+    if constexpr (with_accel_bias) {
+      if (ba_abs_max_ <= T(0)) {
+        x_.template segment<3>(OFF_BA).setZero();
+        return;
+      }
+      auto ba = x_.template segment<3>(OFF_BA);
+      ba.x() = std::clamp(ba.x(), -ba_abs_max_, ba_abs_max_);
+      ba.y() = std::clamp(ba.y(), -ba_abs_max_, ba_abs_max_);
+      ba.z() = std::clamp(ba.z(), -ba_abs_max_, ba_abs_max_);
+      x_.template segment<3>(OFF_BA) = ba;
+    }
+  }
+      
   void applyQuaternionCorrectionFromErrorState_() {
     Vec3 dth = x_.template segment<3>(OFF_DTH);
 
