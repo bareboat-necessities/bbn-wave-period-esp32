@@ -197,123 +197,136 @@ public:
     if (!mekf_) return;
     if (!(dt > 0.0f) || !std::isfinite(dt)) return;
     if (!gyro_body_ned.allFinite() || !acc_body_ned.allFinite()) return;
-
+  
     time_ += dt;
     startup_stage_t_ += dt;
   
     if (mekf_->warmup_mode()) {
-        // mag is unused in update_initialization() right now, so pass zero.
-        mekf_->update_initialization(acc_body_ned, gyro_body_ned,
-                                     Eigen::Vector3f::Zero(), dt);
+      // mag is unused in update_initialization() right now, so pass zero.
+      mekf_->update_initialization(acc_body_ned, gyro_body_ned,
+                                   Eigen::Vector3f::Zero(), dt);
     }
-
+  
     const float a_x_body = acc_body_ned.x();
     const float a_y_body = acc_body_ned.y();
-
+  
     // In NED, acc.z is "down" specific force. a_z_inertial_down = acc_z + g
     const float a_z_inertial_down = acc_body_ned.z() + g_std;
-
-    // MEKF updates
+  
+    // MEKF time update
     mekf_->time_update(gyro_body_ned, dt);
-
-    // Grace period after wave enable: temporarily inflate accel noise to avoid the first-enable kick
+  
+    // Grace period after wave enable: temporarily inflate accel noise
+    // to avoid the first-enable kick.
     if (wave_enable_grace_sec_ > 0.0f) {
       wave_enable_grace_sec_ = std::max(0.0f, wave_enable_grace_sec_ - dt);
-    
+  
       if (Racc_nominal_hold_.allFinite() && Racc_nominal_hold_.maxCoeff() > 0.0f) {
-        mekf_->set_Racc((1.25f * Racc_nominal_hold_).eval());  // 2x sigma -> 4x variance
+        mekf_->set_Racc((1.25f * Racc_nominal_hold_).eval());
       }
       if (wave_enable_grace_sec_ <= 0.0f) {
-        mekf_->set_Racc(Racc_nominal_hold_.eval());           // restore
+        mekf_->set_Racc(Racc_nominal_hold_.eval()); // restore
       }
     }
-
-    mekf_->measurement_update_acc_only(acc_body_ned, tempC);
-    
-    // Adaptive accel measurement noise in Live (set_Racc expects std-dev, not variance)
-    // Inflates X/Y more than Z to calm attitude without killing heave amplitude.
+  
+    // Adaptive accel measurement noise in Live (must be set BEFORE accel update).
+    // set_Racc expects std-dev, not variance.
     if (startup_stage_ == StartupStage::Live && wave_enable_grace_sec_ <= 0.0f) {
       Eigen::Vector3f sig_nom = Racc_nominal_;
       if (!sig_nom.allFinite() || sig_nom.maxCoeff() <= 0.0f) {
         sig_nom = Eigen::Vector3f::Constant(std::max(0.12f, acc_noise_floor_sigma_));
       }
-    
+  
       const float sea = std::max(0.0f, tune_.sigma_applied);
-    
-      // More inflation on lateral axes (roll/pitch contamination path), gentler on Z (heave path)
-      const float infl_xy = std::clamp(1.0f + 0.30f * sea, 1.0f, 2.6f);
-      const float infl_z  = std::clamp(1.0f + 0.12f * sea, 1.0f, 1.8f);
-    
+  
+      // Dynamic-motion indicator: if |a|-g or gyro is high, trust accel less for attitude
+      const float an = acc_body_ned.norm();
+      const float gyro_n = gyro_body_ned.norm();
+      const float accel_dev_g = (std::isfinite(an) ? std::fabs(an - g_std) / g_std : 0.0f);
+      const float gyro_dps    = gyro_n * 57.295779513f;
+  
+      // 0..1-ish dynamic factor
+      const float dyn = std::clamp(std::max(accel_dev_g / 0.18f, gyro_dps / 25.0f), 0.0f, 1.0f);
+  
+      // Inflate XY more (attitude path), Z less (heave path)
+      const float infl_xy_base = std::clamp(1.0f + 0.35f * sea, 1.0f, 2.8f);
+      const float infl_xy      = std::clamp(infl_xy_base * (1.0f + 1.2f * dyn), 1.0f, 4.5f);
+      const float infl_z       = std::clamp(1.0f + 0.10f * sea + 0.15f * dyn, 1.0f, 1.9f);
+  
       const Eigen::Vector3f sig_live(sig_nom.x() * infl_xy,
                                      sig_nom.y() * infl_xy,
                                      sig_nom.z() * infl_z);
-    
+  
       mekf_->set_Racc(sig_live);
     }
-    
+  
+    // Accel update (uses whatever Racc was set above)
+    mekf_->measurement_update_acc_only(acc_body_ned, tempC);
+  
     // Tilt reset gate
     {
       Eigen::Quaternionf q_bw = mekf_->quaternion_boat();
       q_bw.normalize();
-
+  
       const Eigen::Vector3f z_body_down_world = q_bw * Eigen::Vector3f(0.0f, 0.0f, 1.0f);
       const Eigen::Vector3f z_world_down(0.0f, 0.0f, 1.0f);
-
+  
       float cos_tilt = z_body_down_world.normalized().dot(z_world_down);
       cos_tilt = std::max(-1.0f, std::min(1.0f, cos_tilt));
       const float tilt_deg = std::acos(cos_tilt) * 57.295779513f;
-
+  
       constexpr float TILT_RESET_DEG          = 70.0f;
       constexpr float TILT_RESET_HOLD_SEC     = 0.35f;
       constexpr float TILT_RESET_COOLDOWN_SEC = 3.0f;
-
+  
       if (tilt_reset_cooldown_sec_ > 0.0f) {
         tilt_reset_cooldown_sec_ = std::max(0.0f, tilt_reset_cooldown_sec_ - dt);
       }
-
+  
       if (tilt_deg > TILT_RESET_DEG) {
         tilt_over_limit_sec_ += dt;
       } else {
         tilt_over_limit_sec_ = std::max(0.0f, tilt_over_limit_sec_ - 2.0f * dt);
       }
-
+  
       if (tilt_over_limit_sec_ >= TILT_RESET_HOLD_SEC && tilt_reset_cooldown_sec_ <= 0.0f) {
         mekf_->initialize_from_acc(acc_body_ned);
-
+  
         if (startup_stage_ != StartupStage::Live) {
           enterCold_();
           resetTrackingState_();
         }
-
+  
         tilt_over_limit_sec_ = 0.0f;
         tilt_reset_cooldown_sec_ = TILT_RESET_COOLDOWN_SEC;
       }
     }
-
+  
     // vertical (up positive) = -a_inertial_down
     a_vert_up_ = -a_z_inertial_down;
-
-    // LPF for tracker input
+  
+    // LPF for tracker/tuner input
     const float a_vert_lp = freq_input_lpf_.step(a_vert_up_, dt);
-
+  
     const float f_tracker = static_cast<float>(tracker_policy_.run(a_vert_lp, dt));
     f_raw_ = f_tracker;
-
+  
     const float f_after_still = freq_stillness_.step(a_vert_lp, dt, f_tracker);
-
+  
     float f_fast = freq_fast_smoother_.update(f_after_still);
     float f_slow = freq_slow_smoother_.update(f_fast);
-
+  
     f_fast = std::min(std::max(f_fast, min_freq_hz_), max_freq_hz_);
     f_slow = std::min(std::max(f_slow, min_freq_hz_), max_freq_hz_);
-
+  
     freq_hz_      = f_fast;
     freq_hz_slow_ = f_slow;
-
+  
     if (enable_tuner_) {
-      update_tuner_(dt, a_vert_up_);
+      // Use LPF'ed vertical accel here too (reduces ringing / freq overshoot)
+      update_tuner_(dt, a_vert_lp);
     }
-
+  
     // Direction filters
     const float omega = 2.0f * static_cast<float>(M_PI) * freq_hz_;
     dir_filter_.update(a_x_body, a_y_body, omega, dt);
