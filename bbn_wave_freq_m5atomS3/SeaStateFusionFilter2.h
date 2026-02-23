@@ -917,7 +917,10 @@ public:
       const float g  = 9.80665f;
       const bool accel_ok = last_acc_body_ned_.allFinite() && (an > 0.85f * g) && (an < 1.15f * g);
       const bool mag_ok   = mag_body_ned.allFinite() && (mn > 1e-3f);
-      if (accel_ok && mag_ok) {
+      const float gyro_n = last_gyro_body_ned_.norm();
+      const bool gyro_ok = last_gyro_body_ned_.allFinite() &&
+                           (gyro_n < (20.0f * float(M_PI) / 180.0f)); // 20 deg/s
+      if (accel_ok && mag_ok && gyro_ok) {
         fallback_mean_count_++;
         const float invN = 1.0f / static_cast<float>(fallback_mean_count_);
         fallback_acc_mean_ += (last_acc_body_ned_ - fallback_acc_mean_) * invN;
