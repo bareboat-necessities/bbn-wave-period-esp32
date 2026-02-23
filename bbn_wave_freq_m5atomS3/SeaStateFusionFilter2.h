@@ -537,7 +537,7 @@ private:
     const float Hs_m  = std::max(0.0f, (2.0f * std::sqrt(2.0f) / (float(M_PI)*float(M_PI))) * sZ * tau * tau);
     const float f0_hz = std::clamp(freq_hz_slow_, min_freq_hz_, max_freq_hz_); // std::clamp(0.5f / tau, min_freq_hz_, max_freq_hz_);
   
-    mekf_->set_broadband_params(f0_hz, Hs_m, 0.14f, 0.4f);
+    mekf_->set_broadband_params(f0_hz, Hs_m, 0.18f, 0.5f);
     // (optional) if you want to override/guard marginalization explicitly:
     // mekf_->set_disabled_wave_accel_cov_world(...derived or custom...);
   }
