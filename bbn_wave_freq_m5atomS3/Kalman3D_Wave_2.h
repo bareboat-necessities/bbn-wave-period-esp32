@@ -32,9 +32,12 @@
     - Wave Phi6/Qd6 assembly corrected for state ordering (p(3) then v(3)).
     - Qd6 scaling applied once (not inside axis loop).
     - MAG update is BASE-only (no wave/BA updates via cross-covariances) + NIS gate.
-    - **Axis-independence enforcement**: removes all cross-axis covariances in P
+    - Axis-independence enforcement: removes all cross-axis covariances in P
       (P becomes block-diagonal across X/Y/Z axis groups), with per-axis PSD projection.
     - set_Racc(Mat3) and set_disabled_wave_accel_cov_world(Mat3) keep DIAGONAL only.
+    - **UPRIGHT (righting) pseudo-measurement**: optional soft restoring for roll/pitch
+      using predicted BODY' down direction, BASE-only update. Can run as fallback
+      when accel update is rejected.
 */
 
 #ifdef EIGEN_NON_ARDUINO
@@ -53,7 +56,7 @@
   #define M_PI 3.14159265358979323846264338327950288
 #endif
 
-// Small helpers
+// ------------------------ Small helpers ------------------------
 
 template<typename T>
 static inline Eigen::Matrix<T,3,3> skew3(const Eigen::Matrix<T,3,1>& a) {
@@ -105,7 +108,6 @@ static inline void project_psd(Eigen::Matrix<T,N,N>& S, T eps = T(1e-12)) {
     }
   }
 
-  // For small-ish N, do eigen clamp (true PSD projection).
   if constexpr (N <= 16) {
     Eigen::SelfAdjointEigenSolver<Eigen::Matrix<T,N,N>> es(S);
     if (es.info() != Eigen::Success) {
@@ -120,7 +122,6 @@ static inline void project_psd(Eigen::Matrix<T,N,N>& S, T eps = T(1e-12)) {
     return;
   }
 
-  // Fallback: make LDLT succeed (not a perfect PSD projection, but stabilizing).
   Eigen::LDLT<Eigen::Matrix<T,N,N>> ldlt;
   ldlt.compute(S);
   if (ldlt.info() != Eigen::Success) {
@@ -138,7 +139,7 @@ static inline void project_psd(Eigen::Matrix<T,N,N>& S, T eps = T(1e-12)) {
   S = T(0.5) * (S + S.transpose());
 }
 
-// Base (att+bias) exact-ish Qd helpers
+// ------------------ Base (att+bias) exact-ish Qd helpers ------------------
 
 template<typename T>
 static inline bool is_isotropic3_(const Eigen::Matrix<T,3,3>& S, T tol = T(1e-9)) {
@@ -245,7 +246,7 @@ static inline Eigen::Matrix<T,3,3> d_omega_x_omega_x_r_domega_(const Eigen::Matr
   return Eigen::Matrix<T,3,3>::Identity()*s + (w * r.transpose()) - T(2) * (r * w.transpose());
 }
 
-// The filter
+// ----------------------------- The filter -----------------------------
 
 template <typename T = float, int KMODES = 3,
           bool with_gyro_bias = true, bool with_accel_bias = true, bool with_mag = true>
@@ -253,15 +254,9 @@ class Kalman3D_Wave_2 {
 
   static_assert(KMODES >= 1, "KMODES must be >= 1");
 
-  // Base (att_err + optional gyro bias)
   static constexpr int BASE_N = with_gyro_bias ? 6 : 3;
-
-  // Wave block: per mode k: p_k(3), v_k(3) => 6 each
   static constexpr int WAVE_N = 6 * KMODES;
-
-  // Optional accel bias
   static constexpr int BA_N   = with_accel_bias ? 3 : 0;
-
   static constexpr int NX     = BASE_N + WAVE_N + BA_N;
 
   // Per-axis independent block dimension:
@@ -271,7 +266,6 @@ class Kalman3D_Wave_2 {
   static constexpr T STD_GRAVITY = T(9.80665);
   static constexpr T tempC_ref   = T(35.0);
 
-  // Offsets
   static constexpr int OFF_DTH  = 0;
   static constexpr int OFF_BG   = with_gyro_bias ? 3 : -1;
   static constexpr int OFF_WAVE = BASE_N;
@@ -309,7 +303,6 @@ public:
     x_.setZero();
     P_.setZero();
 
-    // Defensive init: scratch / temporaries
     F_AA_.setIdentity();
     Q_AA_.setZero();
     tmp_AA_.setZero();
@@ -359,20 +352,17 @@ public:
     // Default broadband wave params (user should retune)
     set_broadband_params(T(0.12), T(1.0));
 
-    // Defaults
     use_exact_att_bias_Qd_ = true;
 
     // Warmup ON by default
     set_warmup_mode(true);
 
-    // Ensure trig consistent
     update_unheel_trig_();
 
-    // Enforce axis independence at init
     enforce_axis_independence_P_();
   }
 
-  // Accessors
+  // ------------------------ Accessors / diags ------------------------
 
   [[nodiscard]] Eigen::Quaternion<T> quaternion() const { return qref_.conjugate(); } // BODY'->WORLD
 
@@ -409,10 +399,11 @@ public:
 
   [[nodiscard]] Vec3 get_world_accel() const { return wave_world_accel_(); }
 
-  const MeasDiag3& lastAccDiag() const noexcept { return last_acc_; }
-  const MeasDiag3& lastMagDiag() const noexcept { return last_mag_; }
+  const MeasDiag3& lastAccDiag()     const noexcept { return last_acc_; }
+  const MeasDiag3& lastMagDiag()     const noexcept { return last_mag_; }
+  const MeasDiag3& lastUprightDiag() const noexcept { return last_upright_; }
 
-  // Config
+  // ------------------------ Config ------------------------
 
   void set_mag_world_ref(const Vec3& B_world) {
     if constexpr (with_mag) B_world_ref_ = B_world;
@@ -451,19 +442,17 @@ public:
   void set_Racc(const Mat3& Racc) {
     const T min_var = T(0.05) * T(0.05);
     Racc_.setZero();
-    Racc_(0,0) = std::max(min_var, T(0.5)*(Racc(0,0) + Racc(0,0)));
-    Racc_(1,1) = std::max(min_var, T(0.5)*(Racc(1,1) + Racc(1,1)));
-    Racc_(2,2) = std::max(min_var, T(0.5)*(Racc(2,2) + Racc(2,2)));
+    Racc_(0,0) = std::max(min_var, Racc(0,0));
+    Racc_(1,1) = std::max(min_var, Racc(1,1));
+    Racc_(2,2) = std::max(min_var, Racc(2,2));
     for (int i=0;i<3;++i) Racc_(i,i) = std::max(Racc_(i,i), T(1e-8));
   }
 
-  // Stationarity gating for warmup gyro-bias learning
   void set_warmup_stationary_thresholds(T gyro_rad_s, T acc_motion_m_s2) {
     warmup_gyro_stationary_thr_ = std::max(T(0), gyro_rad_s);
     warmup_acc_stationary_thr_  = std::max(T(0), acc_motion_m_s2);
   }
 
-  // Toggle structured Qd for base block
   void set_exact_att_bias_Qd(bool on) { use_exact_att_bias_Qd_ = on; }
 
   // marginalization for disabled wave block (DIAGONAL ONLY; cross-axis terms discarded)
@@ -482,7 +471,21 @@ public:
     set_disabled_wave_accel_cov_world(S);
   }
 
-  // Staged init controls
+  // Upright (righting) pseudo-measurement controls
+  void set_upright_restoring_enabled(bool en) { upright_enabled_ = en; }
+  void set_upright_restoring_only_when_acc_rejected(bool en) { upright_only_when_acc_rejected_ = en; }
+  void set_upright_restoring_sigma_deg(T sigma_deg) { upright_sigma_deg_ = std::max(T(0), sigma_deg); }
+  void set_upright_restoring_nis_gate(T nis_gate)   { upright_nis_gate_   = std::max(T(0), nis_gate); }
+
+  // Convenience: set all upright parameters at once.
+  void set_upright_restoring_params(T sigma_deg, T nis_gate, bool only_when_acc_rejected = true) {
+    upright_sigma_deg_ = std::max(T(0), sigma_deg);
+    upright_nis_gate_  = std::max(T(0), nis_gate);
+    upright_only_when_acc_rejected_ = only_when_acc_rejected;
+    upright_enabled_ = true;
+  }
+
+  // ------------------------ Staged init controls ------------------------
 
   void set_wave_block_enabled(bool on) {
     if (wave_block_enabled_ && !on) {
@@ -617,7 +620,7 @@ public:
     }
   }
 
-  // IMU lever arm
+  // ------------------------ IMU lever arm ------------------------
 
   void set_imu_lever_arm_body(const Vec3& r_b_phys) {
     r_imu_wrt_cog_body_phys_ = r_b_phys;
@@ -631,7 +634,7 @@ public:
 
   void set_alpha_smoothing_tau(T tau_sec) { alpha_smooth_tau_ = std::max(T(0), tau_sec); }
 
-  // Heel update
+  // ------------------------ Heel update ------------------------
 
   void update_wind_heel(T heel_rad) {
     const T old = wind_heel_rad_;
@@ -641,7 +644,7 @@ public:
     update_unheel_trig_();
   }
 
-  // Initialization from acc/mag
+  // ------------------------ Initialization from acc/mag ------------------------
 
   void initialize_from_acc_mag(const Vec3& acc_body, const Vec3& mag_body) {
     const Vec3 acc = deheel_vector_(acc_body);
@@ -694,7 +697,7 @@ public:
     enforce_axis_independence_P_();
   }
 
-  // Wave tuning
+  // ------------------------ Wave tuning ------------------------
 
   void set_broadband_params(T f0_hz, T Hs_m, T zeta_mid = T(0.08), T horiz_scale = T(0.35)) {
     const T w0 = T(2)*T(M_PI)*std::max(T(1e-4), f0_hz);
@@ -756,7 +759,7 @@ public:
     Sigma_aw_disabled_world_(2,2) = var_aw.z();
   }
 
-  // Time update
+  // ------------------------ Time update ------------------------
 
   void time_update(const Vec3& gyr_body, T Ts) {
     if (!(Ts > T(0)) || !std::isfinite(Ts)) return;
@@ -862,14 +865,12 @@ public:
     if (wave_block_enabled_) {
       for (int k=0;k<KMODES;++k) {
 
-        // Per-axis discretization
         for (int ax=0; ax<3; ++ax) {
           const T om_k = std::max(T(1e-4), omega_[k]);
           const T ze_k = std::min(std::max(T(1e-4), zeta_[k]), T(5));
           discretize_osc_axis_(Ts, om_k, ze_k, q_axis_[k](ax), Phi2_[ax], Qd2_[ax]);
         }
 
-        // Assemble Phi6: [A B; C D] with A,B,C,D diagonal 3x3
         Phi6_.setZero();
         Qd6_.setZero();
         for (int ax=0; ax<3; ++ax) {
@@ -878,10 +879,10 @@ public:
           const T c = Phi2_[ax](1,0);
           const T d = Phi2_[ax](1,1);
 
-          Phi6_(ax,   ax  ) = a;   // A diag
-          Phi6_(ax,   3+ax) = b;   // B diag
-          Phi6_(3+ax, ax  ) = c;   // C diag
-          Phi6_(3+ax, 3+ax) = d;   // D diag
+          Phi6_(ax,   ax  ) = a;
+          Phi6_(ax,   3+ax) = b;
+          Phi6_(3+ax, ax  ) = c;
+          Phi6_(3+ax, 3+ax) = d;
 
           const T q00 = Qd2_[ax](0,0);
           const T q01 = Qd2_[ax](0,1);
@@ -892,9 +893,8 @@ public:
           Qd6_(3+ax, ax  ) = q01;
           Qd6_(3+ax, 3+ax) = q11;
         }
-        Qd6_ *= T(0.25); // apply once (tuning knob) TODO:
+        Qd6_ *= T(0.25); // tuning knob
 
-        // State propagate (already per-axis correct)
         Vec3 p = x_.template segment<3>(OFF_Pk(k));
         Vec3 v = x_.template segment<3>(OFF_Vk(k));
         for (int ax=0; ax<3; ++ax) {
@@ -908,7 +908,6 @@ public:
 
         const int offk = OFF_Pk(k);
 
-        // Wave block covariance
         {
           auto Pkk = P_.template block<6,6>(offk, offk);
           tmp6_.noalias() = Phi6_ * Pkk;
@@ -916,7 +915,6 @@ public:
           Pkk.noalias() += Qd6_;
         }
 
-        // Cross cov with base: P_Ak = F * P_Ak * Phi^T
         {
           auto P_Ak = P_.template block<BASE_N,6>(0, offk);
           tmp_Ak_.noalias() = F_AA_ * P_Ak;
@@ -924,7 +922,6 @@ public:
           P_.template block<6,BASE_N>(offk,0) = P_Ak.transpose().eval();
         }
 
-        // Cross cov with accel bias: P_BAk = P_BAk * Phi^T
         if constexpr (with_accel_bias) {
           auto P_BAk = P_.template block<3,6>(OFF_BA, offk);
           Eigen::Matrix<T,3,6> tmp_BAk;
@@ -935,7 +932,6 @@ public:
       }
     }
 
-    // Accel bias RW
     if constexpr (with_accel_bias) {
       auto Pba = P_.template block<3,3>(OFF_BA,OFF_BA);
       if (acc_bias_updates_enabled_) Pba.noalias() += Q_bacc_ * Ts;
@@ -952,18 +948,123 @@ public:
     symmetrize_P_();
     clamp_P_diag_(T(1e-15));
     symmetrize_P_();
-
-    // **Hard remove cross-axis covariances**
     enforce_axis_independence_P_();
   }
 
-  // Measurement update: accelerometer (Joseph)
+  // ------------------------ Upright (righting) pseudo-measurement ------------------------
+  // BASE-only: softly drives roll/pitch toward upright by constraining predicted BODY' down:
+  //   d_pred = R_wb * e3_world  (world-down expressed in BODY')
+  // We enforce only horizontal components (x,y) so yaw is not affected.
+  void measurement_update_upright_only(T sigma_deg_override = T(-1), T nis_gate_override = T(-1)) {
+    last_upright_ = MeasDiag3{};
+    last_upright_.accepted = false;
+
+    if (!upright_enabled_) return;
+
+    const T sigma_deg = (sigma_deg_override >= T(0)) ? sigma_deg_override : upright_sigma_deg_;
+    const T nis_gate  = (nis_gate_override  >= T(0)) ? nis_gate_override  : upright_nis_gate_;
+
+    // If sigma==0, this is an infinite-strength clamp; avoid that.
+    const T deg2rad = T(M_PI) / T(180);
+    const T sigma_rad = std::max(T(1e-6), sigma_deg * deg2rad);
+
+    // Predicted down direction in BODY' (world is NED, +Z down)
+    const Mat3 R = R_wb();
+    Vec3 d = R * Vec3(T(0), T(0), T(1));     // should be unit already
+    const T dn2 = d.squaredNorm();
+    if (!(dn2 > T(1e-12)) || !d.allFinite()) return;
+    d /= std::sqrt(dn2);
+
+    // We want BODY' down to align with +Z_body: e3 = (0,0,1) in BODY'
+    const Vec3 e3b(T(0), T(0), T(1));
+
+    // Project to horizontal (roll/pitch only)
+    Mat3 P_h = Mat3::Zero();
+    P_h(0,0) = T(1);
+    P_h(1,1) = T(1);
+    // P_h(2,2)=0
+
+    const Vec3 r = (P_h * (e3b - d)).eval();
+    last_upright_.r = r;
+
+    // Jacobian: δ(R v) = -[R v]x δθ, so for d = R e3:
+    // J_att = ∂d/∂δθ = -[d]x, then project to horizontal
+    const Mat3 J_att = (P_h * (-skew3<T>(d))).eval();
+
+    // Measurement noise (direction error ~ angle in radians for small angles)
+    // Keep SPD by giving z a huge variance (z residual is always 0 anyway).
+    Mat3& S = S_scratch_;
+    S.setZero();
+    const T var_xy = sigma_rad * sigma_rad;
+    const T var_z  = var_xy * T(1e6);
+    S(0,0) = var_xy;
+    S(1,1) = var_xy;
+    S(2,2) = var_z;
+
+    const Mat3 Ptt = P_.template block<3,3>(OFF_DTH,OFF_DTH);
+    S.noalias() += J_att * Ptt * J_att.transpose();
+
+    S = T(0.5) * (S + S.transpose());
+    for (int i=0;i<3;++i) S(i,i) = std::max(S(i,i), T(1e-12));
+
+    Eigen::LDLT<Mat3> ldlt;
+    ldlt.compute(S);
+    if (ldlt.info() != Eigen::Success) {
+      const T bump = std::max(std::numeric_limits<T>::epsilon(), T(1e-6)*(S.norm()+T(1)));
+      S.diagonal().array() += bump;
+      ldlt.compute(S);
+      if (ldlt.info() != Eigen::Success) return;
+    }
+
+    last_upright_.S = S;
+    {
+      const Vec3 sol = ldlt.solve(r);
+      const T nis = r.dot(sol);
+      last_upright_.nis = std::isfinite(nis) ? nis : std::numeric_limits<T>::quiet_NaN();
+    }
+
+    if (!(last_upright_.nis < nis_gate)) return;
+
+    // PCt = P J^T (BASE ONLY)
+    MatX3& PCt = PCt_scratch_;
+    PCt.setZero();
+    PCt.noalias() += P_.template block<NX,3>(0,OFF_DTH) * J_att.transpose();
+
+    // Hard BASE-only: freeze wave + BA rows
+    if constexpr (WAVE_N > 0) PCt.template block<WAVE_N,3>(OFF_WAVE,0).setZero();
+    if constexpr (with_accel_bias) PCt.template block<3,3>(OFF_BA,0).setZero();
+
+    MatX3& K = K_scratch_;
+    K.noalias() = PCt * ldlt.solve(Mat3::Identity());
+    if (!K.allFinite() || !r.allFinite()) return;
+
+    if constexpr (WAVE_N > 0) K.template block<WAVE_N,3>(OFF_WAVE,0).setZero();
+    if constexpr (with_accel_bias) K.template block<3,3>(OFF_BA,0).setZero();
+
+    x_.noalias() += K * r;
+    if (!x_.allFinite()) return;
+
+    joseph_update3_(K, S, PCt);
+    applyQuaternionCorrectionFromErrorState_();
+
+    enforce_axis_independence_P_();
+
+    last_upright_.accepted = true;
+  }
+
+  // ------------------------ Measurement update: accelerometer (Joseph) ------------------------
   void measurement_update_acc_only(const Vec3& acc_meas_body, T tempC = tempC_ref) {
     last_acc_ = MeasDiag3{};
     last_acc_.accepted = false;
 
     const Vec3 z = deheel_vector_(acc_meas_body);
     if (!z.allFinite()) return;
+
+    auto maybe_upright_fallback = [&]() {
+      if (upright_enabled_ && upright_only_when_acc_rejected_) {
+        measurement_update_upright_only();
+      }
+    };
 
     // Lever arm term (mean only)
     Vec3 lever = Vec3::Zero();
@@ -1065,7 +1166,7 @@ public:
       const T bump = std::max(std::numeric_limits<T>::epsilon(), T(1e-6)*(S.norm()+T(1)));
       S.diagonal().array() += bump;
       ldlt.compute(S);
-      if (ldlt.info() != Eigen::Success) return;
+      if (ldlt.info() != Eigen::Success) { maybe_upright_fallback(); return; }
     }
 
     last_acc_.S = S;
@@ -1076,7 +1177,7 @@ public:
     }
 
     const T nis_gate = T(50.0);
-    if (!(last_acc_.nis < nis_gate)) return;
+    if (!(last_acc_.nis < nis_gate)) { maybe_upright_fallback(); return; }
 
     // PCt = P J^T
     MatX3& PCt = PCt_scratch_;
@@ -1099,7 +1200,7 @@ public:
     // Gain + update
     MatX3& K = K_scratch_;
     K.noalias() = PCt * ldlt.solve(Mat3::Identity());
-    if (!(K.allFinite() && r.allFinite())) return;
+    if (!(K.allFinite() && r.allFinite())) { maybe_upright_fallback(); return; }
 
     if (!wave_block_enabled_) freeze_wave_rows_(K);
 
@@ -1108,18 +1209,17 @@ public:
     }
 
     x_.noalias() += K * r;
-    if (!x_.allFinite()) return;
+    if (!x_.allFinite()) { maybe_upright_fallback(); return; }
 
     joseph_update3_(K, S, PCt);
     applyQuaternionCorrectionFromErrorState_();
 
-    // **Hard remove cross-axis covariances**
     enforce_axis_independence_P_();
 
     last_acc_.accepted = true;
   }
 
-  // Measurement update: magnetometer (robust tilt-compensated direction-only)
+  // ------------------------ Measurement update: magnetometer (robust direction-only) ------------------------
   void measurement_update_mag_only(const Vec3& mag_meas_body) {
     last_mag_ = MeasDiag3{};
     last_mag_.accepted = false;
@@ -1205,7 +1305,7 @@ public:
       }
     }
 
-    // Direction-domain noise scaling (scalar -> isotropic in direction space)
+    // Direction-domain noise scaling
     Mat3& S = S_scratch_;
     const T var_raw_mean = (Rmag_(0,0) + Rmag_(1,1) + Rmag_(2,2)) / T(3);
     const T denom = std::max(T(1e-12), mnorm*mnorm);
@@ -1242,7 +1342,6 @@ public:
     PCt.setZero();
     PCt.noalias() += P_.template block<NX,3>(0,OFF_DTH) * J_att.transpose();
 
-    // hard base-only
     PCt.template block<WAVE_N,3>(OFF_WAVE,0).setZero();
     if constexpr (with_accel_bias) PCt.template block<3,3>(OFF_BA,0).setZero();
 
@@ -1259,13 +1358,12 @@ public:
     joseph_update3_(K, S, PCt);
     applyQuaternionCorrectionFromErrorState_();
 
-    // **Hard remove cross-axis covariances**
     enforce_axis_independence_P_();
 
     last_mag_.accepted = true;
   }
 
-  // Pseudo-measurement on total WORLD-frame wave displacement:
+  // ------------------------ Pseudo-measurement on total WORLD-frame wave displacement ------------------------
   void measurement_update_position_pseudo(const Vec3& p_meas_world,
                                           const Mat3& Rpos_world)
   {
@@ -1277,7 +1375,6 @@ public:
 
     Mat3& S = S_scratch_;
     S.setZero();
-    // DIAGONAL ONLY (discard cross-axis)
     S(0,0) = std::max(T(1e-12), Rpos_world(0,0));
     S(1,1) = std::max(T(1e-12), Rpos_world(1,1));
     S(2,2) = std::max(T(1e-12), Rpos_world(2,2));
@@ -1302,7 +1399,6 @@ public:
       if (ldlt.info() != Eigen::Success) return;
     }
 
-    // PCt = P H^T, where H sums p_k blocks with +I
     MatX3& PCt = PCt_scratch_;
     PCt.setZero();
     for (int k=0;k<KMODES;++k) {
@@ -1314,7 +1410,6 @@ public:
     K.noalias() = PCt * ldlt.solve(Mat3::Identity());
     if (!K.allFinite()) return;
 
-    // Only update wave states
     K.template block<BASE_N,3>(0,0).setZero();
     if constexpr (with_accel_bias) K.template block<3,3>(OFF_BA,0).setZero();
 
@@ -1322,8 +1417,6 @@ public:
     if (!x_.allFinite()) return;
 
     joseph_update3_(K, S, PCt);
-
-    // **Hard remove cross-axis covariances**
     enforce_axis_independence_P_();
   }
 
@@ -1339,7 +1432,8 @@ public:
   }
 
 private:
-  // Constants / state
+  // ------------------------ Constants / state ------------------------
+
   const T gravity_magnitude_ = T(STD_GRAVITY);
 
   Eigen::Quaternion<T> qref_;        // WORLD -> BODY'
@@ -1372,8 +1466,13 @@ private:
   bool acc_bias_updates_enabled_ = true;
   bool use_exact_att_bias_Qd_ = true;
 
-  // DIAGONAL
-  Mat3 Sigma_aw_disabled_world_ = Mat3::Identity() * T(0.0);
+  Mat3 Sigma_aw_disabled_world_ = Mat3::Identity() * T(0.0); // DIAGONAL
+
+  // Upright (righting) pseudo-measurement params
+  bool upright_enabled_ = true;
+  bool upright_only_when_acc_rejected_ = true;
+  T    upright_sigma_deg_ = T(8.0);      // roll/pitch softness (deg)
+  T    upright_nis_gate_  = T(50.0);
 
   // Warmup exit detection
   T exit_min_distance_ = T(50.0);
@@ -1389,7 +1488,7 @@ private:
   T    warmup_gyro_stationary_thr_ = T(0.03);
   T    warmup_acc_stationary_thr_  = T(0.35);
 
-  // Wave init priors derived from Hs/params (per-mode steady-state)
+  // Wave init priors derived from Hs/params
   T last_f0_hz_ = T(0.12);
   T last_Hs_m_  = T(1.0);
   T init_var_p_[KMODES]{};
@@ -1415,6 +1514,7 @@ private:
   // Diags
   MeasDiag3 last_acc_;
   MeasDiag3 last_mag_;
+  MeasDiag3 last_upright_;
 
   // Scratch
   Eigen::Matrix<T,BASE_N,BASE_N> F_AA_;
@@ -1433,7 +1533,8 @@ private:
   MatX3  K_scratch_;
 
 private:
-  // Frame helpers
+  // ------------------------ Frame helpers ------------------------
+
   Mat3 R_wb() const { return qref_.toRotationMatrix(); }
   Mat3 R_bw() const { return qref_.toRotationMatrix().transpose(); }
 
@@ -1453,7 +1554,7 @@ private:
     }
   }
 
-  // Build index list for axis block (X/Y/Z) in the *current state ordering*
+  // Build index list for axis block (X/Y/Z) in the current state ordering
   void axis_indices_(int ax, std::array<int,AX_N>& idx) const {
     int t = 0;
     idx[t++] = OFF_DTH + ax;
@@ -1465,12 +1566,10 @@ private:
     }
 
     if constexpr (with_accel_bias) idx[t++] = OFF_BA + ax;
-
-    // (t should equal AX_N)
     (void)t;
   }
 
-  // **Main requested change**: zero all cross-axis covariances and PSD-project each axis block.
+  // Zero cross-axis covariances and PSD-project each axis block.
   void enforce_axis_independence_P_() {
     std::array<int,AX_N> idx[3];
     for (int ax=0; ax<3; ++ax) axis_indices_(ax, idx[ax]);
@@ -1584,7 +1683,7 @@ private:
     symmetrize_P_();
   }
 
-  // Heel / de-heel
+  // ------------------------ Heel / de-heel ------------------------
 
   EIGEN_STRONG_INLINE void update_unheel_trig_() {
     if (std::abs(wind_heel_rad_) < T(1e-9)) {
@@ -1646,7 +1745,7 @@ private:
     enforce_axis_independence_P_();
   }
 
-  // Oscillator discretization
+  // ------------------------ Oscillator discretization ------------------------
 
   static inline void phi_osc_2x2_(T t, T w, T z, Eigen::Matrix<T,2,2>& Phi) {
     const T om = std::max(T(1e-7), w);
