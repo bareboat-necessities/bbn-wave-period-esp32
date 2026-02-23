@@ -66,7 +66,7 @@
 
 // Estimated vertical accel noise floor (1σ), m/s².
 // Tweak from bench data with IMU sitting still.
-constexpr float ACC_NOISE_FLOOR_SIGMA_DEFAULT = 0.15f; 
+constexpr float ACC_NOISE_FLOOR_SIGMA_DEFAULT = 0.12f; 
 
 constexpr float MIN_FREQ_HZ = 0.2f;
 constexpr float MAX_FREQ_HZ = 6.0f;
