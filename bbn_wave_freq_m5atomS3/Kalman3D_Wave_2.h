@@ -864,8 +864,9 @@ public:
 
     // Wave propagate (Phi6/Qd6 assembled consistent with state ordering: p(3) then v(3))
     if (wave_block_enabled_) {
-      for (int k=0;k<KMODES;++k) {
+      Eigen::Matrix<T,6,6> Phi6_modes[KMODES];
 
+      for (int k=0;k<KMODES;++k) {
         for (int ax=0; ax<3; ++ax) {
           const T om_k = std::max(T(1e-4), omega_[k]);
           const T ze_k = std::min(std::max(T(1e-4), zeta_[k]), T(5));
@@ -896,6 +897,7 @@ public:
         }
       
         Qd6_ *= wave_Q_scale_; // tuned: let wave states absorb accel instead of BA
+        Phi6_modes[k] = Phi6_;
 
         Vec3 p = x_.template segment<3>(OFF_Pk(k));
         Vec3 v = x_.template segment<3>(OFF_Vk(k));
@@ -932,6 +934,21 @@ public:
           P_.template block<6,3>(offk,OFF_BA) = P_BAk.transpose().eval();
         }
       }
+
+      // Propagate cross-mode covariances P_km (k != m):
+      // P_km <- Phi_k * P_km * Phi_m^T
+      for (int k = 0; k < KMODES; ++k) {
+        const int offk = OFF_Pk(k);
+        for (int m = k + 1; m < KMODES; ++m) {
+          const int offm = OFF_Pk(m);
+      
+          Eigen::Matrix<T,6,6> Pkm = P_.template block<6,6>(offk, offm);
+          Pkm = (Phi6_modes[k] * Pkm * Phi6_modes[m].transpose()).eval();
+      
+          P_.template block<6,6>(offk, offm) = Pkm;
+          P_.template block<6,6>(offm, offk) = Pkm.transpose();
+        }
+      }      
     }
 
     if constexpr (with_accel_bias) {
