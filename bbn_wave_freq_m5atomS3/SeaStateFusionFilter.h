@@ -1311,7 +1311,7 @@ public:
         Eigen::Vector3f sigma_m = Eigen::Vector3f(0.3f,0.3f,0.3f);
 
         // How long after mag_delay we’re willing to wait for MagAutoTuner
-        float mag_ref_timeout_sec = 1.5f; // fallback guard
+        float mag_ref_timeout_sec = 4.5f; // fallback guard
 
         // Used only if dt_mag can’t be inferred
         float mag_odr_guess_hz = 80.0f;
