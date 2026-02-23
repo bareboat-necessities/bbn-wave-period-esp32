@@ -145,18 +145,21 @@ public:
   StartupStage getStartupStage() const noexcept { return startup_stage_; }
   bool isAdaptiveLive() const noexcept { return startup_stage_ == StartupStage::Live; }
 
+  void tune_for_wave_RMS_() {
+    // RMS-focused tuning:
+    // after mekf_ construction (initialize / initialize_ext)
+    mekf_->set_wave_Q_scale(0.28f);             // 0.15 .. 0.35 is the sane range, key knob
+    mekf_->set_accel_bias_update_scale(0.18f);  // BA gain scaling (your 0.02 hurts RMS)
+    mekf_->set_accel_bias_abs_max(0.05f);       // prevents crazy BA
+    mekf_->set_Q_bacc_rw(Eigen::Vector3f::Constant(2e-4f)); // lower BA random-walk (std / sqrt(s))  
+  }
+
   void initialize(const Eigen::Vector3f& sigma_a,
                   const Eigen::Vector3f& sigma_g,
                   const Eigen::Vector3f& sigma_m)
   {
     mekf_ = std::make_unique<Kalman3D_Wave_2<float>>(sigma_a, sigma_g, sigma_m);
-
-    // RMS-focused tuning:
-    // after mekf_ construction (initialize / initialize_ext)
-    mekf_->set_wave_Q_scale(0.20f);             // 0.15 .. 0.35 is the sane range, key knob
-    mekf_->set_accel_bias_update_scale(0.55f);  // BA gain scaling (your 0.02 hurts RMS)
-    mekf_->set_accel_bias_abs_max(0.08f);       // prevents crazy BA
-    mekf_->set_accel_bias_update_scale(0.40f);
+    tune_for_wave_RMS_();
     
     enterCold_();
     apply_oscillators_tune_();
@@ -172,11 +175,7 @@ public:
   {
     mekf_ = std::make_unique<Kalman3D_Wave_2<float>>(sigma_a, sigma_g, sigma_m,
                                                     Pq0, Pb0, b0, gravity_magnitude);
-    // RMS-focused tuning:
-    mekf_->set_wave_Q_scale(0.20f);             // 0.15 .. 0.35 is the sane range, key knob
-    mekf_->set_accel_bias_update_scale(0.55f);  // BA gain scaling (your 0.02 hurts RMS)
-    mekf_->set_accel_bias_abs_max(0.08f);       // prevents crazy BA
-    mekf_->set_accel_bias_update_scale(0.40f);
+    tune_for_wave_RMS_();
     
     enterCold_();
     apply_oscillators_tune_();
@@ -536,7 +535,7 @@ private:
     const float tau   = std::clamp(tune_.tau_applied, min_tau_s_, max_tau_s_);
     const float sZ    = std::max(std::max(0.05f, acc_noise_floor_sigma_), tune_.sigma_applied);
     const float Hs_m  = std::max(0.0f, (2.0f * std::sqrt(2.0f) / (float(M_PI)*float(M_PI))) * sZ * tau * tau);
-    const float f0_hz = std::clamp(0.5f / tau, min_freq_hz_, max_freq_hz_);
+    const float f0_hz = std::clamp(freq_hz_slow_, min_freq_hz_, max_freq_hz_); // std::clamp(0.5f / tau, min_freq_hz_, max_freq_hz_);
   
     mekf_->set_broadband_params(f0_hz, Hs_m, 0.14f, 0.4f);
     // (optional) if you want to override/guard marginalization explicitly:
