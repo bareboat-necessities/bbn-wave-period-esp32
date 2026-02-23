@@ -1265,17 +1265,43 @@ public:
     if (!(K.allFinite() && r.allFinite())) { maybe_upright_fallback(); return; }
 
     if (!wave_block_enabled_) freeze_wave_rows_(K);
-
+      
     if constexpr (with_accel_bias) {
-      if (!acc_bias_updates_enabled_) K.template block<3,3>(OFF_BA,0).setZero();
+      if (!acc_bias_updates_enabled_) {
+        K.template block<3,3>(OFF_BA,0).setZero();
+      }
     }
-
-    x_.noalias() += K * r;
+    
+    // Use a separate gain for STATE update so ba_update_scale_ affects BA mean only.
+    // Covariance update still uses K below.
+    MatX3 Kx = K;
+    
+    if constexpr (with_accel_bias) {
+      if (acc_bias_updates_enabled_) {
+        Kx.template block<3,3>(OFF_BA,0) *= ba_update_scale_;
+      } else {
+        Kx.template block<3,3>(OFF_BA,0).setZero();
+      }
+    }
+    
+    x_.noalias() += Kx * r;
     if (!x_.allFinite()) { maybe_upright_fallback(); return; }
-
+    
+    // Clamp accel-bias mean so it cannot absorb wave acceleration
+    if constexpr (with_accel_bias) {
+      if (ba_abs_max_ <= T(0)) {
+        x_.template segment<3>(OFF_BA).setZero();
+      } else {
+        auto ba = x_.template segment<3>(OFF_BA);
+        ba.x() = std::clamp(ba.x(), -ba_abs_max_, ba_abs_max_);
+        ba.y() = std::clamp(ba.y(), -ba_abs_max_, ba_abs_max_);
+        ba.z() = std::clamp(ba.z(), -ba_abs_max_, ba_abs_max_);
+        x_.template segment<3>(OFF_BA) = ba;
+      }
+    }
+    
     joseph_update3_(K, S, PCt);
     applyQuaternionCorrectionFromErrorState_();
-
     enforce_axis_independence_P_();
 
     last_acc_.accepted = true;
