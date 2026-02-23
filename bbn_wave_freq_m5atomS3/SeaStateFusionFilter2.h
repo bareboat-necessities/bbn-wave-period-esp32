@@ -222,7 +222,7 @@ public:
       wave_enable_grace_sec_ = std::max(0.0f, wave_enable_grace_sec_ - dt);
     
       if (Racc_nominal_hold_.allFinite() && Racc_nominal_hold_.maxCoeff() > 0.0f) {
-        mekf_->set_Racc((4.0f * Racc_nominal_hold_).eval());  // 4x sigma -> 16x variance
+        mekf_->set_Racc((1.25f * Racc_nominal_hold_).eval());  // 2x sigma -> 4x variance
       }
       if (wave_enable_grace_sec_ <= 0.0f) {
         mekf_->set_Racc(Racc_nominal_hold_.eval());           // restore
