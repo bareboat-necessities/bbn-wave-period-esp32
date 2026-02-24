@@ -1207,6 +1207,8 @@ void apply_spectral_mode_matching_() {
   mekf_->set_wave_mode_freqs_and_qz(f_out_hz, qz_out, hr, spectral_q_floor_);
 }
 
+};
+
 // SeaStateFusion2 wrapper
 
 template<TrackerType trackerT>
