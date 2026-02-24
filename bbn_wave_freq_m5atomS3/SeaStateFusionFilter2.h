@@ -764,6 +764,9 @@ private:
       sigma_target_ = std::max(sigma_target_, std::max(0.05f, acc_noise_floor_sigma_));
     }
 
+    tau_target_   = std::clamp(tau_target_,   min_tau_s_, max_tau_s_);
+    sigma_target_ = std::clamp(sigma_target_, 0.05f,      max_sigma_a_);
+    
     adapt_mekf_(dt, tau_target_, sigma_target_);
   }
 
