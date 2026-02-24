@@ -601,25 +601,23 @@ private:
   
     const float sea = std::max(0.15f, tune_.sigma_applied);
   
-    // Wave process energy (slightly more compliant, especially in rougher seas)
-    const float q_base = 1.10f * std::pow(sea / 0.45f, 0.90f);
-    
-    // Extra boost only when sea gets larger, so calm seas stay stable
-    const float rough_boost = 1.0f + 0.20f * std::clamp((sea - 0.8f) / 1.2f, 0.0f, 1.0f);
-    
-    const float q_scale = std::clamp(q_base * rough_boost, 0.80f, 3.60f);
+    // Stronger wave process scaling (especially rough seas)
+    const float q_scale = std::clamp(
+        1.35f * std::pow(sea / 0.45f, 0.95f),
+        1.00f, 5.50f);
     mekf_->set_wave_Q_scale(q_scale);
   
-    // Slightly lower accel-bias learning globally (prevents bias "eating" wave residual)
-    const float ba_gain = std::clamp(0.14f - 0.015f * std::min(sea, 2.0f), 0.11f, 0.16f);
+    // Keep BA mean updates very weak (or it steals heave amplitude)
+    const float ba_gain = std::clamp(
+        0.030f - 0.007f * std::min(sea, 2.0f),
+        0.012f, 0.030f);
     mekf_->set_accel_bias_update_scale(ba_gain);
   
-    // Tighten clamp a bit (still above expected true bias, but less room to wander)
-    mekf_->set_accel_bias_abs_max(0.09f);
+    mekf_->set_accel_bias_abs_max(0.06f);
   
-    // IMPORTANT: Z bias must be tighter than XY now that wave block is working.
-    const float rw_xy = std::clamp(5.0e-4f + 0.8e-4f * std::min(sea, 2.0f), 5.0e-4f, 6.6e-4f);
-    const float rw_z  = std::clamp(1.8e-4f + 0.5e-4f * std::min(sea, 2.0f), 1.8e-4f, 2.8e-4f);
+    // Tight Z bias RW (wave should explain wave-band energy, not bias)
+    const float rw_xy = std::clamp(3.8e-4f + 0.7e-4f * std::min(sea, 2.0f), 3.8e-4f, 5.2e-4f);
+    const float rw_z  = std::clamp(0.9e-4f + 0.3e-4f * std::min(sea, 2.0f), 0.9e-4f, 1.5e-4f);
   
     mekf_->set_Q_bacc_rw(Eigen::Vector3f(rw_xy, rw_xy, rw_z));
   }
