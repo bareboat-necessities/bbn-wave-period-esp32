@@ -253,7 +253,7 @@ public:
       const float infl_xy = std::clamp(infl_xy_base * (1.0f + 2.0f * dyn), 1.0f, 8.0f);
       
       // Keep Z much less inflated than XY so heave doesn't get overdamped
-      const float infl_z = std::clamp(0.92f + 0.015f * sea + 0.03f * dyn, 0.88f, 1.05f);
+      const float infl_z = std::clamp(0.78f + 0.012f * sea + 0.02f * dyn, 0.72f, 0.95f);
       
       const Eigen::Vector3f sig_live(sig_nom.x() * infl_xy,
                                      sig_nom.y() * infl_xy,
