@@ -1010,6 +1010,61 @@ private:
     last_spectral_apply_time_sec_ = -1e9;
   }
 
+  template<int K>
+  static void map_spectral_modes_to_kalman_slots_(
+      const std::array<float, K>& f_cur_hz,        // current Kalman mode centers
+      const std::array<float, K>& f_est_hz_in,     // spectral estimate (unordered / unstable slot mapping)
+      const std::array<float, K>& qz_est_in,
+      float fmin_hz, float fmax_hz,
+      float q_floor, float q_cap,
+      std::array<float, K>& f_est_hz_out,          // remapped to Kalman slots
+      std::array<float, K>& qz_est_out)
+  {
+    struct FQ {
+      float f;
+      float q;
+    };
+  
+    // 1) Sanitize spectral estimates
+    std::array<FQ, K> est{};
+    for (int i = 0; i < K; ++i) {
+      float f = f_est_hz_in[i];
+      float q = qz_est_in[i];
+  
+      if (!std::isfinite(f) || f <= 0.0f) {
+        // fallback to current mode center if spectral estimate is invalid
+        f = (std::isfinite(f_cur_hz[i]) && f_cur_hz[i] > 0.0f) ? f_cur_hz[i] : fmin_hz;
+      }
+      if (!std::isfinite(q) || q <= 0.0f) q = q_floor;
+  
+      est[i].f = std::clamp(f, fmin_hz, fmax_hz);
+      est[i].q = std::clamp(q, q_floor, q_cap);
+    }
+  
+    // 2) Sort estimated modes by frequency (low -> high)
+    std::stable_sort(est.begin(), est.end(),
+      [](const FQ& a, const FQ& b) { return a.f < b.f; });
+  
+    // 3) Build Kalman slot order by CURRENT mode center frequency (low -> high)
+    std::array<int, K> slot_order{};
+    for (int i = 0; i < K; ++i) slot_order[i] = i;
+  
+    std::stable_sort(slot_order.begin(), slot_order.end(),
+      [&](int ia, int ib) {
+        float fa = (std::isfinite(f_cur_hz[ia]) && f_cur_hz[ia] > 0.0f) ? f_cur_hz[ia] : fmin_hz;
+        float fb = (std::isfinite(f_cur_hz[ib]) && f_cur_hz[ib] > 0.0f) ? f_cur_hz[ib] : fmin_hz;
+        return fa < fb;
+      });
+  
+    // 4) Rank-map: lowest estimated peak -> lowest Kalman mode slot, etc.
+    //    This preserves mode identity and avoids peak-swapping causing state-slot jumps.
+    for (int r = 0; r < K; ++r) {
+      const int k_slot = slot_order[r];
+      f_est_hz_out[k_slot] = est[r].f;
+      qz_est_out[k_slot]   = est[r].q;
+    }
+  }
+
   void apply_spectral_mode_matching_() {
     if (!mekf_) return;
     if (!spectrum_.ready()) return;
@@ -1042,9 +1097,24 @@ private:
       spectral_q_cap_
     );
 
-    // Read current centers for smooth blending (avoid hard jumps)
+    // Read current centers for stable slot mapping + smooth blending
     std::array<float, K> f_cur_hz{};
     mekf_->get_wave_mode_freqs_hz(f_cur_hz);
+    
+    // Remap spectral outputs to the Kalman's mode slots (important!)
+    std::array<float, K> f_est_mapped_hz{};
+    std::array<float, K> qz_est_mapped{};
+    map_spectral_modes_to_kalman_slots_<K>(
+      f_cur_hz,
+      f_est_hz,
+      qz_est,
+      spectral_mode_fmin_hz_,
+      spectral_mode_fmax_hz_,
+      spectral_q_floor_,
+      spectral_q_cap_,
+      f_est_mapped_hz,
+      qz_est_mapped
+    );
 
     // Sea-state dependent horizontal process ratio (XY relative to Z)
     float hr = spectral_horiz_q_ratio_;
