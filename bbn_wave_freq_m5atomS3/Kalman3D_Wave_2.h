@@ -1013,7 +1013,10 @@ public:
   
     // Jacobian: δ(R v) = -[R v]x δθ, so for d = R e3:
     // J_att = ∂d/∂δθ = -[d]x, then project to horizontal
-    const Mat3 J_att = (P_h * (-skew3<T>(d))).eval();
+    Mat3 J_att = (P_h * (-skew3<T>(d))).eval();
+
+    // Make upright pseudo strictly roll/pitch only (no yaw correction leakage)
+    J_att.col(2).setZero();
   
     // Measurement noise (direction error ~ angle in radians for small angles)
     // Keep SPD by giving z a huge variance (z residual is always 0 anyway).
