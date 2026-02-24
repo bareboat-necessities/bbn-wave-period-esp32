@@ -767,8 +767,8 @@ private:
     // Amplitude compensation for under-estimation
     // Displacement scale is ~ sigma * tau^2, so a modest boost here helps a lot.
     {
-      float tau_boost   = 1.14f;  // try 1.12 .. 1.22
-      float sigma_boost = 1.35f;  // try 1.25 .. 1.55
+      float tau_boost   = 1.0f;  // try 1.12 .. 1.22
+      float sigma_boost = 1.0f;  // try 1.25 .. 1.55
     
       // Slight sea-state dependence (bigger seas usually need more process energy)
       const float sea = std::max(0.0f, sigma_target_);
