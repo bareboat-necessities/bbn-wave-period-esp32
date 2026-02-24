@@ -146,7 +146,7 @@ public:
   bool isAdaptiveLive() const noexcept { return startup_stage_ == StartupStage::Live; }
 
   void tune_for_wave_RMS_() {
-    mekf_->set_wave_Q_scale(0.50f);  // Keep wave model conservative initially; adaptive logic will take over
+    mekf_->set_wave_Q_scale(0.70f);  // Keep wave model conservative initially; adaptive logic will take over
     mekf_->set_accel_bias_update_scale(0.18f);  // Let accel bias actually learn 
     mekf_->set_accel_bias_abs_max(0.10f);
     mekf_->set_Q_bacc_rw(Eigen::Vector3f(5.0e-4f, 5.0e-4f, 7.0e-4f));  // Z a bit freer than XY
