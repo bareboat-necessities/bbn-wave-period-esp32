@@ -32,7 +32,7 @@
 
 constexpr float ACC_NOISE_FLOOR_SIGMA_DEFAULT = 0.12f;
 
-constexpr float MIN_FREQ_HZ = 0.12f;
+constexpr float MIN_FREQ_HZ = 0.2f;
 constexpr float MAX_FREQ_HZ = 5.0f;
 
 constexpr float MIN_TAU_S   = 0.02f;
@@ -572,15 +572,18 @@ private:
     const float sea = std::max(0.0f, tune_.sigma_applied);
   
     // Lower damping further (less amplitude attenuation)
-    const float zeta_mid = std::clamp(0.018f + 0.004f * std::min(sea, 3.0f), 0.018f, 0.032f);
+    const float zeta_mid =
+        std::clamp(0.018f + 0.004f * std::min(sea, 3.0f), 0.018f, 0.032f);
   
     // Keep horizontal wave energy small so vertical dominates
-    const float horiz_scale = std::clamp(0.06f + 0.008f * std::min(sea, 2.0f), 0.05f, 0.08f);
+    const float horiz_scale =
+        std::clamp(0.06f + 0.008f * std::min(sea, 2.0f), 0.05f, 0.08f);
   
     // Stronger Hs gain (your output is still clearly under-amplitude)
-    const float hs_gain = std::clamp(3.6f + 0.45f * std::min(sea, 3.0f), 3.6f, 5.0f);
+    const float hs_gain =
+        std::clamp(3.6f + 0.45f * std::min(sea, 3.0f), 3.6f, 5.0f);
   
-    float Hs_m = std::max(0.0f, hs_gain * C_HS * sZ * tau * tau);
+    const float Hs_m = std::max(0.0f, hs_gain * C_HS * sZ * tau * tau);
   
     // Use tuner freq when available, blended for stability
     float f0_hz = freq_hz_slow_;
@@ -590,11 +593,8 @@ private:
         f0_hz = 0.25f * freq_hz_slow_ + 0.75f * ft;
       }
     }
-    f0_hz = model_freq_from_tracker_(f0_hz);
-    
-    // Targeted compensation for long swell only (avoids H0 overestimation)
-    Hs_m *= long_swell_amp_boost_(f0_hz, sea);
-    
+    f0_hz = std::clamp(f0_hz, min_freq_hz_, max_freq_hz_);
+  
     mekf_->set_broadband_params(f0_hz, Hs_m, zeta_mid, horiz_scale);
   }
 
@@ -785,39 +785,6 @@ private:
     apply_oscillators_tune_();
     apply_adaptive_rms_tuning_();
     last_adapt_time_sec_ = time_;
-  }
-
-  float model_freq_from_tracker_(float f_tracker_hz) const {
-    if (!std::isfinite(f_tracker_hz)) return min_freq_hz_;
-    const float sea = std::max(0.0f, tune_.sigma_applied);
-  
-    // accel-domain tracker overestimates displacement-domain wave frequency
-    // More correction in bigger seas.
-    const float k = std::clamp(0.58f - 0.04f * std::min(sea, 3.0f), 0.42f, 0.58f);
-  
-    const float f_model = k * f_tracker_hz;
-    return std::clamp(f_model, min_freq_hz_, max_freq_hz_);
-  }
-
-  float long_swell_amp_boost_(float f_hz, float sea_sigma) const {
-    if (!std::isfinite(f_hz)) return 1.0f;
-  
-    // No boost in short/medium seas (H0 case tracker is ~0.5-0.6 Hz)
-    // Boost only for long swell regime.
-    const float f_hi = 0.38f;  // start boosting below this
-    const float f_lo = 0.18f;  // max boost by this
-  
-    float u = 0.0f;
-    if (f_hz < f_hi) {
-      u = (f_hi - f_hz) / (f_hi - f_lo);
-      u = std::clamp(u, 0.0f, 1.0f);
-    }
-  
-    // Slightly stronger boost in larger seas, but keep it modest.
-    const float sea = std::clamp(sea_sigma, 0.0f, 3.0f);
-    const float max_boost = 1.08f + 0.10f * (sea / 3.0f); // 1.08 .. 1.18
-  
-    return 1.0f + u * (max_boost - 1.0f);
   }
 
 private:
