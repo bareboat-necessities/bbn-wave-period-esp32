@@ -564,7 +564,6 @@ private:
     float getEnergyEma() const { return energy_ema; }
   };
 
-  // Apply tuning into Kalman3D_Wave_2 (guarded)
   void apply_oscillators_tune_() {
     if (!mekf_) return;
   
@@ -572,17 +571,16 @@ private:
     const float sZ  = std::max(std::max(0.05f, acc_noise_floor_sigma_), tune_.sigma_applied);
   
     constexpr float C_HS = 2.0f * std::sqrt(2.0f) / (float(M_PI) * float(M_PI));
-  
     const float sea = std::max(0.0f, tune_.sigma_applied);
   
-    // Lower damping -> less phase lag and less underfit in heave
-    const float zeta_mid = std::clamp(0.045f + 0.010f * std::min(sea, 3.0f), 0.045f, 0.085f);
+    // Lower damping to reduce amplitude attenuation and phase lag
+    const float zeta_mid = std::clamp(0.028f + 0.006f * std::min(sea, 2.5f), 0.028f, 0.045f);
   
-    // Keep horizontal wave energy smaller so vertical estimate dominates
-    const float horiz_scale = std::clamp(0.12f + 0.015f * std::min(sea, 2.0f), 0.10f, 0.16f);
+    // Keep horizontal energy lower so Z gets most of the modeled wave energy
+    const float horiz_scale = std::clamp(0.09f + 0.010f * std::min(sea, 2.0f), 0.08f, 0.12f);
   
-    // Stronger Hs gain (avoid Z underfit across all sea states)
-    const float hs_gain = std::clamp(2.45f - 0.08f * std::max(0.0f, sea - 1.0f), 2.20f, 2.55f);
+    // Stronger Hs gain to fight under-estimation
+    const float hs_gain = std::clamp(2.85f - 0.08f * std::max(0.0f, sea - 1.0f), 2.60f, 2.95f);
   
     const float Hs_m = std::max(0.0f, hs_gain * C_HS * sZ * tau * tau);
   
