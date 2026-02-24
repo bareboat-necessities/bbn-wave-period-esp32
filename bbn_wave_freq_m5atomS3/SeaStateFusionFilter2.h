@@ -577,8 +577,8 @@ private:
     // Horizontal energy small
     const float horiz_scale = std::clamp(0.055f + 0.006f * std::min(sea, 2.0f), 0.05f, 0.07f);
   
-    // Reduce gain from aggressive tuning
-    const float hs_gain = std::clamp(2.8f + 0.35f * std::min(sea, 3.0f), 2.8f, 3.8f);
+    // Displacement scale gain
+    const float hs_gain = std::clamp(3.2f + 0.55f * std::min(sea, 3.0f), 3.2f, 4.8f);
     const float Hs_m = std::max(0.0f, hs_gain * C_HS * sZ * tau * tau);
   
     float f0_hz = freq_hz_slow_;
