@@ -606,7 +606,7 @@ private:
   
     // scale wave process freedom by expected displacement scale
     float disp_scale_m = getDisplacementScale(true); // ~ C_HS * sigma * tau^2
-    if (!std::isfinite(disp_m) || disp_m <= 0.0f) {
+    if (!std::isfinite(disp_scale_m ) || disp_scale_m  <= 0.0f) {
       constexpr float C_HS = 2.0f * std::sqrt(2.0f) / (float(M_PI) * float(M_PI));
       const float tau = std::clamp(tune_.tau_applied, min_tau_s_, max_tau_s_);
       disp_scale_m  = C_HS * sea * tau * tau;
