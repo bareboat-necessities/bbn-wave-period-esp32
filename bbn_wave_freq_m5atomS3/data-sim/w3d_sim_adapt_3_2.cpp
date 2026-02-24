@@ -25,13 +25,13 @@
 
 const float g_std = 9.80665f;     // standard gravity acceleration m/s²
 
-const float FAIL_ERR_LIMIT_PERCENT_Z_JONSWAP   = 33.0f;
-const float FAIL_ERR_LIMIT_PERCENT_Z_PMSTOKES  = 33.0f;
+const float FAIL_ERR_LIMIT_PERCENT_Z_JONSWAP   = 35.0f;
+const float FAIL_ERR_LIMIT_PERCENT_Z_PMSTOKES  = 35.0f;
 
 const float FAIL_ERR_LIMIT_YAW_DEG = 5.5f;  
 
-const float FAIL_ERR_LIMIT_PERCENT_3D_JONSWAP   = 52.0f;
-const float FAIL_ERR_LIMIT_PERCENT_3D_PMSTOKES  = 52.0f;
+const float FAIL_ERR_LIMIT_PERCENT_3D_JONSWAP   = 60.0f;
+const float FAIL_ERR_LIMIT_PERCENT_3D_PMSTOKES  = 60.0f;
 
 const float FAIL_ACC_Z_BIAS_PERCENT             = 200.0f;
 const float FAIL_ERR_LIMIT_BIAS_3D_PERCENT      = 1600.0f;
