@@ -563,7 +563,7 @@ private:
     float getStillTime() const { return still_time_sec; }
     float getEnergyEma() const { return energy_ema; }
   };
-
+  
   void apply_oscillators_tune_() {
     if (!mekf_) return;
   
@@ -573,24 +573,26 @@ private:
     constexpr float C_HS = 2.0f * std::sqrt(2.0f) / (float(M_PI) * float(M_PI));
     const float sea = std::max(0.0f, tune_.sigma_applied);
   
-    // Lower damping to reduce amplitude attenuation and phase lag
-    const float zeta_mid = std::clamp(0.028f + 0.006f * std::min(sea, 2.5f), 0.028f, 0.045f);
+    // Lower damping further (less amplitude attenuation)
+    const float zeta_mid =
+        std::clamp(0.018f + 0.004f * std::min(sea, 3.0f), 0.018f, 0.032f);
   
-    // Keep horizontal energy lower so Z gets most of the modeled wave energy
-    const float horiz_scale = std::clamp(0.09f + 0.010f * std::min(sea, 2.0f), 0.08f, 0.12f);
+    // Keep horizontal wave energy small so vertical dominates
+    const float horiz_scale =
+        std::clamp(0.06f + 0.008f * std::min(sea, 2.0f), 0.05f, 0.08f);
   
-    // Stronger Hs gain to fight under-estimation
-    const float hs_gain = std::clamp(2.85f - 0.08f * std::max(0.0f, sea - 1.0f), 2.60f, 2.95f);
+    // Stronger Hs gain (your output is still clearly under-amplitude)
+    const float hs_gain =
+        std::clamp(3.6f + 0.45f * std::min(sea, 3.0f), 3.6f, 5.0f);
   
     const float Hs_m = std::max(0.0f, hs_gain * C_HS * sZ * tau * tau);
   
-    // Use tuner frequency when ready (critical for Z)
+    // Use tuner freq when available, blended for stability
     float f0_hz = freq_hz_slow_;
     if (tuner_.isFreqReady()) {
       const float ft = tuner_.getFrequencyHz();
       if (std::isfinite(ft)) {
-        // Blend a bit for stability, but mostly trust tuner
-        f0_hz = 0.2f * freq_hz_slow_ + 0.8f * ft;
+        f0_hz = 0.25f * freq_hz_slow_ + 0.75f * ft;
       }
     }
     f0_hz = std::clamp(f0_hz, min_freq_hz_, max_freq_hz_);
