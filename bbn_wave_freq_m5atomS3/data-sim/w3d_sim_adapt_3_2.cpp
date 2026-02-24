@@ -414,7 +414,7 @@ static void process_wave_file_for_tracker(const std::string &filename, float def
     Vector3f mag_body_ned_hold = Vector3f::Zero();
        
     // Filter
-    const Vector3f sigma_a_init(2.8f * acc_sigma, 2.8f * acc_sigma, 2.8f * acc_sigma);
+    const Vector3f sigma_a_init(4.8f * acc_sigma, 4.8f * acc_sigma, 1.8f * acc_sigma);
     const Vector3f sigma_g(2.0f * gyr_sigma, 2.0f * gyr_sigma, 2.0f * gyr_sigma);    
     const float sigma_m_uT = 1.2f * mag_sigma_uT;   // a bit conservative
     const Vector3f sigma_m(sigma_m_uT, sigma_m_uT, sigma_m_uT);
