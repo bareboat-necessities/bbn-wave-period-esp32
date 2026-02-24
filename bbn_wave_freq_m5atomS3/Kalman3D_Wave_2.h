@@ -729,27 +729,21 @@ public:
                                   float horiz_ratio,
                                   float q_floor = 1e-8f)
   {
-    const float hr = std::clamp(horiz_ratio, 0.0f, 1.0f);
-
+    const T hr = std::clamp(T(horiz_ratio), T(0), T(1));
+  
     for (int k = 0; k < KMODES; ++k) {
-      const float fk = std::clamp(f_hz[k], 0.02f, 5.0f);
-      const float omega = 2.0f * float(M_PI) * fk;
-
-      float qz_k = std::max(q_floor, qz[k]);
-      if (!std::isfinite(qz_k)) qz_k = q_floor;
-
-      const float qxy = std::max(q_floor, hr * qz_k);
-
-      // MAP THESE TO INTERNAL MODE STORAGE
+      const T fk = std::clamp(T(f_hz[k]), T(0.02), T(5.0));
+      const T omega = T(2) * T(M_PI) * fk;
+  
+      T qz_k = std::max(T(q_floor), T(qz[k]));
+      if (!std::isfinite(qz_k)) qz_k = T(q_floor);
+  
+      const T qxy = std::max(T(q_floor), hr * qz_k);
+  
       mode_omega_rad_s_(k) = omega;
-
-      // If your propagation multiplies by wave_Q_scale_ later, keep raw q here.
-      // If not, and q should include global scaling, multiply here instead.
-      mode_q_axis_(k) = Eigen::Vector3f(qxy, qxy, qz_k);
+      mode_q_axis_(k) = Vec3(qxy, qxy, qz_k);
     }
-
-    // If code caches anything derived from omega/q (Phi/Qd blocks, etc.), invalidate/rebuild here.
-    // If code discretizes fresh each step from mode params, this can be empty.
+  
     on_wave_mode_params_changed_();
   }
       
