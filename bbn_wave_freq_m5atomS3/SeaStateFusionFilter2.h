@@ -1277,6 +1277,7 @@ public:
     impl_.setOnlineTuneWarmupSec(cfg.online_tune_warmup_sec);
 
     impl_.initialize(cfg.sigma_a, cfg.sigma_g, cfg.sigma_m);
+    last_impl_startup_stage_ = impl_.getStartupStage();
 
     // keep for warmup->live restore
     impl_.setNominalRacc(cfg.sigma_a);
@@ -1307,13 +1308,28 @@ public:
 
     impl_.updateTime(dt, gyro_body_ned, acc_body_ned, tempC);
 
-    if (impl_.getStartupStage() == SeaStateFusionFilter2<trackerT>::StartupStage::Cold) {
-      mag_ref_set_ = false;
-      mag_auto_.reset();
-      last_mag_time_sec_ = NAN;
-      dt_mag_sec_ = NAN;
-      mag_ref_deadline_sec_ = t_ + cfg_.mag_ref_timeout_sec;
-    }
+const auto cur_stage = impl_.getStartupStage();
+
+if (cur_stage != last_impl_startup_stage_) {
+  // Entered Cold (e.g. after tilt reset): reset mag-init accumulators ONCE
+  if (cur_stage == SeaStateFusionFilter2<trackerT>::StartupStage::Cold) {
+    mag_ref_set_ = false;
+    mag_auto_.reset();
+
+    last_mag_time_sec_ = NAN;
+    dt_mag_sec_ = NAN;
+
+    // Reset fallback means too, so we don't mix pre/post-reset attitude regimes
+    fallback_acc_mean_.setZero();
+    fallback_mag_mean_.setZero();
+    fallback_mean_count_ = 0;
+
+    // Start a fresh deadline window from now (or from mag delay if still before it)
+    mag_ref_deadline_sec_ = std::max(t_, cfg_.mag_delay_sec) + cfg_.mag_ref_timeout_sec;
+  }
+
+  last_impl_startup_stage_ = cur_stage;
+}
 
     if (stage_ == Stage::Warming && impl_.isAdaptiveLive()) {
       stage_ = Stage::Live;
@@ -1462,6 +1478,8 @@ private:
   Stage stage_ = Stage::Uninitialized;
   float t_ = 0.0f;
   float stage_t_ = 0.0f;
+  typename SeaStateFusionFilter2<trackerT>::StartupStage last_impl_startup_stage_ =
+           SeaStateFusionFilter2<trackerT>::StartupStage::Cold;
 
   bool mag_ref_set_ = false;
   Eigen::Vector3f mag_body_hold_ = Eigen::Vector3f::Zero();
