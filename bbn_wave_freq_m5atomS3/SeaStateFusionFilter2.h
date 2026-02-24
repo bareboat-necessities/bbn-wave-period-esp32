@@ -601,8 +601,13 @@ private:
   
     const float sea = std::max(0.15f, tune_.sigma_applied);
   
-    // Wave process energy
-    const float q_scale = std::clamp(0.95f * std::pow(sea / 0.45f, 0.85f), 0.70f, 2.80f);
+    // Wave process energy (slightly more compliant, especially in rougher seas)
+    const float q_base = 1.10f * std::pow(sea / 0.45f, 0.90f);
+    
+    // Extra boost only when sea gets larger, so calm seas stay stable
+    const float rough_boost = 1.0f + 0.20f * std::clamp((sea - 0.8f) / 1.2f, 0.0f, 1.0f);
+    
+    const float q_scale = std::clamp(q_base * rough_boost, 0.80f, 3.60f);
     mekf_->set_wave_Q_scale(q_scale);
   
     // Slightly lower accel-bias learning globally (prevents bias "eating" wave residual)
