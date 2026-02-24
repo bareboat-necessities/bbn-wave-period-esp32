@@ -246,17 +246,16 @@ public:
       // Make gating a bit more aggressive for violent motion
       const float dyn = std::clamp(std::max(accel_dev_g / 0.12f, gyro_dps / 18.0f), 0.0f, 1.0f);
       
-      // Inflate XY strongly (attitude path), but keep Z inflation mild (preserve heave)
-      const float infl_xy_base = std::clamp(1.10f + 0.65f * std::min(sea, 3.0f), 1.10f, 3.20f);
-      const float infl_xy = std::clamp(infl_xy_base * (1.0f + 2.0f * dyn), 1.0f, 8.0f);
+      // Protect attitude via XY inflation
+      const float infl_xy_base = std::clamp(1.20f + 0.85f * std::min(sea, 3.0f), 1.20f, 3.80f);
+      const float infl_xy = std::clamp(infl_xy_base * (1.0f + 2.5f * dyn), 1.0f, 10.0f);
       
-      // Keep Z much less inflated than XY so heave doesn't get overdamped
-      const float infl_z = std::clamp(0.78f + 0.012f * sea + 0.02f * dyn, 0.72f, 0.95f);
+      // Trust Z a lot more for heave reconstruction
+      const float infl_z = std::clamp(0.52f + 0.02f * std::min(sea, 3.0f) + 0.03f * dyn, 0.50f, 0.78f);
       
       const Eigen::Vector3f sig_live(sig_nom.x() * infl_xy,
                                      sig_nom.y() * infl_xy,
                                      sig_nom.z() * infl_z);
-      
       mekf_->set_Racc(sig_live);
     }
   
