@@ -604,22 +604,38 @@ private:
   
     const float sea = std::max(0.15f, tune_.sigma_applied);
   
-    // Stronger wave process so wave states (not bias) explain motion
-    const float q_scale = std::clamp(
-        1.30f * std::pow(sea / 0.45f, 0.95f),
-        1.05f, 5.00f);
+    // scale wave process freedom by expected displacement scale
+    float disp_m = getDisplacementScale(true); // ~ C_HS * sigma * tau^2
+    if (!std::isfinite(disp_m) || disp_m <= 0.0f) {
+      constexpr float C_HS = 2.0f * std::sqrt(2.0f) / (float(M_PI) * float(M_PI));
+      const float tau = std::clamp(tune_.tau_applied, min_tau_s_, max_tau_s_);
+      disp_m = C_HS * sea * tau * tau;
+    }
+  
+    // Normalize to a moderate reference sea so q_scale stays dimensionless.
+    // (Around sigma~0.45, tau~1.5 -> ~0.29 m)
+    constexpr float DISP_REF_M = 0.30f;
+    float d_ratio = std::clamp(disp_m / DISP_REF_M, 0.20f, 20.0f);
+  
+    // Super-linear works better than linear for large swell without exploding.
+    // (Squared is too aggressive in practice.)
+    float q_scale = 0.90f * std::pow(d_ratio, 1.10f);
+  
+    // Extra help for long-period swell (your failure mode)
+    const float tau = std::clamp(tune_.tau_applied, min_tau_s_, max_tau_s_);
+    q_scale *= (1.0f + 0.35f * std::clamp((tau - 2.2f) / 4.0f, 0.0f, 1.0f));
+  
+    // Allow larger ceiling than before (you were capping too early)
+    q_scale = std::clamp(q_scale, 0.70f, 7.50f);
     mekf_->set_wave_Q_scale(q_scale);
   
-    // Keep accel bias learning weak. Let wave block explain wave acceleration.
-    const float ba_gain = std::clamp(0.018f + 0.004f * std::min(sea, 2.0f), 0.018f, 0.026f);
+    // bias tuning
+    const float ba_gain = std::clamp(0.14f - 0.015f * std::min(sea, 2.0f), 0.11f, 0.16f);
     mekf_->set_accel_bias_update_scale(ba_gain);
-    
-    // Tight clamp to prevent bias from becoming a "fake wave state"
-    mekf_->set_accel_bias_abs_max(0.06f);
-    
-    // Low bias RW; Z tighter than XY
-    const float rw_xy = std::clamp(6.0e-5f + 2.0e-5f * std::min(sea, 2.0f), 6.0e-5f, 1.0e-4f);
-    const float rw_z  = std::clamp(2.0e-5f + 1.0e-5f * std::min(sea, 2.0f), 2.0e-5f, 4.0e-5f);
+    mekf_->set_accel_bias_abs_max(0.09f);
+  
+    const float rw_xy = std::clamp(5.0e-4f + 0.8e-4f * std::min(sea, 2.0f), 5.0e-4f, 6.6e-4f);
+    const float rw_z  = std::clamp(1.8e-4f + 0.5e-4f * std::min(sea, 2.0f), 1.8e-4f, 2.8e-4f);
     mekf_->set_Q_bacc_rw(Eigen::Vector3f(rw_xy, rw_xy, rw_z));
   }
 
