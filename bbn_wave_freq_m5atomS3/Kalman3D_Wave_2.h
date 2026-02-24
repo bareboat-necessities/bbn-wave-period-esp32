@@ -700,6 +700,59 @@ public:
 
   // Wave tuning
 
+  // Make K available at compile-time
+  static constexpr int kWaveModes = KMODES;
+
+  // Read current per-mode center frequencies [Hz]
+  void get_wave_mode_freqs_hz(std::array<float, KMODES>& out_f_hz) const {
+    for (int k = 0; k < KMODES; ++k) {
+      // MAP THIS TO INTERNAL OMEGA STORAGE
+      // Example if you store omega in modes_[k].omega:
+      const float omega = mode_omega_rad_s_(k); // helper below
+      out_f_hz[k] = omega / (2.0f * float(M_PI));
+    }
+  }
+
+  // Read current per-mode damping ratios
+  void get_wave_mode_zetas(std::array<float, KMODES>& out_zeta) const {
+    for (int k = 0; k < KMODES; ++k) {
+      // MAP THIS TO INTERNAL ZETA STORAGE
+      out_zeta[k] = mode_zeta_(k); // helper below
+    }
+  }
+
+  // Set per-mode frequencies [Hz] and vertical process qz [m^2/s^5].
+  // XY q is derived as horiz_ratio * qz.
+  // This preserves existing zeta (damping) for each mode.
+  void set_wave_mode_freqs_and_qz(const std::array<float, KMODES>& f_hz,
+                                  const std::array<float, KMODES>& qz,
+                                  float horiz_ratio,
+                                  float q_floor = 1e-8f)
+  {
+    const float hr = std::clamp(horiz_ratio, 0.0f, 1.0f);
+
+    for (int k = 0; k < KMODES; ++k) {
+      const float fk = std::clamp(f_hz[k], 0.02f, 5.0f);
+      const float omega = 2.0f * float(M_PI) * fk;
+
+      float qz_k = std::max(q_floor, qz[k]);
+      if (!std::isfinite(qz_k)) qz_k = q_floor;
+
+      const float qxy = std::max(q_floor, hr * qz_k);
+
+      // MAP THESE TO INTERNAL MODE STORAGE
+      mode_omega_rad_s_(k) = omega;
+
+      // If your propagation multiplies by wave_Q_scale_ later, keep raw q here.
+      // If not, and q should include global scaling, multiply here instead.
+      mode_q_axis_(k) = Eigen::Vector3f(qxy, qxy, qz_k);
+    }
+
+    // If code caches anything derived from omega/q (Phi/Qd blocks, etc.), invalidate/rebuild here.
+    // If code discretizes fresh each step from mode params, this can be empty.
+    on_wave_mode_params_changed_();
+  }
+      
   void set_broadband_params(T f0_hz, T Hs_m, T zeta_mid = T(0.08), T horiz_scale = T(0.35)) {
     const T w0 = T(2)*T(M_PI)*std::max(T(1e-4), f0_hz);
 
@@ -1858,6 +1911,44 @@ private:
     enforce_axis_independence_P_();
   }
 
+  // Adapter helpers
+
+  inline float& mode_omega_rad_s_(int k) {
+    // EXAMPLE MAPPINGS (replace with actual fields):
+    // return wave_modes_[k].omega;
+    // return omega_k_[k];
+    // return modes_[k].omega_rad_s;
+    return wave_modes_[k].omega; 
+  }
+
+  inline float mode_omega_rad_s_(int k) const {
+    return wave_modes_[k].omega; 
+  }
+
+  inline float& mode_zeta_(int k) {
+    return wave_modes_[k].zeta; 
+  }
+
+  inline float mode_zeta_(int k) const {
+    return wave_modes_[k].zeta;
+  }
+
+  inline Eigen::Vector3f& mode_q_axis_(int k) {
+    return wave_modes_[k].q_axis; 
+  }
+
+  inline const Eigen::Vector3f& mode_q_axis_(int k) const {
+    return wave_modes_[k].q_axis;
+  }
+
+  inline void on_wave_mode_params_changed_() {
+    // Optional:
+    // - set a dirty flag
+    // - re-run any precompute that depends on omega/zeta/q_axis
+    // If your propagation/discretization already uses current values directly every step,
+    // leave this empty.
+  }
+      
   // Oscillator discretization
 
   static inline void phi_osc_2x2_(T t, T w, T z, Eigen::Matrix<T,2,2>& Phi) {
