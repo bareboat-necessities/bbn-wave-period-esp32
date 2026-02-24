@@ -32,7 +32,7 @@
 
 constexpr float ACC_NOISE_FLOOR_SIGMA_DEFAULT = 0.12f;
 
-constexpr float MIN_FREQ_HZ = 0.2f;
+constexpr float MIN_FREQ_HZ = 0.05f;
 constexpr float MAX_FREQ_HZ = 5.0f;
 
 constexpr float MIN_TAU_S   = 0.02f;
@@ -593,8 +593,8 @@ private:
         f0_hz = 0.25f * freq_hz_slow_ + 0.75f * ft;
       }
     }
-    f0_hz = std::clamp(f0_hz, min_freq_hz_, max_freq_hz_);
-  
+    f0_hz = model_freq_from_tracker_(f0_hz);
+    
     mekf_->set_broadband_params(f0_hz, Hs_m, zeta_mid, horiz_scale);
   }
 
@@ -785,6 +785,18 @@ private:
     apply_oscillators_tune_();
     apply_adaptive_rms_tuning_();
     last_adapt_time_sec_ = time_;
+  }
+
+  float model_freq_from_tracker_(float f_tracker_hz) const {
+    if (!std::isfinite(f_tracker_hz)) return min_freq_hz_;
+    const float sea = std::max(0.0f, tune_.sigma_applied);
+  
+    // accel-domain tracker overestimates displacement-domain wave frequency
+    // More correction in bigger seas.
+    const float k = std::clamp(0.58f - 0.04f * std::min(sea, 3.0f), 0.42f, 0.58f);
+  
+    const float f_model = k * f_tracker_hz;
+    return std::clamp(f_model, min_freq_hz_, max_freq_hz_);
   }
 
 private:
