@@ -38,7 +38,7 @@
 #include <algorithm>
 #include <limits>
 
-template<int Nfreq = 24, int Nblock = 128>
+template<int Nfreq = 28, int Nblock = 512>
 class EIGEN_ALIGN_MAX WaveSpectrumEstimator2 {
 public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -48,25 +48,25 @@ public:
   static constexpr double kG  = 9.80665;
   static constexpr double kPi = 3.1415926535897932384626433832795;
 
-  struct Config {
-    double fs_raw_hz      = 240.0; // IMU sample rate
-    int    decim_factor   = 15;    // => fs = 16 Hz
-    int    hop_decimated  = 32;    // => update every 2 s with Nblock=128
-    bool   hann_enabled   = true;
+struct Config {
+  double fs_raw_hz      = 240.0; // IMU sample rate
+  int    decim_factor   = 24;    // => fs = 10 Hz (better wave-focused)
+  int    hop_decimated  = 64;    // => update every 6.4 s with Nblock=512
+  bool   hann_enabled   = true;
 
-    // Filter / inversion knobs
-    double hp_f0_hz       = 0.025; // 4th-order HP (2x biquad) for bias suppression
-    double reg_f0_hz      = 0.05;  // low-f regularization for 1/omega^4 inversion
+  // Filter / inversion knobs
+  double hp_f0_hz       = 0.012; // gentler HP so long swell survives better
+  double reg_f0_hz      = 0.035; // low-f inversion regularization knee
 
-    // PSD smoothing
-    bool   psd_ema_enable = true;
-    double psd_ema_alpha  = 0.18;  // 0.1..0.3 good range
+  // PSD smoothing
+  bool   psd_ema_enable = true;
+  double psd_ema_alpha  = 0.12;  // more stable mode fitting (less jitter)
 
-    // Analysis band
-    double f_min_hz       = 0.05;
-    double f_transition_hz= 0.12;  // lower ~40% log-spaced, upper linear
-    double f_max_hz       = 1.20;
-  };
+  // Analysis band
+  double f_min_hz       = 0.035; // ~28.6 s period lower edge
+  double f_transition_hz= 0.16;  // more useful split between swell/chop
+  double f_max_hz       = 1.00;  // cap high-f junk/slam while keeping chop
+};
 
   explicit WaveSpectrumEstimator2(const Config& cfg = Config()) {
     configure(cfg);
