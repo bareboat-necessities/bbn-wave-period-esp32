@@ -612,14 +612,12 @@ private:
       disp_m = C_HS * sea * tau * tau;
     }
   
-    // Normalize to a moderate reference sea so q_scale stays dimensionless.
-    // (Around sigma~0.45, tau~1.5 -> ~0.29 m)
-    constexpr float DISP_REF_M = 0.30f;
-    float d_ratio = std::clamp(disp_m / DISP_REF_M, 0.20f, 20.0f);
-  
-    // Super-linear works better than linear for large swell without exploding.
-    // (Squared is too aggressive in practice.)
-    float q_scale = 0.90f * std::pow(d_ratio, 1.10f);
+    // Linear law: q_scale ∝ displacement scale
+    // Tune this single coefficient.
+    constexpr float WAVE_Q_PER_M = 5.8f;   // start here; increase to 3.5..5.0 if still too stiff on 4m/8.5m
+    const float q_scale = WAVE_Q_PER_M * disp_scale_m;
+    
+    mekf_->set_wave_Q_scale(q_scale);
   
     // Extra help for long-period swell (your failure mode)
     const float tau = std::clamp(tune_.tau_applied, min_tau_s_, max_tau_s_);
