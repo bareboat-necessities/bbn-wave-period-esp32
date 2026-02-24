@@ -32,7 +32,7 @@
 
 constexpr float ACC_NOISE_FLOOR_SIGMA_DEFAULT = 0.12f;
 
-constexpr float MIN_FREQ_HZ = 0.2f;
+constexpr float MIN_FREQ_HZ = 0.12f;
 constexpr float MAX_FREQ_HZ = 5.0f;
 
 constexpr float MIN_TAU_S   = 0.02f;
@@ -146,11 +146,11 @@ public:
   bool isAdaptiveLive() const noexcept { return startup_stage_ == StartupStage::Live; }
 
   void tune_for_wave_RMS_() {
-    mekf_->set_wave_Q_scale(0.70f);  // Keep wave model conservative initially; adaptive logic will take over
-    mekf_->set_accel_bias_update_scale(0.03f);  // Let accel bias actually learn 
-    mekf_->set_accel_bias_abs_max(0.08f);
-    mekf_->set_Q_bacc_rw(Eigen::Vector3f(4.0e-4f, 4.0e-4f, 1.0e-4f));  // Z a bit freer than XY
-  }
+    mekf_->set_wave_Q_scale(1.25f);
+    mekf_->set_accel_bias_update_scale(0.02f);
+    mekf_->set_accel_bias_abs_max(0.06f);
+    mekf_->set_Q_bacc_rw(Eigen::Vector3f(1.2e-4f, 1.2e-4f, 1.0e-4f));
+}
 
   void initialize(const Eigen::Vector3f& sigma_a,
                   const Eigen::Vector3f& sigma_g,
@@ -570,22 +570,20 @@ private:
     constexpr float C_HS = 2.0f * std::sqrt(2.0f) / (float(M_PI) * float(M_PI));
     const float sea = std::max(0.0f, tune_.sigma_applied);
   
-    // Lower damping -> less amplitude loss
-    const float zeta_mid = std::clamp(0.018f + 0.004f * std::min(sea, 3.0f), 0.018f, 0.032f);
+    // Keep damping modest (don't change too much since Z is already strong)
+    const float zeta_mid = std::clamp(0.022f + 0.004f * std::min(sea, 3.0f), 0.020f, 0.034f);
   
-    // IMPORTANT: current horiz_scale is too small for <10% XYZ target
-    const float horiz_scale = std::clamp(0.16f + 0.03f * std::min(sea, 2.0f), 0.16f, 0.24f);
+    // BIG change: your current horiz_scale is too low
+    const float horiz_scale = std::clamp(0.18f + 0.04f * std::min(sea, 2.0f), 0.18f, 0.28f);
   
-    // More amplitude (Hs prior) than your current 3.2..4.8
-    const float hs_gain = std::clamp(4.6f + 0.9f * std::min(sea, 3.0f), 4.6f, 7.0f);
+    // Preserve heave performance; don't go crazy on Hs prior
+    const float hs_gain = std::clamp(3.8f + 0.6f * std::min(sea, 3.0f), 3.8f, 5.6f);
     const float Hs_m = std::max(0.0f, hs_gain * C_HS * sZ * tau * tau);
   
     float f0_hz = freq_hz_slow_;
     if (tuner_.isFreqReady()) {
       const float ft = tuner_.getFrequencyHz();
-      if (std::isfinite(ft)) {
-        f0_hz = 0.20f * freq_hz_slow_ + 0.80f * ft;
-      }
+      if (std::isfinite(ft)) f0_hz = 0.20f * freq_hz_slow_ + 0.80f * ft;
     }
     f0_hz = std::clamp(f0_hz, min_freq_hz_, max_freq_hz_);
   
@@ -600,23 +598,23 @@ private:
   
     const float sea = std::max(0.15f, tune_.sigma_applied);
   
-    // Stronger wave process scaling (especially rough seas)
+    // Stronger wave process so wave states (not bias) explain motion
     const float q_scale = std::clamp(
-        1.35f * std::pow(sea / 0.45f, 0.95f),
-        1.00f, 5.50f);
+        1.30f * std::pow(sea / 0.45f, 0.95f),
+        1.05f, 5.00f);
     mekf_->set_wave_Q_scale(q_scale);
   
-    // Keep BA mean updates very weak (or it steals heave amplitude)
+    // Bias mean updates very weak
     const float ba_gain = std::clamp(
-        0.030f - 0.007f * std::min(sea, 2.0f),
-        0.012f, 0.030f);
+        0.022f - 0.006f * std::min(sea, 2.0f),
+        0.008f, 0.022f);
     mekf_->set_accel_bias_update_scale(ba_gain);
   
     mekf_->set_accel_bias_abs_max(0.06f);
   
-    // Tight Z bias RW (wave should explain wave-band energy, not bias)
-    const float rw_xy = std::clamp(3.8e-4f + 0.7e-4f * std::min(sea, 2.0f), 3.8e-4f, 5.2e-4f);
-    const float rw_z  = std::clamp(0.9e-4f + 0.3e-4f * std::min(sea, 2.0f), 0.9e-4f, 1.5e-4f);
+    // Very tight XY RW so bias cannot absorb horizontal wave energy
+    const float rw_xy = std::clamp(1.0e-4f + 0.4e-4f * std::min(sea, 2.0f), 1.0e-4f, 1.8e-4f);
+    const float rw_z  = std::clamp(0.8e-4f + 0.3e-4f * std::min(sea, 2.0f), 0.8e-4f, 1.4e-4f);
   
     mekf_->set_Q_bacc_rw(Eigen::Vector3f(rw_xy, rw_xy, rw_z));
   }
