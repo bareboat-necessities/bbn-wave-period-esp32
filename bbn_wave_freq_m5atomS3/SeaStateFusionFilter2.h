@@ -16,6 +16,7 @@
 #include <cmath>
 #include <memory>
 #include <algorithm>
+#include <array>
 
 #include "AranovskiyFilter.h"
 #include "KalmANF.h"
@@ -27,6 +28,7 @@
 #include "FrameConversions.h"
 #include "KalmanWaveDirection.h"
 #include "WaveDirectionDetector.h"
+#include "WaveSpectrumEstimator2.h"
 
 // Shared constants
 
@@ -163,6 +165,7 @@ public:
                   const Eigen::Vector3f& sigma_m)
   {
     mekf_ = std::make_unique<Kalman3D_Wave_2<float>>(sigma_a, sigma_g, sigma_m);
+    init_spectrum_adapter_();
     tune_for_wave_RMS_();
     
     enterCold_();
@@ -179,6 +182,7 @@ public:
   {
     mekf_ = std::make_unique<Kalman3D_Wave_2<float>>(sigma_a, sigma_g, sigma_m,
                                                     Pq0, Pb0, b0, gravity_magnitude);
+    init_spectrum_adapter_();
     tune_for_wave_RMS_();
     
     enterCold_();
@@ -309,6 +313,12 @@ public:
   
     // vertical (up positive) = -a_inertial_down
     a_vert_up_ = -a_z_inertial_down;
+
+    bool spectrum_new_block = false;
+    if (spectral_mode_matching_enable_) {
+      // Feed RAW vertical inertial accel; estimator has its own HP/LP/decimation.
+      spectrum_new_block = spectrum_.processSample(static_cast<double>(a_vert_up_));
+    }
   
     // LPF for tracker/tuner input
     const float a_vert_lp = freq_input_lpf_.step(a_vert_up_, dt);
@@ -331,7 +341,14 @@ public:
       // Use LPF'ed vertical accel here too (reduces ringing / freq overshoot)
       update_tuner_(dt, a_vert_lp);
     }
-  
+
+    if (spectrum_new_block && spectral_mode_matching_enable_ &&
+        startup_stage_ == StartupStage::Live && (time_ - last_spectral_apply_time_sec_) >= spectral_apply_every_sec_)
+    {
+      apply_spectral_mode_matching_();
+      last_spectral_apply_time_sec_ = time_;
+    }
+    
     // Direction filters
     const float omega = 2.0f * static_cast<float>(M_PI) * freq_hz_;
     dir_filter_.update(a_x_body, a_y_body, omega, dt);
@@ -389,6 +406,23 @@ public:
     if (mekf_) {
       const bool on_now = flag && (startup_stage_ == StartupStage::Live);
       mekf_->set_wave_block_enabled(on_now);
+    }
+  }
+
+  void enableSpectralModeMatching(bool en = true) { spectral_mode_matching_enable_ = en; }
+
+  void setSpectralModeQGain(float g) {
+    if (std::isfinite(g) && g > 0.0f) spectral_q_gain_ = g;
+  }
+
+  void setSpectralHorizQRatio(float r) {
+    if (std::isfinite(r) && r >= 0.0f) spectral_horiz_q_ratio_ = r;
+  }
+
+  void setSpectralModeFreqBounds(float fmin, float fmax) {
+    if (std::isfinite(fmin) && std::isfinite(fmax) && fmin > 0.0f && fmax > fmin) {
+      spectral_mode_fmin_hz_ = fmin;
+      spectral_mode_fmax_hz_ = fmax;
     }
   }
 
@@ -638,8 +672,23 @@ private:
     const float Hs_m = std::max(0.0f, hs_gain * C_HS * sZ * tau * tau);
   
     float f0_hz = freq_hz_slow_;
-    f0_hz *= 0.7;
-  
+
+    // Tuner estimate
+    if (tuner_.isFreqReady()) {
+      const float ft = tuner_.getFrequencyHz();
+      if (std::isfinite(ft)) f0_hz = 0.20f * freq_hz_slow_ + 0.80f * ft;
+    }
+
+    // Spectral displacement-peak estimate (better for wave oscillator centers)
+    if (spectral_mode_matching_enable_ && spectrum_.ready()) {
+      const double fp_spec = spectrum_.estimatePeakFrequencyHz();
+      if (std::isfinite(fp_spec) && fp_spec > 0.0) {
+        f0_hz = 0.15f * f0_hz + 0.85f * static_cast<float>(fp_spec);
+      }
+    }
+
+    f0_hz = std::clamp(f0_hz, min_freq_hz_, max_freq_hz_);
+
     mekf_->set_broadband_params(f0_hz, Hs_m, zeta_mid, horiz_scale);
   }
 
@@ -664,7 +713,11 @@ private:
     constexpr float WAVE_Q_PER_M = 3.8f;   // start here; increase to 3.5..5.0 if still too stiff on 4m/8.5m
     const float q_scale = WAVE_Q_PER_M * disp_scale_m;
     
-    mekf_->set_wave_Q_scale(q_scale);
+    if (!(spectral_mode_matching_enable_ && spectrum_.ready())) {
+      mekf_->set_wave_Q_scale(q_scale);   // fallback before spectrum is ready
+    } else {
+      mekf_->set_wave_Q_scale(1.0f);      // spectral mode q_k is the source of truth
+    }
   
     // bias tuning
     const float ba_gain = std::clamp(0.14f - 0.015f * std::min(sea, 2.0f), 0.11f, 0.16f);
@@ -786,6 +839,8 @@ private:
     dir_filter_ = KalmanWaveDirection(2.0f * static_cast<float>(M_PI) * FREQ_GUESS);
     dir_sign_state_ = UNCERTAIN;
 
+    reset_spectrum_adapter_();
+    
     last_adapt_time_sec_ = time_;
   }
 
@@ -811,6 +866,8 @@ private:
         warmup_Racc_active_ = false;
       }
     }
+
+    reset_spectrum_adapter_();
   }
 
   void enterLive_() {
@@ -909,6 +966,182 @@ private:
 
   WaveDirectionDetector<float> dir_sign_{0.002f, 0.005f};
   WaveDirection                dir_sign_state_ = UNCERTAIN;
+
+  // Spectral mode matching
+  WaveSpectrumEstimator2<24, 128> spectrum_{};
+
+  bool  spectral_mode_matching_enable_ = true;
+
+  // How often to apply to Kalman after a new spectrum block is available
+  float spectral_apply_every_sec_ = 1.0f;
+  double last_spectral_apply_time_sec_ = -1e9;
+
+  // Spectrum -> q_k conversion knobs
+  float spectral_q_gain_         = 1.0f;   // main knob (0.7..1.6 typical)
+  float spectral_q_floor_        = 1e-6f;
+  float spectral_q_cap_          = 25.0f;  // keep spikes bounded
+  float spectral_horiz_q_ratio_  = 0.22f;  // XY q = ratio * Z q
+
+  // Allowed mode-center range for spectral matching
+  float spectral_mode_fmin_hz_   = 0.06f;
+  float spectral_mode_fmax_hz_   = 1.00f;
+
+  // Smoothing of applied mode params
+  float spectral_f_blend_alpha_  = 0.25f;
+  float spectral_q_blend_alpha_  = 0.35f;
+
+  bool spectral_applied_initialized_ = false;
+
+  std::array<float, Kalman3D_Wave_2<float>::kWaveModes> spectral_f_applied_{};
+  std::array<float, Kalman3D_Wave_2<float>::kWaveModes> spectral_qz_applied_{};
+
+  void apply_spectral_mode_matching_() {
+    if (!mekf_) return;
+    if (!spectrum_.ready()) return;
+
+    constexpr int K = Kalman3D_Wave_2<float>::kWaveModes;
+
+    // Keep inversion regularization tied to current sea-state frequency.
+    // This avoids low-f blow-up while still allowing real swell energy through.
+    {
+      float f_reg = 0.25f * std::max(min_freq_hz_, freq_hz_slow_);
+      f_reg = std::clamp(f_reg, 0.03f, 0.12f);
+      spectrum_.setRegularizationF0Hz(static_cast<double>(f_reg));
+    }
+
+    // Read current damping from the Kalman so q conversion matches actual zeta_k
+    std::array<float, K> zeta_k{};
+    mekf_->get_wave_mode_zetas(zeta_k);
+
+    // Estimate per-mode center frequencies + vertical qz from displacement spectrum
+    std::array<float, K> f_est_hz{};
+    std::array<float, K> qz_est{};
+    spectrum_.template estimateModeQz<K>(
+      f_est_hz,
+      qz_est,
+      zeta_k,
+      spectral_mode_fmin_hz_,
+      spectral_mode_fmax_hz_,
+      spectral_q_gain_,
+      spectral_q_floor_,
+      spectral_q_cap_
+    );
+
+    // Read current centers for smooth blending (avoid hard jumps)
+    std::array<float, K> f_cur_hz{};
+    mekf_->get_wave_mode_freqs_hz(f_cur_hz);
+
+    // Sea-state dependent horizontal process ratio (XY relative to Z)
+    float hr = spectral_horiz_q_ratio_;
+    {
+      const float sea = std::max(0.0f, tune_.sigma_applied);
+      hr = std::clamp(hr + 0.02f * std::min(sea, 2.5f), 0.15f, 0.35f);
+    }
+
+    // Smooth the applied per-mode params
+    std::array<float, K> f_out_hz{};
+    std::array<float, K> qz_out{};
+
+    for (int k = 0; k < K; ++k) {
+      float f_target = std::clamp(f_est_hz[k], spectral_mode_fmin_hz_, spectral_mode_fmax_hz_);
+      float q_target = std::clamp(qz_est[k], spectral_q_floor_, spectral_q_cap_);
+
+      if (!spectral_applied_initialized_) {
+        spectral_f_applied_[k]  = std::isfinite(f_cur_hz[k]) ? f_cur_hz[k] : f_target;
+        spectral_qz_applied_[k] = q_target;
+      }
+
+      // slow-ish blend on frequencies, a bit faster on q
+      spectral_f_applied_[k]  += spectral_f_blend_alpha_  * (f_target - spectral_f_applied_[k]);
+      spectral_qz_applied_[k] += spectral_q_blend_alpha_  * (q_target - spectral_qz_applied_[k]);
+
+      f_out_hz[k] = std::clamp(spectral_f_applied_[k], spectral_mode_fmin_hz_, spectral_mode_fmax_hz_);
+      qz_out[k]   = std::clamp(spectral_qz_applied_[k], spectral_q_floor_, spectral_q_cap_);
+    }
+
+    spectral_applied_initialized_ = true;
+
+    // IMPORTANT:
+    // When spectral per-mode q is active, keep global wave_Q_scale neutral to avoid double scaling.
+    mekf_->set_wave_Q_scale(1.0f);
+
+    // Push per-mode centers + q into Kalman wave block
+    mekf_->set_wave_mode_freqs_and_qz(f_out_hz, qz_out, hr, spectral_q_floor_);
+  }
+
+  void apply_spectral_mode_matching_() {
+    if (!mekf_) return;
+    if (!spectrum_.ready()) return;
+
+    constexpr int K = Kalman3D_Wave_2<float>::kWaveModes;
+
+    // Keep inversion regularization tied to current sea-state frequency.
+    // This avoids low-f blow-up while still allowing real swell energy through.
+    {
+      float f_reg = 0.25f * std::max(min_freq_hz_, freq_hz_slow_);
+      f_reg = std::clamp(f_reg, 0.03f, 0.12f);
+      spectrum_.setRegularizationF0Hz(static_cast<double>(f_reg));
+    }
+
+    // Read current damping from the Kalman so q conversion matches actual zeta_k
+    std::array<float, K> zeta_k{};
+    mekf_->get_wave_mode_zetas(zeta_k);
+
+    // Estimate per-mode center frequencies + vertical qz from displacement spectrum
+    std::array<float, K> f_est_hz{};
+    std::array<float, K> qz_est{};
+    spectrum_.template estimateModeQz<K>(
+      f_est_hz,
+      qz_est,
+      zeta_k,
+      spectral_mode_fmin_hz_,
+      spectral_mode_fmax_hz_,
+      spectral_q_gain_,
+      spectral_q_floor_,
+      spectral_q_cap_
+    );
+
+    // Read current centers for smooth blending (avoid hard jumps)
+    std::array<float, K> f_cur_hz{};
+    mekf_->get_wave_mode_freqs_hz(f_cur_hz);
+
+    // Sea-state dependent horizontal process ratio (XY relative to Z)
+    float hr = spectral_horiz_q_ratio_;
+    {
+      const float sea = std::max(0.0f, tune_.sigma_applied);
+      hr = std::clamp(hr + 0.02f * std::min(sea, 2.5f), 0.15f, 0.35f);
+    }
+
+    // Smooth the applied per-mode params
+    std::array<float, K> f_out_hz{};
+    std::array<float, K> qz_out{};
+
+    for (int k = 0; k < K; ++k) {
+      float f_target = std::clamp(f_est_hz[k], spectral_mode_fmin_hz_, spectral_mode_fmax_hz_);
+      float q_target = std::clamp(qz_est[k], spectral_q_floor_, spectral_q_cap_);
+
+      if (!spectral_applied_initialized_) {
+        spectral_f_applied_[k]  = std::isfinite(f_cur_hz[k]) ? f_cur_hz[k] : f_target;
+        spectral_qz_applied_[k] = q_target;
+      }
+
+      // slow-ish blend on frequencies, a bit faster on q
+      spectral_f_applied_[k]  += spectral_f_blend_alpha_  * (f_target - spectral_f_applied_[k]);
+      spectral_qz_applied_[k] += spectral_q_blend_alpha_  * (q_target - spectral_qz_applied_[k]);
+
+      f_out_hz[k] = std::clamp(spectral_f_applied_[k], spectral_mode_fmin_hz_, spectral_mode_fmax_hz_);
+      qz_out[k]   = std::clamp(spectral_qz_applied_[k], spectral_q_floor_, spectral_q_cap_);
+    }
+
+    spectral_applied_initialized_ = true;
+
+    // IMPORTANT:
+    // When spectral per-mode q is active, keep global wave_Q_scale neutral to avoid double scaling.
+    mekf_->set_wave_Q_scale(1.0f);
+
+    // Push per-mode centers + q into Kalman wave block
+    mekf_->set_wave_mode_freqs_and_qz(f_out_hz, qz_out, hr, spectral_q_floor_);
+  }
 };
 
 // SeaStateFusion2 wrapper
