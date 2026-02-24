@@ -764,24 +764,6 @@ private:
       sigma_target_ = std::max(sigma_target_, std::max(0.05f, acc_noise_floor_sigma_));
     }
 
-    // Amplitude compensation for under-estimation
-    // Displacement scale is ~ sigma * tau^2, so a modest boost here helps a lot.
-    {
-      float tau_boost   = 1.0f;  // try 1.12 .. 1.22
-      float sigma_boost = 1.0f;  // try 1.25 .. 1.55
-    
-      // Slight sea-state dependence (bigger seas usually need more process energy)
-      const float sea = std::max(0.0f, sigma_target_);
-      tau_boost   = std::clamp(tau_boost   + 0.02f * std::min(sea, 2.0f), 1.12f, 1.20f);
-      sigma_boost = std::clamp(sigma_boost + 0.06f * std::min(sea, 2.0f), 1.30f, 1.47f);
-    
-      tau_target_   *= tau_boost;
-      sigma_target_ *= sigma_boost;
-    
-      // Re-clamp after boost
-      tau_target_   = std::clamp(tau_target_,   min_tau_s_, max_tau_s_);
-      sigma_target_ = std::clamp(sigma_target_, 0.05f,      max_sigma_a_);
-    }
     adapt_mekf_(dt, tau_target_, sigma_target_);
   }
 
