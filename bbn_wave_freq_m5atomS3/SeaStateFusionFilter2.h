@@ -146,12 +146,10 @@ public:
   bool isAdaptiveLive() const noexcept { return startup_stage_ == StartupStage::Live; }
 
   void tune_for_wave_RMS_() {
-    // RMS-focused tuning:
-    // after mekf_ construction (initialize / initialize_ext)
-    mekf_->set_wave_Q_scale(0.32f);             // 0.15 .. 0.35 is the sane range, key knob
-    mekf_->set_accel_bias_update_scale(0.08f);  // BA gain scaling
-    mekf_->set_accel_bias_abs_max(0.045f);       // prevents crazy BA
-    mekf_->set_Q_bacc_rw(Eigen::Vector3f::Constant(7.5e-5f)); // lower BA random-walk (std / sqrt(s))  
+    mekf_->set_wave_Q_scale(0.50f);  // Keep wave model conservative initially; adaptive logic will take over
+    mekf_->set_accel_bias_update_scale(0.18f);  // Let accel bias actually learn 
+    mekf_->set_accel_bias_abs_max(0.10f);
+    mekf_->set_Q_bacc_rw(Eigen::Vector3f(5.0e-4f, 5.0e-4f, 7.0e-4f));  // Z a bit freer than XY
   }
 
   void initialize(const Eigen::Vector3f& sigma_a,
