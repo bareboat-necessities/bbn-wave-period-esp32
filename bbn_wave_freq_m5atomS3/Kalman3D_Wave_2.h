@@ -1059,7 +1059,13 @@ public:
   
     if constexpr (WAVE_N > 0)        PCt.template block<WAVE_N,3>(OFF_WAVE,0).setZero();
     if constexpr (with_accel_bias)   PCt.template block<3,3>(OFF_BA,0).setZero();
-  
+
+    // Prevent upright pseudo from updating yaw error-state row / yaw gyro-bias row via cross-cov
+    PCt.row(OFF_DTH + 2).setZero();
+    if constexpr (with_gyro_bias) {
+      PCt.row(OFF_BG + 2).setZero();
+    }
+      
     MatX3& K = K_scratch_;
     K.noalias() = PCt * ldlt.solve(Mat3::Identity());
     if (!K.allFinite() || !r.allFinite()) return;
