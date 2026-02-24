@@ -510,28 +510,6 @@ public:
     }
     return ys[n - 1];
   }
-  
-  float estimate_f0_from_displacement_scale_hack_() const {
-    // getDisplacementScale ~ sigma_eta proxy (displacement std-ish)
-    float disp_scale = getDisplacementScale(true);
-    if (!std::isfinite(disp_scale) || disp_scale <= 1e-4f) return NAN;
-  
-    // Hack: convert displacement scale to Hs proxy
-    // Hs ≈ 4 * sigma_eta
-    const float Hs_hat = 4.0f * disp_scale;
-  
-    // empirical table (Hs -> Tp), inferred from examples
-    constexpr float Hs_tbl[4] = {0.27f, 1.5f, 4.0f, 8.5f};
-    constexpr float Tp_tbl[4] = {3.0f,  5.7f, 8.5f, 11.4f};
-  
-    float Tp = loglog_interp_extrap_(Hs_hat, Hs_tbl, Tp_tbl, 4);
-    if (!std::isfinite(Tp) || Tp <= 1e-3f) return NAN;
-  
-    float f0 = 1.0f / Tp;
-    if (!std::isfinite(f0)) return NAN;
-  
-    return std::clamp(f0, min_freq_hz_, max_freq_hz_);
-  }
 
   inline WaveDirection getDirSignState() const noexcept { return dir_sign_state_; }
 
