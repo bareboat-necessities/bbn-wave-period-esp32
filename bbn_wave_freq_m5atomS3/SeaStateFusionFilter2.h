@@ -619,14 +619,6 @@ private:
     
     mekf_->set_wave_Q_scale(q_scale);
   
-    // Extra help for long-period swell (your failure mode)
-    const float tau = std::clamp(tune_.tau_applied, min_tau_s_, max_tau_s_);
-    q_scale *= (1.0f + 0.35f * std::clamp((tau - 2.2f) / 4.0f, 0.0f, 1.0f));
-  
-    // Allow larger ceiling than before (you were capping too early)
-    q_scale = std::clamp(q_scale, 0.70f, 7.50f);
-    mekf_->set_wave_Q_scale(q_scale);
-  
     // bias tuning
     const float ba_gain = std::clamp(0.14f - 0.015f * std::min(sea, 2.0f), 0.11f, 0.16f);
     mekf_->set_accel_bias_update_scale(ba_gain);
