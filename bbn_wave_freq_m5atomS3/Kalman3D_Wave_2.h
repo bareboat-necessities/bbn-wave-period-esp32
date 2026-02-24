@@ -1912,41 +1912,49 @@ private:
   }
 
   // Adapter helpers
-
-  inline float& mode_omega_rad_s_(int k) {
-    // EXAMPLE MAPPINGS (replace with actual fields):
-    // return wave_modes_[k].omega;
-    // return omega_k_[k];
-    // return modes_[k].omega_rad_s;
-    return wave_modes_[k].omega; 
+  
+  inline T& mode_omega_rad_s_(int k) {
+    return omega_[k];
   }
-
-  inline float mode_omega_rad_s_(int k) const {
-    return wave_modes_[k].omega; 
+  
+  inline T mode_omega_rad_s_(int k) const {
+    return omega_[k];
   }
-
-  inline float& mode_zeta_(int k) {
-    return wave_modes_[k].zeta; 
+  
+  inline T& mode_zeta_(int k) {
+    return zeta_[k];
   }
-
-  inline float mode_zeta_(int k) const {
-    return wave_modes_[k].zeta;
+  
+  inline T mode_zeta_(int k) const {
+    return zeta_[k];
   }
-
-  inline Eigen::Vector3f& mode_q_axis_(int k) {
-    return wave_modes_[k].q_axis; 
+  
+  inline Vec3& mode_q_axis_(int k) {
+    return q_axis_[k];
   }
-
-  inline const Eigen::Vector3f& mode_q_axis_(int k) const {
-    return wave_modes_[k].q_axis;
+  
+  inline const Vec3& mode_q_axis_(int k) const {
+    return q_axis_[k];
   }
-
+  
   inline void on_wave_mode_params_changed_() {
-    // Optional:
-    // - set a dirty flag
-    // - re-run any precompute that depends on omega/zeta/q_axis
-    // If your propagation/discretization already uses current values directly every step,
-    // leave this empty.
+    // Keep disabled-wave nuisance covariance consistent with the latest mode params.
+    Vec3 var_aw = Vec3::Zero();
+    for (int ax = 0; ax < 3; ++ax) {
+      T v = T(0);
+      for (int k = 0; k < KMODES; ++k) {
+        const T om = std::max(T(1e-4), omega_[k]);
+        const T ze = std::max(T(1e-3), zeta_[k]);
+        const T q  = std::max(T(0), q_axis_[k](ax));
+        v += (om * q) * (T(1) / (T(4) * ze) + ze);
+      }
+      var_aw(ax) = std::max(T(0), v);
+    }
+  
+    Sigma_aw_disabled_world_.setZero();
+    Sigma_aw_disabled_world_(0,0) = var_aw.x();
+    Sigma_aw_disabled_world_(1,1) = var_aw.y();
+    Sigma_aw_disabled_world_(2,2) = var_aw.z();
   }
       
   // Oscillator discretization
