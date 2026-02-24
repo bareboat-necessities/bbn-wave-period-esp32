@@ -946,7 +946,7 @@ private:
   WaveDirection                dir_sign_state_ = UNCERTAIN;
 
   // Spectral mode matching
-  WaveSpectrumEstimator2<24, 128> spectrum_{};
+  WaveSpectrumEstimator2<28, 512> spectrum_{};
 
   bool  spectral_mode_matching_enable_ = true;
 
