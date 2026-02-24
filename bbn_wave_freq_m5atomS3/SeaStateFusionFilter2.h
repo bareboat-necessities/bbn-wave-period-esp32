@@ -571,7 +571,7 @@ private:
     const float sea = std::max(0.0f, tune_.sigma_applied);
   
     // Keep damping modest (don't change too much since Z is already strong)
-    const float zeta_mid = std::clamp(0.022f + 0.004f * std::min(sea, 3.0f), 0.020f, 0.034f);
+    const float zeta_mid = std::clamp(0.017f + 0.003f * std::min(sea, 3.0f), 0.016f, 0.026f);
   
     // BIG change: your current horiz_scale is too low
     const float horiz_scale = std::clamp(0.18f + 0.04f * std::min(sea, 2.0f), 0.18f, 0.28f);
