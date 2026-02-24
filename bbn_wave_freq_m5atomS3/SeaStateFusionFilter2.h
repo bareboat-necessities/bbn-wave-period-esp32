@@ -698,12 +698,12 @@ private:
     }
   
     // bias tuning
-    const float ba_gain = std::clamp(0.14f - 0.015f * std::min(sea, 2.0f), 0.11f, 0.16f);
+    const float ba_gain = std::clamp(0.06f - 0.015f * std::min(sea, 2.0f), 0.02f, 0.06f);
     mekf_->set_accel_bias_update_scale(ba_gain);
-    mekf_->set_accel_bias_abs_max(0.09f);
+    mekf_->set_accel_bias_abs_max(0.06f);
   
-    const float rw_xy = std::clamp(5.0e-4f + 0.8e-4f * std::min(sea, 2.0f), 5.0e-4f, 6.6e-4f);
-    const float rw_z  = std::clamp(1.8e-4f + 0.5e-4f * std::min(sea, 2.0f), 1.8e-4f, 2.8e-4f);
+    const float rw_xy = std::clamp(5.0e-5f + 0.8e-5f * std::min(sea, 2.0f), 5.0e-5f, 6.6e-5f);
+    const float rw_z  = std::clamp(1.8e-5f + 0.5e-5f * std::min(sea, 2.0f), 1.8e-5f, 2.8e-5f);
     mekf_->set_Q_bacc_rw(Eigen::Vector3f(rw_xy, rw_xy, rw_z));
   }
 
