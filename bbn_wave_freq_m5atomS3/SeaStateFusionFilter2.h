@@ -146,11 +146,17 @@ public:
   bool isAdaptiveLive() const noexcept { return startup_stage_ == StartupStage::Live; }
 
   void tune_for_wave_RMS_() {
-    mekf_->set_wave_Q_scale(1.25f);
+    mekf_->set_wave_Q_scale(1.10f);
+  
+    // much smaller bias learning so bias doesn't absorb wave residual
     mekf_->set_accel_bias_update_scale(0.02f);
+  
+    // Clamp closer to expected truth, with some room
     mekf_->set_accel_bias_abs_max(0.06f);
-    mekf_->set_Q_bacc_rw(Eigen::Vector3f(1.2e-4f, 1.2e-4f, 1.0e-4f));
-}
+  
+    // Much smaller accel bias RW (especially Z)
+    mekf_->set_Q_bacc_rw(Eigen::Vector3f(7.0e-5f, 7.0e-5f, 3.0e-5f));
+  }
 
   void initialize(const Eigen::Vector3f& sigma_a,
                   const Eigen::Vector3f& sigma_g,
