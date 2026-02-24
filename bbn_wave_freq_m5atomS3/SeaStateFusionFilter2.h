@@ -610,18 +610,16 @@ private:
         1.05f, 5.00f);
     mekf_->set_wave_Q_scale(q_scale);
   
-    // Bias mean updates very weak
-    const float ba_gain = std::clamp(
-        0.022f - 0.006f * std::min(sea, 2.0f),
-        0.008f, 0.022f);
+    // Keep accel bias learning weak. Let wave block explain wave acceleration.
+    const float ba_gain = std::clamp(0.018f + 0.004f * std::min(sea, 2.0f), 0.018f, 0.026f);
     mekf_->set_accel_bias_update_scale(ba_gain);
-  
+    
+    // Tight clamp to prevent bias from becoming a "fake wave state"
     mekf_->set_accel_bias_abs_max(0.06f);
-  
-    // Very tight XY RW so bias cannot absorb horizontal wave energy
-    const float rw_xy = std::clamp(1.0e-4f + 0.4e-4f * std::min(sea, 2.0f), 1.0e-4f, 1.8e-4f);
-    const float rw_z  = std::clamp(0.8e-4f + 0.3e-4f * std::min(sea, 2.0f), 0.8e-4f, 1.4e-4f);
-  
+    
+    // Low bias RW; Z tighter than XY
+    const float rw_xy = std::clamp(6.0e-5f + 2.0e-5f * std::min(sea, 2.0f), 6.0e-5f, 1.0e-4f);
+    const float rw_z  = std::clamp(2.0e-5f + 1.0e-5f * std::min(sea, 2.0f), 2.0e-5f, 4.0e-5f);
     mekf_->set_Q_bacc_rw(Eigen::Vector3f(rw_xy, rw_xy, rw_z));
   }
 
