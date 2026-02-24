@@ -737,10 +737,10 @@ public:
       init_var_p_[k] = std::max(T(1e-12), var_k);
       init_var_v_[k] = std::max(T(1e-12), qk / (T(4) * ze * om));
 
-      // Small vertical-only process boost to reduce heave underfit in large seas
+      // Vertical-only process boost to reduce heave underfit in large seas
       // (keeps XY unchanged, so 3D/X/Y behavior stays stable).
       const T sea_sigma_hint = sigma_total; // ~= Hs/4 for the tuned call
-      const T z_q_boost = std::clamp(T(1.03) + T(0.02) * std::min(sea_sigma_hint, T(3.0)), T(1.03), T(1.11));
+      const T z_q_boost = std::clamp(T(1.20) + T(0.15) * std::min(sea_sigma_hint, T(3.0)), T(1.20), T(1.65));
       
       q_axis_[k].x() = horiz_scale * qk;
       q_axis_[k].y() = horiz_scale * qk;
