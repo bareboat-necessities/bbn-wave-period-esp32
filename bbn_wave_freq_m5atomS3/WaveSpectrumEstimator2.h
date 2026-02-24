@@ -269,12 +269,45 @@ public:
     const double x_center = std::log(std::clamp(center_f, minf, maxf));
     const double mid = 0.5 * double(K - 1);
 
-    // Mode centers
-    for (int k = 0; k < K; ++k) {
-      const double xk = x_center + (double(k) - mid) * dlog;
-      const double fk = std::exp(xk);
-      mode_f_hz[k] = float(std::clamp(fk, minf, maxf));
-    }
+// Mode centers (with spacing preserved near bounds)
+std::array<double, K> xmode{};
+for (int k = 0; k < K; ++k) {
+  xmode[k] = x_center + (double(k) - mid) * dlog;
+}
+
+if constexpr (K > 1) {
+  const double x_min = std::log(minf);
+  const double x_max = std::log(maxf);
+
+  // Minimum spacing in log-f; shrink if band is too narrow
+  double min_sep = std::max(0.08, 0.35 * dlog);
+  const double avail_span = std::max(1e-6, x_max - x_min);
+  const double req_span = min_sep * double(K - 1);
+  if (req_span > avail_span) {
+    min_sep = avail_span / double(K - 1);
+  }
+
+  // Clamp first, then enforce forward spacing
+  xmode[0] = std::clamp(xmode[0], x_min, x_max);
+  for (int k = 1; k < K; ++k) {
+    xmode[k] = std::max(xmode[k], xmode[k - 1] + min_sep);
+  }
+
+  // Pull back from upper bound, then enforce backward spacing
+  xmode[K - 1] = std::clamp(xmode[K - 1], x_min, x_max);
+  for (int k = K - 2; k >= 0; --k) {
+    xmode[k] = std::min(xmode[k], xmode[k + 1] - min_sep);
+  }
+
+  // Final clamp just in case
+  for (int k = 0; k < K; ++k) {
+    xmode[k] = std::clamp(xmode[k], x_min, x_max);
+  }
+}
+
+for (int k = 0; k < K; ++k) {
+  mode_f_hz[k] = float(std::exp(xmode[k]));
+}
 
     // Soft bin -> mode energy split (Gaussian weights on log-f)
     for (int i = 0; i < Nfreq; ++i) {
