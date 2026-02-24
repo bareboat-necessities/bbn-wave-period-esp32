@@ -1,9 +1,11 @@
 #pragma once
 
 /*
-  WaveSpectrumEstimator2
-  ----------------------
 
+  Copyright 2026, Mikhail Grushinskiy
+    
+  WaveSpectrumEstimator2
+  
   Adaptation-focused wave spectrum estimator for Kalman3D_Wave_2 tuning.
 
   Design goals:
@@ -23,9 +25,6 @@
     - Mode variance: m^2
     - q_k from mode variance: m^2/s^5
 
-  Notes:
-    - Feed with vertical INERTIAL acceleration (up or down sign does not matter for PSD).
-    - This class is intentionally minimal (no PM fit / no unrelated outputs).
 */
 
 #ifdef EIGEN_NON_ARDUINO
