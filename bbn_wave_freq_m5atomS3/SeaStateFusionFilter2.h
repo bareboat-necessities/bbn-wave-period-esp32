@@ -571,21 +571,21 @@ private:
     constexpr float C_HS = 2.0f * std::sqrt(2.0f) / (float(M_PI) * float(M_PI));
     const float sea = std::max(0.0f, tune_.sigma_applied);
   
-    // Slightly more damping to prevent over-amplification
-    const float zeta_mid = std::clamp(0.028f + 0.006f * std::min(sea, 3.0f), 0.028f, 0.045f);
+    // Lower damping -> less amplitude loss
+    const float zeta_mid = std::clamp(0.018f + 0.004f * std::min(sea, 3.0f), 0.018f, 0.032f);
   
-    // Horizontal energy small
-    const float horiz_scale = std::clamp(0.055f + 0.006f * std::min(sea, 2.0f), 0.05f, 0.07f);
+    // IMPORTANT: current horiz_scale is too small for <10% XYZ target
+    const float horiz_scale = std::clamp(0.16f + 0.03f * std::min(sea, 2.0f), 0.16f, 0.24f);
   
-    // Displacement scale gain
-    const float hs_gain = std::clamp(3.2f + 0.55f * std::min(sea, 3.0f), 3.2f, 4.8f);
+    // More amplitude (Hs prior) than your current 3.2..4.8
+    const float hs_gain = std::clamp(4.6f + 0.9f * std::min(sea, 3.0f), 4.6f, 7.0f);
     const float Hs_m = std::max(0.0f, hs_gain * C_HS * sZ * tau * tau);
   
     float f0_hz = freq_hz_slow_;
     if (tuner_.isFreqReady()) {
       const float ft = tuner_.getFrequencyHz();
       if (std::isfinite(ft)) {
-        f0_hz = 0.25f * freq_hz_slow_ + 0.75f * ft;
+        f0_hz = 0.20f * freq_hz_slow_ + 0.80f * ft;
       }
     }
     f0_hz = std::clamp(f0_hz, min_freq_hz_, max_freq_hz_);
