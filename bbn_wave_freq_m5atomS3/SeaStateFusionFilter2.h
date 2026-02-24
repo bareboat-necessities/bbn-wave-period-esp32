@@ -447,6 +447,57 @@ public:
     constexpr float C_HS = 2.0f * std::sqrt(2.0f) / (M_PI * M_PI);
     return C_HS * sigma * tau * tau;
   }
+  
+  static float loglog_interp_extrap_(float x, const float* xs, const float* ys, int n)
+  {
+    if (!(x > 0.0f) || !std::isfinite(x)) return NAN;
+  
+    auto lerp_log = [&](int i0, int i1, float xv) -> float {
+      const float x0 = std::max(xs[i0], 1e-6f);
+      const float x1 = std::max(xs[i1], 1e-6f);
+      const float y0 = std::max(ys[i0], 1e-6f);
+      const float y1 = std::max(ys[i1], 1e-6f);
+  
+      const float lx0 = std::log(x0), lx1 = std::log(x1);
+      const float ly0 = std::log(y0), ly1 = std::log(y1);
+      const float lx  = std::log(std::max(xv, 1e-6f));
+  
+      const float t = (std::fabs(lx1 - lx0) > 1e-9f) ? ((lx - lx0) / (lx1 - lx0)) : 0.0f;
+      return std::exp(ly0 + t * (ly1 - ly0));
+    };
+  
+    if (x <= xs[0])       return lerp_log(0, 1, x);
+    if (x >= xs[n - 1])   return lerp_log(n - 2, n - 1, x);
+  
+    for (int i = 0; i < n - 1; ++i) {
+      if (x >= xs[i] && x <= xs[i + 1]) {
+        return lerp_log(i, i + 1, x);
+      }
+    }
+    return ys[n - 1];
+  }
+  
+  float estimate_f0_from_displacement_scale_hack_() const {
+    // getDisplacementScale ~ sigma_eta proxy (displacement std-ish)
+    float disp_scale = getDisplacementScale(true);
+    if (!std::isfinite(disp_scale) || disp_scale <= 1e-4f) return NAN;
+  
+    // Hack: convert displacement scale to Hs proxy
+    // Hs ≈ 4 * sigma_eta
+    const float Hs_hat = 4.0f * disp_scale;
+  
+    // empirical table (Hs -> Tp), inferred from examples
+    constexpr float Hs_tbl[4] = {0.27f, 1.5f, 4.0f, 8.5f};
+    constexpr float Tp_tbl[4] = {3.0f,  5.7f, 8.5f, 11.4f};
+  
+    float Tp = loglog_interp_extrap_(Hs_hat, Hs_tbl, Tp_tbl, 4);
+    if (!std::isfinite(Tp) || Tp <= 1e-3f) return NAN;
+  
+    float f0 = 1.0f / Tp;
+    if (!std::isfinite(f0)) return NAN;
+  
+    return std::clamp(f0, min_freq_hz_, max_freq_hz_);
+  }
 
   inline WaveDirection getDirSignState() const noexcept { return dir_sign_state_; }
 
