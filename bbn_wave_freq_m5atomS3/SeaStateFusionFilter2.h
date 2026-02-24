@@ -979,7 +979,7 @@ private:
   
   void reset_spectrum_adapter_() {
     // Hard reset estimator state
-    spectrum_ = WaveSpectrumEstimator2<24, 128>{};
+    spectrum_ = WaveSpectrumEstimator2<28, 512>{};
   
     spectral_applied_initialized_ = false;
     spectral_f_applied_.fill(0.0f);
