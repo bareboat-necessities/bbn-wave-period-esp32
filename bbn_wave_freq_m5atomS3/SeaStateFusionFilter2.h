@@ -995,6 +995,21 @@ private:
   std::array<float, Kalman3D_Wave_2<float>::kWaveModes> spectral_f_applied_{};
   std::array<float, Kalman3D_Wave_2<float>::kWaveModes> spectral_qz_applied_{};
 
+  void init_spectrum_adapter_() {
+    reset_spectrum_adapter_();
+  }
+  
+  void reset_spectrum_adapter_() {
+    // Hard reset estimator state
+    spectrum_ = WaveSpectrumEstimator2<24, 128>{};
+  
+    spectral_applied_initialized_ = false;
+    spectral_f_applied_.fill(0.0f);
+    spectral_qz_applied_.fill(0.0f);
+  
+    last_spectral_apply_time_sec_ = -1e9;
+  }
+
   void apply_spectral_mode_matching_() {
     if (!mekf_) return;
     if (!spectrum_.ready()) return;
