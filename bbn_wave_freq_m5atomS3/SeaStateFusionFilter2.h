@@ -571,21 +571,16 @@ private:
     constexpr float C_HS = 2.0f * std::sqrt(2.0f) / (float(M_PI) * float(M_PI));
     const float sea = std::max(0.0f, tune_.sigma_applied);
   
-    // Lower damping further (less amplitude attenuation)
-    const float zeta_mid =
-        std::clamp(0.018f + 0.004f * std::min(sea, 3.0f), 0.018f, 0.032f);
+    // Slightly more damping to prevent over-amplification
+    const float zeta_mid = std::clamp(0.028f + 0.006f * std::min(sea, 3.0f), 0.028f, 0.045f);
   
-    // Keep horizontal wave energy small so vertical dominates
-    const float horiz_scale =
-        std::clamp(0.06f + 0.008f * std::min(sea, 2.0f), 0.05f, 0.08f);
+    // Horizontal energy small
+    const float horiz_scale = std::clamp(0.055f + 0.006f * std::min(sea, 2.0f), 0.05f, 0.07f);
   
-    // Stronger Hs gain (your output is still clearly under-amplitude)
-    const float hs_gain =
-        std::clamp(3.6f + 0.45f * std::min(sea, 3.0f), 3.6f, 5.0f);
-  
+    // Reduce gain from aggressive tuning
+    const float hs_gain = std::clamp(2.8f + 0.35f * std::min(sea, 3.0f), 2.8f, 3.8f);
     const float Hs_m = std::max(0.0f, hs_gain * C_HS * sZ * tau * tau);
   
-    // Use tuner freq when available, blended for stability
     float f0_hz = freq_hz_slow_;
     if (tuner_.isFreqReady()) {
       const float ft = tuner_.getFrequencyHz();
