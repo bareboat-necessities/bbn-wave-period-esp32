@@ -1128,8 +1128,8 @@ private:
     std::array<float, K> qz_out{};
 
     for (int k = 0; k < K; ++k) {
-      float f_target = std::clamp(f_est_hz[k], spectral_mode_fmin_hz_, spectral_mode_fmax_hz_);
-      float q_target = std::clamp(qz_est[k], spectral_q_floor_, spectral_q_cap_);
+      float f_target = std::clamp(f_est_mapped_hz[k], spectral_mode_fmin_hz_, spectral_mode_fmax_hz_);
+      float q_target = std::clamp(qz_est_mapped[k], spectral_q_floor_, spectral_q_cap_);
 
       if (!spectral_applied_initialized_) {
         spectral_f_applied_[k]  = std::isfinite(f_cur_hz[k]) ? f_cur_hz[k] : f_target;
