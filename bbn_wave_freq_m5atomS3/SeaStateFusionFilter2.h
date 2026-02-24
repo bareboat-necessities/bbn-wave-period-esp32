@@ -667,7 +667,7 @@ private:
   
     // Linear law: q_scale ∝ displacement scale
     // Tune this single coefficient.
-    constexpr float WAVE_Q_PER_M = 1.8f;   // start here; increase to 3.5..5.0 if still too stiff on 4m/8.5m
+    constexpr float WAVE_Q_PER_M = 3.8f;   // start here; increase to 3.5..5.0 if still too stiff on 4m/8.5m
     const float q_scale = WAVE_Q_PER_M * disp_scale_m;
     
     mekf_->set_wave_Q_scale(q_scale);
