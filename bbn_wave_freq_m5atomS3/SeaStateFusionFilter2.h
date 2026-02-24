@@ -606,18 +606,21 @@ private:
   
     const float sig = std::max(0.15f, tune_.sigma_applied);
   
-    // More wave process energy -> larger displacement amplitude (less underfit)
-    const float q_scale = std::clamp(0.62f * std::sqrt(sig / 0.45f), 0.45f, 1.05f);
+    // Main bottleneck fix: allow much more wave process energy in larger seas
+    const float q_scale =
+        std::clamp(1.05f * std::pow(sig / 0.45f, 0.85f), 0.70f, 3.20f);
     mekf_->set_wave_Q_scale(q_scale);
   
-    // Bias must not absorb wave motion
-    const float ba_gain = std::clamp(0.012f * (0.45f / sig), 0.003f, 0.018f);
+    // Bias: don't freeze it completely (your 93% bias error proves it's over-frozen)
+    // Let it learn slowly, with Z a bit more free than X/Y.
+    const float ba_gain = std::clamp(0.028f * (0.55f / sig), 0.010f, 0.045f);
     mekf_->set_accel_bias_update_scale(ba_gain);
   
-    mekf_->set_accel_bias_abs_max(0.030f);
+    mekf_->set_accel_bias_abs_max(0.035f);
   
-    const float ba_rw = std::clamp(1.0e-5f * (0.45f / sig), 3.0e-6f, 1.5e-5f);
-    mekf_->set_Q_bacc_rw(Eigen::Vector3f::Constant(ba_rw));
+    const float rw_xy = std::clamp(8.0e-6f * (0.55f / sig), 3.0e-6f, 2.0e-5f);
+    const float rw_z  = std::clamp(3.5e-5f * (0.55f / sig), 1.0e-5f, 7.0e-5f);
+    mekf_->set_Q_bacc_rw(Eigen::Vector3f(rw_xy, rw_xy, rw_z));
   }
 
   void update_tuner_(float dt, float a_vert_inertial_up) {
