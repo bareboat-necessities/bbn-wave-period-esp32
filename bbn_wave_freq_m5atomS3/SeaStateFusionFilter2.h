@@ -148,8 +148,8 @@ public:
   void tune_for_wave_RMS_() {
     mekf_->set_wave_Q_scale(0.70f);  // Keep wave model conservative initially; adaptive logic will take over
     mekf_->set_accel_bias_update_scale(0.03f);  // Let accel bias actually learn 
-    mekf_->set_accel_bias_abs_max(0.10f);
-    mekf_->set_Q_bacc_rw(Eigen::Vector3f(5.0e-4f, 5.0e-4f, 7.0e-4f));  // Z a bit freer than XY
+    mekf_->set_accel_bias_abs_max(0.08f);
+    mekf_->set_Q_bacc_rw(Eigen::Vector3f(4.0e-4f, 4.0e-4f, 1.0e-4f));  // Z a bit freer than XY
   }
 
   void initialize(const Eigen::Vector3f& sigma_a,
