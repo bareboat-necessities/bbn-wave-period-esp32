@@ -250,10 +250,10 @@ public:
       
       // Inflate XY strongly (attitude path), but keep Z inflation mild (preserve heave)
       const float infl_xy_base = std::clamp(1.10f + 0.65f * std::min(sea, 3.0f), 1.10f, 3.20f);
-      const float infl_xy      = std::clamp(infl_xy_base * (1.0f + 2.0f * dyn), 1.0f, 8.0f);
+      const float infl_xy = std::clamp(infl_xy_base * (1.0f + 2.0f * dyn), 1.0f, 8.0f);
       
       // Keep Z much less inflated than XY so heave doesn't get overdamped
-      const float infl_z       = std::clamp(1.0f + 0.04f * sea + 0.08f * dyn, 1.0f, 1.35f);
+      const float infl_z = std::clamp(0.92f + 0.015f * sea + 0.03f * dyn, 0.88f, 1.05f);
       
       const Eigen::Vector3f sig_live(sig_nom.x() * infl_xy,
                                      sig_nom.y() * infl_xy,
