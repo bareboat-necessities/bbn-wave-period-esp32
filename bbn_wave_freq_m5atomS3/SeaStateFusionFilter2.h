@@ -638,12 +638,6 @@ private:
     const float Hs_m = std::max(0.0f, hs_gain * C_HS * sZ * tau * tau);
   
     float f0_hz = freq_hz_slow_;
-    if (tuner_.isFreqReady()) {
-      const float ft = tuner_.getFrequencyHz();
-      if (std::isfinite(ft)) f0_hz = 0.20f * freq_hz_slow_ + 0.80f * ft;
-    }
-    f0_hz = std::clamp(f0_hz, min_freq_hz_, max_freq_hz_);
-
     f0_hz *= 0.7;
   
     mekf_->set_broadband_params(f0_hz, Hs_m, zeta_mid, horiz_scale);
