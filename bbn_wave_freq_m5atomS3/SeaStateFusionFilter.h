@@ -1367,6 +1367,7 @@ public:
         impl_.setHarmonicPositionCorrectionSigma(cfg.harmonic_position_sigma_m);
 
         impl_.initialize(cfg.sigma_a, cfg.sigma_g, cfg.sigma_m);
+        last_impl_startup_stage_ = impl_.getStartupStage();
 
         // IMPORTANT: allow warmup to restore nominal accel measurement noise
         impl_.setNominalRacc(cfg.sigma_a);
@@ -1402,13 +1403,26 @@ public:
         impl_.updateTime(dt, gyro_body_ned, acc_body_ned, tempC);
 
         // If internal filter fell back to Cold (tilt reset), force mag ref re-learn
-        if (impl_.getStartupStage() == SeaStateFusionFilter<trackerT>::StartupStage::Cold) {
-            mag_ref_set_ = false;
-            mag_auto_.reset();
-            last_mag_time_sec_ = NAN;
-            dt_mag_sec_ = NAN;
-            mag_ref_deadline_sec_ = t_ + cfg_.mag_ref_timeout_sec;
-        }
+const auto cur_stage = impl_.getStartupStage();
+
+if (cur_stage != last_impl_startup_stage_) {
+    if (cur_stage == SeaStateFusionFilter<trackerT>::StartupStage::Cold) {
+        // Entered Cold (startup or non-Live tilt reset): reset mag-init ONCE
+        mag_ref_set_ = false;
+        mag_auto_.reset();
+
+        last_mag_time_sec_ = NAN;
+        dt_mag_sec_ = NAN;
+
+        fallback_acc_mean_.setZero();
+        fallback_mag_mean_.setZero();
+        fallback_mean_count_ = 0;
+
+        mag_ref_deadline_sec_ = std::max(t_, cfg_.mag_delay_sec) + cfg_.mag_ref_timeout_sec;
+    }
+
+    last_impl_startup_stage_ = cur_stage;
+}      
 
         if (stage_ == Stage::Warming && impl_.isAdaptiveLive()) {
             stage_ = Stage::Live;
@@ -1587,6 +1601,8 @@ private:
     Stage stage_ = Stage::Uninitialized;
     float t_ = 0.0f;
     float stage_t_ = 0.0f;
+    typename SeaStateFusionFilter<trackerT>::StartupStage last_impl_startup_stage_ =
+             SeaStateFusionFilter<trackerT>::StartupStage::Cold;
 
     // Mag init state
     bool mag_ref_set_ = false;
