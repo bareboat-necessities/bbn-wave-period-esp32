@@ -1094,6 +1094,20 @@ private:
       qz_est_mapped
     );
 
+// Normalize spectral q relative to expected displacement scale
+const float disp_scale_ref = std::max(0.05f, getDisplacementScale(true));
+
+// Prevent spectral block from exceeding RMS-based energy
+for (int k = 0; k < K; ++k) {
+    float q_safe = qz_est_mapped[k];
+
+    // soft clamp relative to broadband reference
+    const float q_ref = 2.5f * disp_scale_ref;   // tune 2.0..3.0
+    q_safe = std::min(q_safe, q_ref);
+
+    qz_est_mapped[k] = q_safe;
+}
+    
     // Sea-state dependent horizontal process ratio (XY relative to Z)
     float hr = spectral_horiz_q_ratio_;
     {
