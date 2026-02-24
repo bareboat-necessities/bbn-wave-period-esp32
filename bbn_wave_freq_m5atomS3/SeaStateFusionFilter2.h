@@ -646,7 +646,7 @@ private:
     const float horiz_scale = std::clamp(0.18f + 0.04f * std::min(sea, 2.0f), 0.18f, 0.28f);
   
     // Preserve heave performance; don't go crazy on Hs prior
-    const float hs_gain = std::clamp(3.8f + 0.6f * std::min(sea, 3.0f), 3.8f, 5.6f);
+    const float hs_gain = std::clamp(1.0f + 0.1f * std::min(sea, 2.0f), 1.0f, 1.2f);
     const float Hs_m = std::max(0.0f, hs_gain * C_HS * sZ * tau * tau);
   
     float f0_hz = freq_hz_slow_;
