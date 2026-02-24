@@ -606,19 +606,17 @@ private:
   
     const float sig = std::max(0.15f, tune_.sigma_applied);
   
-    // Let wave states move more (reduces underfit in displacement)
-    const float q_scale = std::clamp(0.42f * std::sqrt(sig / 0.45f), 0.32f, 0.70f);
+    // More wave process energy -> larger displacement amplitude (less underfit)
+    const float q_scale = std::clamp(0.62f * std::sqrt(sig / 0.45f), 0.45f, 1.05f);
     mekf_->set_wave_Q_scale(q_scale);
   
-    // Strongly reduce accel-bias adaptation so it doesn't eat wave energy
-    const float ba_gain = std::clamp(0.025f * (0.45f / sig), 0.008f, 0.035f);
+    // Bias must not absorb wave motion
+    const float ba_gain = std::clamp(0.012f * (0.45f / sig), 0.003f, 0.018f);
     mekf_->set_accel_bias_update_scale(ba_gain);
   
-    // Tight clamp
-    mekf_->set_accel_bias_abs_max(0.035f);
+    mekf_->set_accel_bias_abs_max(0.030f);
   
-    // Very low accel-bias random walk
-    const float ba_rw = std::clamp(2.0e-5f * (0.45f / sig), 8.0e-6f, 3.0e-5f);
+    const float ba_rw = std::clamp(1.0e-5f * (0.45f / sig), 3.0e-6f, 1.5e-5f);
     mekf_->set_Q_bacc_rw(Eigen::Vector3f::Constant(ba_rw));
   }
 
