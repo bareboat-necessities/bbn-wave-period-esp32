@@ -50,8 +50,8 @@ public:
 
 struct Config {
   double fs_raw_hz      = 240.0; // IMU sample rate
-  int    decim_factor   = 24;    // => fs = 10 Hz (better wave-focused)
-  int    hop_decimated  = 64;    // => update every 6.4 s with Nblock=512
+  int    decim_factor   = 15;    // => fs = 16 Hz 
+  int    hop_decimated  = 32;    // => update every 2 s at 16 Hz with Nblock=512
   bool   hann_enabled   = true;
 
   // Filter / inversion knobs
