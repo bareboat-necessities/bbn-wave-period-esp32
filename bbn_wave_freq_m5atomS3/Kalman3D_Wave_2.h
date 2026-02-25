@@ -721,6 +721,13 @@ public:
     }
   }
 
+  void get_wave_mode_qz(std::array<float, KMODES>& out_qz) const {
+    for (int k = 0; k < KMODES; ++k) {
+      const T qk = q_axis_[k].z();
+      out_qz[k] = static_cast<float>((std::isfinite(qk) && qk > T(0)) ? qk : T(0));
+    }
+  }
+      
   // Set per-mode frequencies [Hz] and vertical process qz [m^2/s^5].
   // XY q is derived as horiz_ratio * qz.
   // This preserves existing zeta (damping) for each mode.
