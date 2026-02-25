@@ -319,7 +319,32 @@ public:
       // Feed RAW vertical inertial accel; estimator has its own HP/LP/decimation.
       spectrum_new_block = spectrum_.processSample(static_cast<double>(a_vert_up_));
     }
-  
+
+    if (spectrum_new_block && spectrum_.ready()) {
+      const double fp = spectrum_.estimatePeakFrequencyHz(); // PEAK OF DISPLACEMENT PSD
+      if (std::isfinite(fp) && fp > 0.0) {
+        // Keep within your allowed spectral analysis band (or use min/max freq bounds if you prefer)
+        const float fpf = std::clamp((float)fp,
+                                     spectral_mode_fmin_hz_,
+                                     spectral_mode_fmax_hz_);
+        spectral_fp_hz_    = fpf;
+        spectral_fp_valid_ = true;
+
+        // Smooth using the spectrum update period (not IMU dt)
+        const float dt_spec = (float)std::max(1e-3, spectrum_.updatePeriodSec());
+        const float a = expBlendAlpha_(dt_spec, spectral_fp_tau_sec_);
+
+        if (!std::isfinite(spectral_fp_hz_smth_) || spectral_fp_hz_smth_ <= 0.0f) {
+          spectral_fp_hz_smth_ = fpf;
+        } else {
+          spectral_fp_hz_smth_ += a * (fpf - spectral_fp_hz_smth_);
+        }
+        spectral_fp_hz_smth_ = std::clamp(spectral_fp_hz_smth_,
+                                          spectral_mode_fmin_hz_,
+                                          spectral_mode_fmax_hz_);
+      }
+    }
+    
     // LPF for tracker/tuner input
     const float a_vert_lp = freq_input_lpf_.step(a_vert_up_, dt);
   
@@ -353,6 +378,16 @@ public:
     const float omega = 2.0f * static_cast<float>(M_PI) * freq_hz_;
     dir_filter_.update(a_x_body, a_y_body, omega, dt);
     dir_sign_state_ = dir_sign_.update(a_x_body, a_y_body, a_vert_up_, dt);
+
+    if (time_ >= next_debug_print_time_sec_) {
+      next_debug_print_time_sec_ = time_ + debug_print_every_sec_;
+      printf(
+        "f_slow:%6.3f  fp_disp:%6.3f  f0_applied:%6.3f  stage:%d\n",
+        (double)freq_hz_slow_,
+        (double)(spectral_fp_valid_ ? spectral_fp_hz_smth_ : NAN),
+        (double)(std::isfinite(broadband_f0_applied_hz_) ? broadband_f0_applied_hz_ : NAN),
+        (int)startup_stage_);
+    }
   }
 
   void updateMag(const Eigen::Vector3f& mag_body_ned) {
@@ -649,23 +684,39 @@ private:
     const float hs_gain = std::clamp(1.0f + 0.1f * std::min(sea, 2.0f), 1.0f, 1.2f);
     const float Hs_m = std::max(0.0f, hs_gain * C_HS * sZ * tau * tau);
   
-    float f0_hz = freq_hz_slow_;
-
-    // Tuner estimate
+    // Base f0 (your current logic)
+    float f0_base_hz = freq_hz_slow_;
     if (tuner_.isFreqReady()) {
       const float ft = tuner_.getFrequencyHz();
-      if (std::isfinite(ft)) f0_hz = 0.20f * freq_hz_slow_ + 0.80f * ft;
+      if (std::isfinite(ft)) f0_base_hz = 0.20f * freq_hz_slow_ + 0.80f * ft;
+    }
+    f0_base_hz = std::clamp(f0_base_hz, min_freq_hz_, max_freq_hz_);
+
+    // Spectral peak (displacement PSD) blend-in
+    float f0_cmd_hz = f0_base_hz;
+    if (spectral_fp_valid_ && std::isfinite(spectral_fp_hz_smth_) && spectrum_.ready()) {
+      const float f_spec = std::clamp(spectral_fp_hz_smth_, min_freq_hz_, max_freq_hz_);
+      const float b = std::clamp(spectral_f0_blend_, 0.0f, 1.0f);
+
+      // Blend in log-domain (more stable than linear blending of frequency)
+      const float lf0 = std::log(std::max(1e-6f, f0_base_hz));
+      const float lfs = std::log(std::max(1e-6f, f_spec));
+      f0_cmd_hz = std::exp((1.0f - b) * lf0 + b * lfs);
+    }
+    f0_cmd_hz = std::clamp(f0_cmd_hz, min_freq_hz_, max_freq_hz_);
+
+    // Smooth the applied f0 (prevents chasing/jitter)
+    {
+      const float a = expBlendAlpha_(adapt_every_secs_, broadband_f0_tau_sec_);
+      if (!std::isfinite(broadband_f0_applied_hz_) || broadband_f0_applied_hz_ <= 0.0f) {
+        broadband_f0_applied_hz_ = f0_cmd_hz;
+      } else {
+        broadband_f0_applied_hz_ += a * (f0_cmd_hz - broadband_f0_applied_hz_);
+      }
+      broadband_f0_applied_hz_ = std::clamp(broadband_f0_applied_hz_, min_freq_hz_, max_freq_hz_);
     }
 
-    // IMPORTANT:
-    // Do NOT feed the spectral estimator peak back into the broadband oscillator center.
-    // Spectral adaptation already modifies per-mode q. Feeding spectral f0 here creates
-    // a feedback path (model chasing the same signal twice) and can destabilize the filter.
-    // Keep f0_hz driven by the tuner / smoothed tracker only.
-
-    f0_hz = std::clamp(f0_hz, min_freq_hz_, max_freq_hz_);
-
-    mekf_->set_broadband_params(f0_hz, Hs_m, zeta_mid, horiz_scale);
+    mekf_->set_broadband_params(broadband_f0_applied_hz_, Hs_m, zeta_mid, horiz_scale);
   }
 
   // Adaptive knobs that depend on current sea-state energy.
@@ -775,7 +826,9 @@ private:
     tune_.sigma_applied += alpha * (sigma_t - tune_.sigma_applied);
 
     if (time_ - last_adapt_time_sec_ > adapt_every_secs_) {
-      if (tuner_.isFreqReady()) apply_oscillators_tune_();  // Update broadband oscillator params
+      if (tuner_.isFreqReady() || (spectral_fp_valid_ && spectrum_.ready())) {
+        apply_oscillators_tune_();
+      }
       apply_adaptive_rms_tuning_(); // apply adaptive RMS-focused scaling knobs
       last_adapt_time_sec_ = time_;
     }
@@ -932,6 +985,22 @@ private:
   WaveSpectrumEstimator2<28, 512> spectrum_{};
 
   bool  spectral_mode_matching_enable_ = true;
+
+  // Displacement-spectrum peak
+  float spectral_fp_hz_       = NAN;   // raw peak frequency from latest spectrum block
+  float spectral_fp_hz_smth_  = NAN;   // smoothed peak
+  bool  spectral_fp_valid_    = false;
+
+  float spectral_fp_tau_sec_  = 3.0f;  // peak smoothing (seconds)
+
+  // Feed peak into broadband center frequency
+  float spectral_f0_blend_      = 0.85f; // 0=ignore spectral, 1=use only spectral
+  float broadband_f0_applied_hz_= NAN;   // smoothed f0 actually passed to set_broadband_params
+  float broadband_f0_tau_sec_   = 2.0f;  // smoothing for applied f0
+
+  // Debug print cadence
+  float  debug_print_every_sec_      = 1.0f;
+  double next_debug_print_time_sec_  = 0.0;
 
   // How often to apply to Kalman after a new spectrum block is available
   float spectral_apply_every_sec_ = 1.0f;
