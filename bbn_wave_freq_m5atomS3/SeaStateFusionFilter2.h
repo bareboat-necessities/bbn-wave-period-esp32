@@ -696,12 +696,40 @@ private:
     float f0_cmd_hz = f0_base_hz;
     if (spectral_fp_valid_ && std::isfinite(spectral_fp_hz_smth_) && spectrum_.ready()) {
       const float f_spec = std::clamp(spectral_fp_hz_smth_, min_freq_hz_, max_freq_hz_);
-      const float b = std::clamp(spectral_f0_blend_, 0.0f, 1.0f);
-
-      // Blend in log-domain (more stable than linear blending of frequency)
-      const float lf0 = std::log(std::max(1e-6f, f0_base_hz));
-      const float lfs = std::log(std::max(1e-6f, f_spec));
-      f0_cmd_hz = std::exp((1.0f - b) * lf0 + b * lfs);
+      
+      float b_eff = 0.0f;
+      
+      if (startup_stage_ == StartupStage::Live &&
+          spectral_fp_valid_ &&
+          spectrum_.ready() &&
+          spectral_applied_initialized_ &&           // IMPORTANT: only after Q adaptation is running
+          std::isfinite(spectral_fp_hz_smth_) && spectral_fp_hz_smth_ > 0.0f)
+      {
+        const float f_spec = std::clamp(spectral_fp_hz_smth_, min_freq_hz_, max_freq_hz_);
+      
+        // 1) Reject if peak is stuck at spectrum band edges (common when 1/ω⁴ + noise dominates)
+        const bool on_edge =
+            (spectral_fp_hz_smth_ <= 1.05f * spectral_mode_fmin_hz_) ||
+            (spectral_fp_hz_smth_ >= 0.95f * spectral_mode_fmax_hz_);
+      
+        // 2) Reject if it disagrees too much with the base freq (prevents “drag to low-f” runaway)
+        const float r = f_spec / std::max(1e-6f, f0_base_hz);
+        const bool coherent = (r >= 0.70f && r <= 1.45f);
+      
+        if (!on_edge && coherent) {
+          // hard safety cap: don’t let spectral dominate
+          b_eff = std::min(std::clamp(spectral_f0_blend_, 0.0f, 1.0f), 0.30f);
+        }
+      }
+      
+      // log-blend with b_eff
+      float f0_cmd_hz = f0_base_hz;
+      if (b_eff > 0.0f) {
+        const float f_spec = std::clamp(spectral_fp_hz_smth_, min_freq_hz_, max_freq_hz_);
+        const float lf0 = std::log(std::max(1e-6f, f0_base_hz));
+        const float lfs = std::log(std::max(1e-6f, f_spec));
+        f0_cmd_hz = std::exp((1.0f - b_eff) * lf0 + b_eff * lfs);
+      }
     }
     f0_cmd_hz = std::clamp(f0_cmd_hz, min_freq_hz_, max_freq_hz_);
 
