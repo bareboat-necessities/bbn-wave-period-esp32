@@ -308,6 +308,14 @@ class Kalman3D_Wave {
     // This does a full 3x3 Joseph update on the position block and its cross-covariances.
     void measurement_update_position_pseudo(const Vector3& p_meas, const Vector3& sigma_meas);
 
+    // 3D pseudo-measurement on velocity v (world, NED):
+    //   v_meas ≈ v (m/s), with per-axis std sigma_meas.
+    void measurement_update_velocity_pseudo(const Vector3& v_meas, const Vector3& sigma_meas);
+
+    // 1D pseudo-measurement on vertical velocity only (world z, NED down):
+    //   vz_meas ≈ v_z (m/s), with std sigma_meas.
+    void measurement_update_vert_velocity_pseudo(T vz_meas, T sigma_meas);
+
     // Accessors
     [[nodiscard]] Eigen::Quaternion<T> quaternion() const { return qref.conjugate(); }
     [[nodiscard]] MatrixBaseN covariance_base() const { return Pext.topLeftCorner(BASE_N, BASE_N); } // top-left block
@@ -1968,7 +1976,93 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
 
     // Attitude may have been nudged via cross-covariance → apply correction
     applyQuaternionCorrectionFromErrorState();
-}              
+}
+
+template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measurement_update_velocity_pseudo(
+    const Vector3& v_meas, const Vector3& sigma_meas)
+{
+    if (!linear_block_enabled_) return;
+
+    constexpr int off_V = OFF_V; // velocity block
+
+    const Vector3 v_pred = xext.template segment<3>(off_V);
+    const Vector3 r = v_meas - v_pred; // innovation (m/s)
+    if (!r.allFinite()) {
+        return;
+    }
+
+    Matrix3& S_mat = S_scratch_;
+    S_mat = Pext.template block<3,3>(off_V, off_V);
+
+    Matrix3 R_meas = Matrix3::Zero();
+    const T sx = std::max(T(0), sigma_meas.x());
+    const T sy = std::max(T(0), sigma_meas.y());
+    const T sz = std::max(T(0), sigma_meas.z());
+    R_meas(0,0) = sx * sx;
+    R_meas(1,1) = sy * sy;
+    R_meas(2,2) = sz * sz;
+    S_mat.noalias() += R_meas;
+
+    MatrixNX3& PCt = PCt_scratch_;
+    PCt.noalias() = Pext.template block<NX,3>(0, off_V);
+
+    Eigen::LDLT<Matrix3> ldlt;
+    const T noise_scale = R_meas.norm();
+    if (!safe_ldlt3_(S_mat, ldlt, noise_scale)) {
+        return;
+    }
+
+    MatrixNX3& K = K_scratch_;
+    K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
+
+    xext.noalias() += K * r;
+    joseph_update3_(K, S_mat, PCt);
+
+    applyQuaternionCorrectionFromErrorState();
+}
+
+template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measurement_update_vert_velocity_pseudo(
+    T vz_meas, T sigma_meas)
+{
+    if (!linear_block_enabled_) return;
+
+    constexpr int idx_vz = OFF_V + 2; // z (down) axis in NED
+
+    if (!std::isfinite(vz_meas)) {
+        return;
+    }
+
+    const T r = vz_meas - xext(idx_vz);
+    if (!std::isfinite(r)) {
+        return;
+    }
+
+    const T sigma = std::max(T(0), sigma_meas);
+    const T R = sigma * sigma;
+    const T S = Pext(idx_vz, idx_vz) + R;
+
+    if (!(S > T(0)) || !std::isfinite(S)) {
+        return;
+    }
+
+    Eigen::Matrix<T, NX, 1> PCt;
+    PCt.noalias() = Pext.col(idx_vz);
+
+    Eigen::Matrix<T, NX, 1> K;
+    K.noalias() = PCt / S;
+
+    xext.noalias() += K * r;
+
+    // Joseph-form scalar update: P = P - K*PCt' - PCt*K' + K*S*K'
+    Pext.noalias() -= K * PCt.transpose();
+    Pext.noalias() -= PCt * K.transpose();
+    Pext.noalias() += K * S * K.transpose();
+    Pext = T(0.5) * (Pext + Pext.transpose());
+
+    applyQuaternionCorrectionFromErrorState();
+}
               
 template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
 void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::PhiAxis4x1_analytic(
