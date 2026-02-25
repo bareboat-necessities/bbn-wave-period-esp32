@@ -851,9 +851,6 @@ private:
       }
       warmup_Racc_active_ = false;
     }
-
-    // Start spectral estimation fresh in Live (avoid warmup/transition contamination)
-    reset_spectrum_adapter_();
     
     apply_oscillators_tune_();
     apply_adaptive_rms_tuning_();
