@@ -339,6 +339,125 @@ for (int k = 0; k < K; ++k) {
   }
 
   /*
+    Split displacement spectrum energy into K FIXED mode centers.
+
+    Unlike estimateModeDisplacementVariance(), this does NOT move mode frequencies.
+    It only partitions current displacement spectrum S_eta(f) across the provided
+    mode centers (typically the Kalman filter's current oscillator centers).
+
+    The partition is shape-based: each spectral bin is assigned to modes according to
+    normalized oscillator resonance weights
+
+        W_k(f) ∝ 1 / [ (ω_k^2 - ω^2)^2 + (2ζ_k ω_k ω)^2 ]
+
+    which is the physically relevant second-order resonance denominator.
+
+    Outputs:
+      - mode_var_m2[k] : displacement variance assigned to each fixed mode [m^2]
+  */
+  template<int K>
+  void estimateModeDisplacementVarianceFixedCenters(
+      const std::array<float, K>& mode_f_hz,
+      std::array<double, K>& mode_var_m2,
+      const std::array<float, K>& zeta_mode) const
+  {
+    mode_var_m2.fill(0.0);
+
+    if (!warm_) return;
+
+    // Sanitize fixed centers / damping
+    std::array<double, K> wk{};
+    std::array<double, K> zt{};
+    for (int k = 0; k < K; ++k) {
+      const double fk = std::max(1e-6f, mode_f_hz[k]);
+      wk[k] = 2.0 * kPi * fk;
+
+      double z = std::max(1e-5f, zeta_mode[k]);
+      if (!std::isfinite(z)) z = 0.02;
+      zt[k] = z;
+    }
+
+    // Partition each spectral bin energy Ei = S_eta(fi) * dfi across fixed modes
+    for (int i = 0; i < Nfreq; ++i) {
+      const double fi = freqs_[i];
+      if (!(fi > 0.0)) continue;
+
+      const double Ei = std::max(0.0, last_psd_eta_[i]) * std::max(0.0, df_[i]); // [m^2]
+      if (!(Ei > 0.0) || !std::isfinite(Ei)) continue;
+
+      const double w = 2.0 * kPi * fi;
+      const double w2 = w * w;
+
+      std::array<double, K> wshape{};
+      double sumw = 0.0;
+
+      for (int k = 0; k < K; ++k) {
+        const double wk2 = wk[k] * wk[k];
+        const double d_re = wk2 - w2;
+        const double d_im = 2.0 * zt[k] * wk[k] * w;
+
+        // Resonance denominator magnitude squared
+        const double den = d_re * d_re + d_im * d_im;
+
+        // Weight is inverse resonance denominator
+        double ww = 1.0 / std::max(den, 1e-24);
+        if (!std::isfinite(ww) || ww < 0.0) ww = 0.0;
+
+        wshape[k] = ww;
+        sumw += ww;
+      }
+
+      if (!(sumw > 0.0) || !std::isfinite(sumw)) continue;
+
+      const double inv_sumw = 1.0 / sumw;
+      for (int k = 0; k < K; ++k) {
+        mode_var_m2[k] += Ei * (wshape[k] * inv_sumw);
+      }
+    }
+  }
+
+  /*
+    Convenience helper: estimate per-mode vertical q_k for FIXED mode centers.
+
+    Uses the same stationary variance relation as estimateModeQz():
+
+      var_p = q / (4*zeta*omega^3)   =>   q = 4*zeta*omega^3*var_p
+
+    Inputs:
+      - mode_f_hz[k] : FIXED mode centers [Hz] (e.g. current Kalman oscillator centers)
+      - zeta_mode[k] : damping ratios for each mode
+      - q_gain       : global gain factor (1.0 nominal)
+      - q_min/q_max  : safety clamps
+  */
+  template<int K>
+  void estimateModeQzFixedCenters(
+      const std::array<float, K>& mode_f_hz,
+      std::array<float, K>& qz_mode,
+      const std::array<float, K>& zeta_mode,
+      float q_gain = 1.0f,
+      float q_min = 1e-8f,
+      float q_max = 50.0f) const
+  {
+    std::array<double, K> var_mode{};
+    estimateModeDisplacementVarianceFixedCenters<K>(mode_f_hz, var_mode, zeta_mode);
+
+    for (int k = 0; k < K; ++k) {
+      const double fk = std::max(1e-6f, mode_f_hz[k]);
+      const double zt = std::max(1e-5f, zeta_mode[k]);
+      const double w  = 2.0 * kPi * fk;
+
+      double q = 4.0 * zt * w * w * w * std::max(0.0, var_mode[k]); // [m^2/s^5]
+      if (!std::isfinite(q)) q = 0.0;
+
+      q *= std::max(0.0f, q_gain);
+      q = std::clamp(q, double(q_min), double(q_max));
+
+      qz_mode[k] = static_cast<float>(q);
+    }
+  }
+
+
+  /*
     Convenience helper: directly estimate per-mode q_k (vertical process intensity)
     using the stationary variance relation:
 
