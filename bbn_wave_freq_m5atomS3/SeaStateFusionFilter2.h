@@ -1081,9 +1081,22 @@ void apply_spectral_mode_matching_() {
   // Initialize total-q budget on first valid spectral application
   if (!spectral_q_budget_initialized_) {
     spectral_q_budget_initialized_ = true;
-    spectral_q_budget_base_sum_ = raw_sum;
-    spectral_q_budget_sum_ = raw_sum;
 
+std::array<float, K> qz_cur{};
+mekf_->get_wave_mode_qz(qz_cur);
+
+float qsum_cur = 0.0f;
+for (int k = 0; k < K; ++k) {
+  const float qk = (std::isfinite(qz_cur[k]) && qz_cur[k] > 0.0f) ? qz_cur[k] : spectral_q_floor_;
+  qsum_cur += qk;
+}
+
+const float min_budget = float(K) * spectral_q_floor_;
+const float max_budget = float(K) * spectral_q_cap_;
+
+spectral_q_budget_base_sum_ = std::clamp(qsum_cur, min_budget, max_budget);
+spectral_q_budget_sum_      = spectral_q_budget_base_sum_;
+    
     float disp_ref = getDisplacementScale(true);
     if (!std::isfinite(disp_ref) || disp_ref <= 0.0f) disp_ref = 0.1f;
     spectral_q_budget_ref_disp_scale_m_ = disp_ref;
