@@ -945,7 +945,7 @@ private:
   // Spectrum -> q_k conversion knobs
   float spectral_q_gain_         = 1.0f;   // main knob (0.7..1.6 typical)
   float spectral_q_floor_        = 1e-6f;
-  float spectral_q_cap_          = 25.0f;  // keep spikes bounded
+  float spectral_q_cap_          = 6.0f;  // keep spikes bounded
   float spectral_horiz_q_ratio_  = 0.22f;  // XY q = ratio * Z q
 
   // Allowed mode-center range for spectral matching
