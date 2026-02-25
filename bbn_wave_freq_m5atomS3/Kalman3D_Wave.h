@@ -1253,7 +1253,14 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::time_upda
         F_AA.template topLeftCorner<3,3>() = I - s*W + (T(1)-c)*(W*W);
     }
     if constexpr (with_gyro_bias) {
-        F_AA.template block<3,3>(0,3) = -Matrix3::Identity() * Ts;
+		Matrix3 Rstep, Bstep;
+		rot_and_B_from_wt_(w, Ts, Rstep, Bstep);
+		
+		// exact discrete attitude error transition
+		F_AA.template topLeftCorner<3,3>() = Rstep;
+		
+		// exact cross-term instead of -I*Ts
+		F_AA.template block<3,3>(0,3) = Bstep;
     }
 
     MatrixBaseN& Q_AA = Q_AA_scratch_;
