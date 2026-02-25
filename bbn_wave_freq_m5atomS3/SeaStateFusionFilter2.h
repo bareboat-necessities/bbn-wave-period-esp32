@@ -977,7 +977,7 @@ private:
   float broadband_f0_tau_sec_   = 2.0f;  // smoothing for applied f0
 
   // Debug print cadence
-  float  debug_print_every_sec_      = 1.0f;
+  float  debug_print_every_sec_      = 5.0f;
   double next_debug_print_time_sec_  = 0.0;
 
   // How often to apply to Kalman after a new spectrum block is available
