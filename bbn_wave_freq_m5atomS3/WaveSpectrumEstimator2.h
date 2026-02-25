@@ -48,26 +48,32 @@ public:
   static constexpr double kG  = 9.80665;
   static constexpr double kPi = 3.1415926535897932384626433832795;
 
-struct Config {
-  double fs_raw_hz      = 240.0; // IMU sample rate
-  int    decim_factor   = 15;    // => fs = 16 Hz 
-  int    hop_decimated  = 32;    // => update every 2 s at 16 Hz with Nblock=512
-  bool   hann_enabled   = true;
-
-  // Filter / inversion knobs
-  double hp_f0_hz       = 0.012; // gentler HP so long swell survives better
-  double reg_f0_hz      = 0.035; // low-f inversion regularization knee
-
-  // PSD smoothing
-  bool   psd_ema_enable = true;
-  double psd_ema_alpha  = 0.12;  // more stable mode fitting (less jitter)
-
-  // Analysis band
-  double f_min_hz       = 0.035; // ~28.6 s period lower edge
-  double f_transition_hz= 0.16;  // more useful split between swell/chop
-  double f_max_hz       = 1.00;  // cap high-f junk/slam while keeping chop
-};
-
+  struct Config {
+    double fs_raw_hz      = 240.0; // IMU sample rate
+    int    decim_factor   = 15;    // => fs = 16 Hz 
+    int    hop_decimated  = 32;    // => update every 2 s at 16 Hz with Nblock=512
+    bool   hann_enabled   = true;
+  
+    // Filter / inversion knobs
+    double hp_f0_hz       = 0.012; // gentler HP so long swell survives better
+    double reg_f0_hz      = 0.035; // low-f inversion regularization knee
+  
+    // PSD smoothing
+    bool   psd_ema_enable = true;
+    double psd_ema_alpha  = 0.12;  // more stable mode fitting (less jitter)
+  
+    // Analysis band
+    double f_min_hz       = 0.035; // ~28.6 s period lower edge
+    double f_transition_hz= 0.16;  // more useful split between swell/chop
+    double f_max_hz       = 1.00;  // cap high-f junk/slam while keeping chop
+  };
+  
+  struct LogFreqStats {
+    double f_center_hz = 0.0;    // exp(mu_logf)
+    double sig_logf    = 1.0;    // sqrt(var_logf)
+    double m0          = 0.0;    // total variance [m^2]
+  };
+  
   explicit WaveSpectrumEstimator2(const Config& cfg = Config()) {
     configure(cfg);
   }
@@ -144,6 +150,40 @@ struct Config {
     }
 
     return false;
+  }
+
+  LogFreqStats estimateLogFreqStats() const {
+    LogFreqStats s{};
+    if (!warm_) return s;
+  
+    double m0 = 0.0;
+    double mu = 0.0;
+  
+    for (int i = 0; i < Nfreq; ++i) {
+      const double fi = freqs_[i];
+      const double Ei = std::max(0.0, last_psd_eta_[i]) * std::max(0.0, df_[i]); // [m^2]
+      if (!(fi > 0.0) || !std::isfinite(Ei)) continue;
+      m0 += Ei;
+      mu += Ei * std::log(fi);
+    }
+    if (!(m0 > 1e-18)) return s;
+  
+    mu /= m0;
+  
+    double var = 0.0;
+    for (int i = 0; i < Nfreq; ++i) {
+      const double fi = freqs_[i];
+      const double Ei = std::max(0.0, last_psd_eta_[i]) * std::max(0.0, df_[i]);
+      if (!(fi > 0.0) || !std::isfinite(Ei)) continue;
+      const double d = std::log(fi) - mu;
+      var += Ei * d * d;
+    }
+    var /= m0;
+  
+    s.m0 = m0;
+    s.f_center_hz = std::exp(mu);
+    s.sig_logf    = std::sqrt(std::max(0.0, var));
+    return s;
   }
 
   bool ready() const { return warm_; }
