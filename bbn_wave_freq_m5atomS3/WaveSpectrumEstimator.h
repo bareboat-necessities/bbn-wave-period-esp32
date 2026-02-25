@@ -119,10 +119,10 @@ public:
         reset();
 
         // Design raw-rate biquads
-        // LP near pre-decimation Nyquist to suppress imaging/aliasing.
-        // Two identical HP sections cascaded → 4th-order high-pass.
-        const double lp_cutoffHz = 0.45 * (fs_raw_ / (2.0 * decimFactor)); // conservative guard
-        designLowpassBiquad(lp_, lp_cutoffHz, fs_raw_);
+        const double fny_dec = fs_raw_ / (2.0 * decimFactor_);
+        const double lp_cutoffHz = 0.32 * fny_dec;   // stronger anti-alias guard than 0.45
+        designLowpassBiquad(lp1_, lp_cutoffHz, fs_raw_);
+        designLowpassBiquad(lp2_, lp_cutoffHz, fs_raw_);
         designHighpassBiquad(hp1_, hp_f0_hz, fs_raw_);
         designHighpassBiquad(hp2_, hp_f0_hz, fs_raw_);
     }
@@ -135,7 +135,7 @@ public:
         filledSamples = 0;
         isWarm = false;
         lastSpectrum_.setZero();
-        hp1_.reset(); hp2_.reset(); lp_.reset();
+        hp1_.reset(); hp2_.reset(); lp1_.reset(); lp2_.reset();
 
         // reset EMA state
         have_ema = false;
@@ -148,8 +148,8 @@ public:
         // 4th-order high-pass (cascade two identical 2nd-order sections)
         double x_hp = hp2_.process(hp1_.process(x_raw));
 
-        // 2nd-order low-pass (anti-aliasing before decimation)
-        double y = lp_.process(x_hp);
+        // low-pass (anti-aliasing before decimation)
+        double y = lp2_.process(lp1_.process(x_hp));
 
         // Decimate by integer factor (keep every D-th sample)
         if (++decimCounter < decimFactor) return false;
@@ -348,30 +348,16 @@ private:
     }
 
     void buildFrequencyGrid() {
-        constexpr double f_min = 0.04, f_transition = 0.1, f_max = 1.2;
-        int n_log = int(Nfreq * 0.4), n_lin = Nfreq - n_log;
-
-        // log edges
-        for (int i = 0; i <= n_log; i++) {
-            double t = double(i) / double(n_log);
-            f_edges_[i] = f_min * std::pow(f_transition / f_min, t);
+        constexpr double f_min = 0.04, f_max = 1.2;
+    
+        for (int i = 0; i <= Nfreq; ++i) {
+            double t = double(i) / double(Nfreq);
+            f_edges_[i] = f_min * std::pow(f_max / f_min, t);
         }
-        // linear edges
-        for (int i = 1; i <= n_lin; i++) {
-            double t = double(i) / double(n_lin);
-            f_edges_[n_log + i] = f_transition + t * (f_max - f_transition);
-        }
-
-        // centers and widths
-        for (int i = 0; i < Nfreq; i++) {
-            if (i < n_log) {
-                // geometric mean for log bins
-                freqs_[i] = std::sqrt(f_edges_[i] * f_edges_[i+1]);
-            } else {
-                // arithmetic mean for linear bins
-                freqs_[i] = 0.5 * (f_edges_[i] + f_edges_[i+1]);
-            }
-            df_[i] = f_edges_[i+1] - f_edges_[i];
+    
+        for (int i = 0; i < Nfreq; ++i) {
+            freqs_[i] = std::sqrt(f_edges_[i] * f_edges_[i + 1]); // geometric center
+            df_[i]    = f_edges_[i + 1] - f_edges_[i];
         }
     }
 
@@ -451,32 +437,25 @@ private:
             const double power = s1 * s1 + s2 * s2 - s1 * s2 * coeffs_[i];
             double S_aa_meas = power * base_scale;
 
-            // Deconvolve filters with frequency-scaled epsilon
             const double Omega_raw = 2.0 * M_PI * f / fs_raw;
-            const double H2 =
+            
+            // Deconvolve ONLY the HP chain (LP deconvolution is not worth the noise amplification)
+            const double H2_hp =
                 biquad_mag2_raw(hp1_, Omega_raw) *
-                biquad_mag2_raw(hp2_, Omega_raw) *
-                biquad_mag2_raw(lp_ , Omega_raw);
-
-            double epsilon_H = 0.02 + 0.5 * (0.05 / (f + 1e-6));
-            double S_aa_true = S_aa_meas / (H2 + epsilon_H);
-
-            // Adaptive λ (per frequency)
-            double f_knee = std::max({reg_f0_hz, f_blk});
-            double wr = 2.0 * M_PI * std::max(f_knee, 0.6 * f);
-
-            const double w = 2.0 * M_PI * f;
-            const double w_eff2 = w * w + wr * wr;
-            double S_eta = (w_eff2 > 0.0) ? (S_aa_true / (w_eff2 * w_eff2)) : 0.0;
-
+                biquad_mag2_raw(hp2_, Omega_raw);
+            
+            // Cap inverse gain instead of adding a freq-dependent fudge term
+            constexpr double H2_floor = 0.05; // ~ -13 dB floor on |H|^2
+            double S_aa_true = S_aa_meas / std::max(H2_hp, H2_floor);
+            
+            // Fixed Tikhonov regularization (as documented in your comments)
+            const double f_knee = std::max(reg_f0_hz, f_blk);
+            const double lam    = 2.0 * M_PI * f_knee;
+            const double w      = 2.0 * M_PI * f;
+            const double den    = (w * w + lam * lam);
+            
+            double S_eta = (den > 0.0) ? (S_aa_true / (den * den)) : 0.0;
             if (!std::isfinite(S_eta) || S_eta < 0.0) S_eta = 0.0;
-
-            // Gentle guard
-            const double f_guard = 0.055;
-            if (f < f_guard) {
-                double r = f / f_guard;
-                S_eta *= r * r;
-            }
 
             // EMA
             if (use_psd_ema) {
@@ -539,7 +518,7 @@ private:
     double window_sum_sq = 1.0;
 
     // IIR filters at raw Fs
-    Biquad hp1_, hp2_, lp_;
+    Biquad hp1_, hp2_, lp1_, lp2_;
 
     // Output spectrum
     Eigen::Matrix<double, Nfreq, 1> lastSpectrum_;
