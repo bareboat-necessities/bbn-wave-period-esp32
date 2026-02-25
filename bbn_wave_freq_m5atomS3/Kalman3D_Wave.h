@@ -10,7 +10,7 @@
      v (3)   : velocity in world frame
      p (3)   : displacement/position in world frame
      S (3)   : integral of displacement (∫ p dt) — with zero pseudo-measurement for drift correction
-     a_w (3) : latent world-frame inertial acceleration (NED)     
+     a_w (3) : latent world-frame inertial acceleration (NED)
 
   - The quaternion MEKF logic (time_update, measurement_update, partial updates, quaternion correction)
     is preserved where possible.
@@ -121,11 +121,11 @@ inline OUDiscreteCoeffs<T> safe_phi_A_coeffs(T h, T tau) {
         c.phi_pa = tau2 * (T(0.5)*x2 - T(1.0/6.0)*x3 + T(1.0/24.0)*x4);
 
         // phi_Sa ≈ τ³ (x³/6 - x⁴/24 + x⁵/120)
-        c.phi_Sa = tau3 * (T(1.0/6.0)*x3 - T(1.0/24.0)*x4 + T(1.0/120.0)*x5);  
+        c.phi_Sa = tau3 * (T(1.0/6.0)*x3 - T(1.0/24.0)*x4 + T(1.0/120.0)*x5);
     } else {
         // General closed-form branch
         const T alpha  = std::exp(-x);
-        const T em1    = std::expm1(-x);    
+        const T em1    = std::expm1(-x);
         // reuse for stability
         const T phi_pa = tau2 * (x + em1);
         const T phi_Sa = tau3 * (T(0.5)*x*x - x - em1);
@@ -194,31 +194,26 @@ static inline void project_psd(Eigen::Matrix<T,N,N>& S, T eps = T(1e-12)) {
     S = T(0.5) * (S + S.transpose()); // clean float noise
 }
 
-// Use with_mag_bias = true when mag reference is initialized from world absolute (set_mag_world_ref()) to detect hard iron mag bias,
-// if mag reference is initialized from a measurement (like initialize_from_acc_mag()) then it already bakes that bias inside - use with_mag_bias = false
-template <typename T = float, bool with_gyro_bias = true, bool with_accel_bias = true, bool with_mag_bias = false>
+template <typename T = float, bool with_gyro_bias = true, bool with_accel_bias = true>
 class Kalman3D_Wave {
 
     // Base (att_err + optional gyro bias)
     static constexpr int BASE_N = with_gyro_bias ? 6 : 3;
 
-    // Extended added states: v(3), p(3), S(3), a_w(3) [+ b_acc(3)] [+ b_mag(3)]
+    // Extended added states: v(3), p(3), S(3), a_w(3) [+ b_acc(3)]
     static constexpr int EXT_ADD = 12
-        + (with_accel_bias ? 3 : 0)
-        + (with_mag_bias   ? 3 : 0);
-    
+        + (with_accel_bias ? 3 : 0);
+
     static constexpr int NX = BASE_N + EXT_ADD;
-    
+
     // Offsets (always defined)
     static constexpr int OFF_V   = BASE_N + 0;
     static constexpr int OFF_P   = BASE_N + 3;
     static constexpr int OFF_S   = BASE_N + 6;
     static constexpr int OFF_AW  = BASE_N + 9;
-    
+
     static constexpr int OFF_BA  = with_accel_bias ? (BASE_N + 12) : -1;
-    
-    // mag bias comes after accel bias if present, otherwise after a_w
-    static constexpr int OFF_BM  = with_mag_bias ? (BASE_N + 12 + (with_accel_bias ? 3 : 0)) : -1;
+
 
     typedef Matrix<T, 3, 1> Vector3;
     typedef Matrix<T, BASE_N, BASE_N> MatrixBaseN;
@@ -261,36 +256,6 @@ class Kalman3D_Wave {
     // Pass NED units. For yaw-only, pass the horizontal field (z = 0).
     void set_mag_world_ref(const Vector3& B_world) {
         v2ref = B_world;    // keep µT magnitude
-    }
-
-    void initialize_mag_bias_from_measurement(const Vector3& mag_meas_body) {
-        if constexpr (with_mag_bias) {
-            const Vector3 mag = deheel_vector_(mag_meas_body);
-            const Vector3 pred_no_bias = R_wb() * v2ref;
-            xext.template segment<3>(OFF_BM) = mag - pred_no_bias;
-        }
-    }
-
-    [[nodiscard]] Vector3 get_mag_bias() const {
-        if constexpr (with_mag_bias) return xext.template segment<3>(OFF_BM);
-        else return Vector3::Zero();
-    }
-    
-    void set_initial_mag_bias_std(T s_uT) {
-        if constexpr (with_mag_bias) {
-            sigma_bmag0_ = std::max(T(0), s_uT);
-            Pext.template block<3,3>(OFF_BM, OFF_BM) =
-                Matrix3::Identity() * sigma_bmag0_ * sigma_bmag0_;
-        }
-    }
-    
-    void set_initial_mag_bias(const Vector3& b_uT) {
-        if constexpr (with_mag_bias) xext.template segment<3>(OFF_BM) = b_uT;
-    }
-    
-    void set_Q_bmag_rw(const Vector3& rw_std_uT_per_sqrt_s) {
-        if constexpr (with_mag_bias)
-            Q_bmag_ = rw_std_uT_per_sqrt_s.array().square().matrix().asDiagonal();
     }
 
     void time_update(Vector3 const& gyr, T Ts);
@@ -361,16 +326,12 @@ class Kalman3D_Wave {
         if (linear_block_enabled_ && !on) {
             // Just disabled: decouple base (A) from linear (L)
             zero_AL_cross_cov_once_();
-  
+
             // Optional: also decouple accel/mag biases from the linear block
             // if you consider those part of the "A" subsystem when linear is off.
             if constexpr (with_accel_bias) {
                 Pext.template block<12,3>(OFF_V, OFF_BA).setZero();
                 Pext.template block<3,12>(OFF_BA, OFF_V).setZero();
-            }
-            if constexpr (with_mag_bias) {
-                Pext.template block<12,3>(OFF_V, OFF_BM).setZero();
-                Pext.template block<3,12>(OFF_BM, OFF_V).setZero();
             }
             // keep cadence sane
             pseudo_update_counter_ = 0;
@@ -438,7 +399,7 @@ class Kalman3D_Wave {
 	    Pext.template block<3,3>(OFF_AW, OFF_AW) = Sigma_aw_stat;  // keep consistent
 	    symmetrize_Pext_();
 	}
-        
+
     // Accept a full 3×3 SPD stationary covariance for a_w.
     void set_aw_stationary_cov_full(const Matrix3& Sigma);
 
@@ -458,20 +419,20 @@ class Kalman3D_Wave {
     //   • Also reseeds Pext(OFF_AW, OFF_AW) to keep filter covariance consistent.
     void set_aw_stationary_corr_std(const Vector3& std_aw, T rho_xz_corr = T(-0.65), T rho_yz_corr = T(-0.65)) {
         // Clamp correlation for numerical safety
-        rho_xz_corr = std::max(T(-0.999), std::min(rho_xz_corr, T(0.999))); 
-        rho_yz_corr = std::max(T(-0.999), std::min(rho_yz_corr, T(0.999))); 
-  
+        rho_xz_corr = std::max(T(-0.999), std::min(rho_xz_corr, T(0.999)));
+        rho_yz_corr = std::max(T(-0.999), std::min(rho_yz_corr, T(0.999)));
+
         const T sx = std::max(T(1e-9), std_aw.x());
         const T sy = std::max(T(1e-9), std_aw.y());
         const T sz = std::max(T(1e-9), std_aw.z());
-  
+
         // Construct correlated covariance (symmetric)
         Matrix3 S;
         S <<
             sx*sx,  T(0),             rho_xz_corr*sx*sz,
             T(0),   sy*sy,            rho_yz_corr*sy*sz,
             rho_xz_corr*sx*sz, rho_yz_corr*sy*sz, sz*sz;
-  
+
         // Symmetrize & project to SPD for robustness
         S = T(0.5) * (S + S.transpose());
         project_psd<T,3>(S, T(1e-12));
@@ -490,7 +451,7 @@ class Kalman3D_Wave {
         symmetrize_Pext_();
         has_cross_cov_a_xy = true;
     }
-  
+
     // Covariances for ∫p dt pseudo-measurement
     void set_RS_noise(const Vector3& sigma_S) {
         R_S = sigma_S.array().square().matrix().asDiagonal();
@@ -502,7 +463,7 @@ class Kalman3D_Wave {
         project_psd<T,3>(S, T(1e-8));
         R_S = S;
     }
-        
+
     // Accelerometer measurement noise (std in m/s² per axis)
     void set_Racc(const Vector3& sigma_acc) {
         Racc = sigma_acc.array().square().matrix().asDiagonal();
@@ -546,7 +507,7 @@ class Kalman3D_Wave {
     // Initialize full extended state from "truth"
     void initialize_from_truth(const Vector3 &p_ned, const Vector3 &v_ned,
                                const Eigen::Quaternion<T> &q_bw, const Vector3 &a_w_ned);
-              
+
     // IMU lever-arm API
     // r_b: IMU position w.r.t. CoG in the *physical* BODY frame B [m].
     // Internally we de-heel this into B' each step when applying lever-arm kinematics.
@@ -567,15 +528,15 @@ class Kalman3D_Wave {
 	void update_wind_heel(T heel_rad) {
 	    const T old = wind_heel_rad_;
 	    if (heel_rad == old) return;
-	
+
 	    // Retarget internal B' frame FIRST (uses Δheel = new-old)
 	    retarget_bodyprime_frame_(heel_rad - old);
-	
+
 	    // Now store new heel and update trig used by deheel_vector_()
 	    wind_heel_rad_ = heel_rad;
 	    update_unheel_trig_();
 	}
-              
+
     static Eigen::Matrix<T,3,1> ned_field_from_decl_incl(T D_rad, T I_rad, T B = T(1)) {
         const T cI = std::cos(I_rad), sI = std::sin(I_rad);
         const T cD = std::cos(D_rad), sD = std::sin(D_rad);
@@ -584,7 +545,7 @@ class Kalman3D_Wave {
             B * cI * sD,   // E
             B * sI         // D (down positive)
         ).finished();
-    }            
+    }
 
   private:
     const T gravity_magnitude_ = T(STD_GRAVITY);
@@ -594,7 +555,7 @@ class Kalman3D_Wave {
     Vector3 v2ref = Vector3::UnitX();
 
     // Extended full state xext and Pext (NX x NX)
-    Matrix<T, NX, 1> xext; // [ δθ(3), (gyro bias 3 optional), v(3), p(3), S(3), a_w(3), (accel bias 3 optional) ]          
+    Matrix<T, NX, 1> xext; // [ δθ(3), (gyro bias 3 optional), v(3), p(3), S(3), a_w(3), (accel bias 3 optional) ]
     MatrixNX Pext;
 
     Vector3 last_gyr_bias_corrected{};  // Last gyro
@@ -606,9 +567,7 @@ class Kalman3D_Wave {
     // Default here reflects BMI270 typical accel drift (~0.003 m/s^2/°C).
     Vector3 k_a_ = Vector3::Constant(T(0.002));
 
-    T sigma_bmag0_ = T(4.0);                 // µT 
-    Matrix3 Q_bmag_ = Matrix3::Identity() * T(1e-6); // (µT^2)/s  (tune)
-              
+
     // Constant matrices
     Matrix3 Rmag;
     MatrixBaseN Qbase; // Q for attitude & bias
@@ -624,8 +583,8 @@ class Kalman3D_Wave {
     static constexpr int PSEUDO_UPDATE_PERIOD = 3; // every N-th update
 
     bool linear_block_enabled_ = true;
-    bool acc_bias_updates_enabled_ = true;       
-              
+    bool acc_bias_updates_enabled_ = true;
+
     bool has_cross_cov_a_xy = false;
     bool use_exact_att_bias_Qd_ = true;
 
@@ -661,10 +620,10 @@ class Kalman3D_Wave {
     MatrixNX3    PCt_scratch_;
     MatrixNX3    K_scratch_;
     Matrix3      S_scratch_;
-				
+
     MeasDiag3 last_acc_diag_;
     MeasDiag3 last_mag_diag_;
-				
+
     EIGEN_STRONG_INLINE void symmetrize_Pext_() {
         for (int i = 0; i < NX; ++i) {
             for (int j = i + 1; j < NX; ++j) {
@@ -674,14 +633,14 @@ class Kalman3D_Wave {
             }
         }
     }
-              
+
     // Closed-form helpers for rotation & integrals (constant ω over [0, t])
 
     // Rodrigues rotation and the integral B(t) = -∫_0^t exp(-[ω]× τ) dτ
     EIGEN_STRONG_INLINE void rot_and_B_from_wt_(const Vector3& w, T t, Matrix3& R, Matrix3& B) const {
         const T wnorm = w.norm();
         const Matrix3 W = skew_symmetric_matrix(w);
-    
+
         if (wnorm < T(1e-7)) {
             // Series (stable as ω→0)
             const T t2 = t*t, t3 = t2*t;
@@ -690,29 +649,29 @@ class Kalman3D_Wave {
             B = -( Matrix3::Identity()*t - T(0.5)*W*t2 + (W*W)*(t3/T(6)) );
             return;
         }
-    
+
         const T theta = wnorm * t;
         const T s = std::sin(theta), c = std::cos(theta);
         const T invw = T(1) / wnorm;
         const Matrix3 K = W * invw; // [u]×
-    
+
         // exp(-[ω]× t) = I - sinθ K + (1 - cosθ) K^2
         R = Matrix3::Identity() - s*K + (T(1)-c)*(K*K);
-    
+
         // B(t) = - ∫_0^t R(τ) dτ = -[ t I - (1 - cosθ)/ω^2 W + (t - sinθ/ω)/ω^2 W^2 ]
         const T invw2 = invw * invw;
-    
+
         const Matrix3 term1 = Matrix3::Identity() * t;
         const Matrix3 term2 = ((T(1)-c) * invw2) * W;
         const Matrix3 term3 = ((t - s*invw) * invw2) * (W*W);
         B = -( term1 - term2 + term3 );
     }
-    
+
     // ∫_0^T B(s) ds  (closed form; used for Q_{θb})
     EIGEN_STRONG_INLINE void integral_B_ds_(const Vector3& w, T Tstep, Matrix3& IB) const {
         const T wnorm = w.norm();
         const Matrix3 W = skew_symmetric_matrix(w);
-    
+
         if (wnorm < T(1e-7)) {
             // ∫ B ≈ -[ 1/2 T^2 I - 1/6 W T^3 + 1/24 W^2 T^4 ]
             const T T2 = Tstep*Tstep, T3 = T2*Tstep, T4 = T3*Tstep;
@@ -726,12 +685,12 @@ class Kalman3D_Wave {
         const T s = std::sin(theta), c = std::cos(theta);
         const T invw  = T(1) / wnorm;
         const T invw2 = invw * invw;
-    
+
         // IB = ∫_0^T B(s) ds = -[ 1/2 T^2 I - ((T - sinθ/ω)/ω^2) W + ((1/2 T^2) + (cosθ - 1)/ω^2)/ω^2 W^2 ]
         const Matrix3 termI = Matrix3::Identity() * (T(0.5) * Tstep*Tstep);
         const Matrix3 termW = ((Tstep - s*invw) * invw2) * W;
         const Matrix3 termW2 = ( (T(0.5)*Tstep*Tstep) + ((c - T(1)) * invw2) ) * invw2 * (W*W);
-    
+
         IB = -( termI - termW + termW2 );
     }
 
@@ -740,46 +699,46 @@ class Kalman3D_Wave {
         const T s = w.dot(r);
         return Matrix3::Identity() * s + (w * r.transpose()) - T(2) * (r * w.transpose());
     }
-				
+
     // Simpson’s rule for ∫_0^T R(s) Q R(s)^T ds (fast, excellent for anisotropic Q)
     EIGEN_STRONG_INLINE Matrix3 simpson_R_Q_RT_(const Vector3& w, T Tstep, const Matrix3& Q) const {
         Matrix3 R0, Btmp, Rm, R1;
         rot_and_B_from_wt_(w, T(0),   R0, Btmp);
         rot_and_B_from_wt_(w, T(0.5)*Tstep, Rm, Btmp);
         rot_and_B_from_wt_(w, Tstep, R1, Btmp);
-    
+
         const Matrix3 f0 = R0 * Q * R0.transpose(); // = Q
         const Matrix3 f1 = Rm * Q * Rm.transpose();
         const Matrix3 f2 = R1 * Q * R1.transpose();
         return (Tstep / T(6)) * (f0 + T(4)*f1 + f2);
     }
-    
+
     // Simpson’s rule for ∫_0^T B(s) Q B(s)^T ds
     EIGEN_STRONG_INLINE Matrix3 simpson_B_Q_BT_(const Vector3& w, T Tstep, const Matrix3& Q) const {
         Matrix3 Rtmp, B0, Bm, B1;
         rot_and_B_from_wt_(w, T(0),   Rtmp, B0);           // B(0) = 0
         rot_and_B_from_wt_(w, T(0.5)*Tstep, Rtmp, Bm);
         rot_and_B_from_wt_(w, Tstep, Rtmp, B1);
-    
+
         const Matrix3 g0 = B0 * Q * B0.transpose(); // = 0
         const Matrix3 g1 = Bm * Q * Bm.transpose();
         const Matrix3 g2 = B1 * Q * B1.transpose();
         return (Tstep / T(6)) * (g0 + T(4)*g1 + g2);
     }
-    
+
     EIGEN_STRONG_INLINE bool is_isotropic3_(const Matrix3& S, T tol = T(1e-9)) const {
         const T a = S(0,0), b = S(1,1), c = S(2,2);
-    
+
         // Sum of absolute values of off-diagonal entries (1-norm of off-diagonal part)
         Matrix3 Off = S;
         Off.diagonal().setZero();
         const T off = Off.cwiseAbs().sum();
-    
+
         const T mean = (a + b + c) / T(3);
         return (std::abs(a-mean) + std::abs(b-mean) + std::abs(c-mean) + off)
                <= tol * (T(1) + std::abs(mean));
     }
-        
+
     // convenience getters
     Matrix3 R_wb() const { return qref.toRotationMatrix(); }               // world→body'
     Matrix3 R_bw() const { return qref.toRotationMatrix().transpose(); }   // body'→world
@@ -797,17 +756,17 @@ class Kalman3D_Wave {
     static void QdAxis4x1_analytic(T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis);
 
     // Reusable helpers for all 3×3 measurement updates
-    
+
     // Factor S with LDLT and a diagonal safety boost if needed.
     // The `noise_scale` argument should be something like R.norm() or S.norm() from the branch.
     EIGEN_STRONG_INLINE bool safe_ldlt3_(Matrix3& S, Eigen::LDLT<Matrix3>& ldlt, T noise_scale) const {
         ldlt.compute(S);
         if (ldlt.info() == Eigen::Success) return true;
-    
+
         // Minimum positive bump
         const T bump = std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * (noise_scale + T(1)));
         S.diagonal().array() += bump;
-    
+
         ldlt.compute(S);
         return (ldlt.info() == Eigen::Success);
     }
@@ -821,7 +780,7 @@ class Kalman3D_Wave {
         const T v = r.dot(x);
         return std::isfinite(v) ? v : std::numeric_limits<T>::quiet_NaN();
     }
-				
+
     // Joseph covariance update: P ← P - KCP - (KCP)ᵀ + K S Kᵀ.
     // Stack-light version: no NX×NX temporaries, only scalar loops.
     // Assumes Pext is symmetric on entry.
@@ -838,10 +797,10 @@ class Kalman3D_Wave {
         //   (KCP)ᵀ(j,i) = KCP(j,i)
         //
         // And K S Kᵀ is symmetric because S is symmetric.
-    
+
         for (int i = 0; i < NX; ++i) {
             for (int j = i; j < NX; ++j) {
-    
+
                 // KCP_ij = (K C P)(i,j)
                 T KCP_ij = T(0);
                 T KCP_ji = T(0);
@@ -850,7 +809,7 @@ class Kalman3D_Wave {
                     const T Kj_l = K(j,l);
                     const T Pj_l = PCt(j,l); // CP(l,j) ≈ PCt(j,l)
                     const T Pi_l = PCt(i,l); // CP(l,i) ≈ PCt(i,l)
-    
+
                     KCP_ij += Ki_l * Pj_l;
                     if (j != i) {
                         KCP_ji += Kj_l * Pi_l;
@@ -870,7 +829,7 @@ class Kalman3D_Wave {
                     }
                 }
                 const T delta = - (KCP_ij + KCP_ji) + KSK_ij;
-    
+
                 // Apply symmetric update
                 Pext(i,j) += delta;
                 if (j != i) {
@@ -892,14 +851,14 @@ class Kalman3D_Wave {
     EIGEN_STRONG_INLINE void freeze_linear_rows_(MatrixNX3& M) const {
         // Linear block is [v,p,S,a_w] = 12 states starting at OFF_V
         M.template block<12,3>(OFF_V, 0).setZero();
-    }               
+    }
 
     EIGEN_STRONG_INLINE void freeze_acc_bias_rows_(MatrixNX3& M) const {
         if constexpr (with_accel_bias) {
             M.template block<3,3>(OFF_BA, 0).setZero();
         }
     }
-                
+
     // Steady wind heel model (roll about BODY X)
     // wind_heel_rad_ : current steady heel in radians (hull frame)
     // Internally we work in a virtual "un-heeled" body frame B'
@@ -947,45 +906,41 @@ class Kalman3D_Wave {
 	void retarget_bodyprime_frame_(T delta_heel_rad)
 	{
 	    if (std::abs(delta_heel_rad) < T(1e-12)) return;
-	
+
 	    // R = Rx(-Δheel): maps old B' coordinates -> new B' coordinates.
 	    const Matrix3 R = Rx_(-delta_heel_rad);
-	
+
 	    // Rotate the attitude reference: R_wb' := R * R_wb'
 	    // qref is world->B'. Left-multiply by the frame change.
 	    const Eigen::Quaternion<T> qR(R);
 	    qref = qR * qref;
 	    qref.normalize();
-	
+
 	    // Rotate any vector states that live in B' coordinates
 	    xext.template segment<3>(0) = R * xext.template segment<3>(0); // δθ (error state)
-	
+
 	    if constexpr (with_gyro_bias) {
 	        xext.template segment<3>(3) = R * xext.template segment<3>(3); // b_g
 	    }
 	    if constexpr (with_accel_bias) {
 	        xext.template segment<3>(OFF_BA) = R * xext.template segment<3>(OFF_BA); // b_a (as stored)
 	    }
-	    if constexpr (with_mag_bias) {
-	        xext.template segment<3>(OFF_BM) = R * xext.template segment<3>(OFF_BM); // b_m
-	    }
-	
+
 	    // Rotate cached B' kinematics
 	    last_gyr_bias_corrected = R * last_gyr_bias_corrected;
 	    prev_omega_b_           = R * prev_omega_b_;
 	    alpha_b_                = R * alpha_b_;
-	
+
 	    // Similarity-transform covariance for the rotated state blocks.
 	    // Since NX is small (~18), do the safe full similarity update (only on heel change).
 	    MatrixNX Tm = MatrixNX::Identity();
 	    Tm.template block<3,3>(0,0) = R;
 	    if constexpr (with_gyro_bias)  Tm.template block<3,3>(3,3)      = R;
 	    if constexpr (with_accel_bias) Tm.template block<3,3>(OFF_BA,OFF_BA) = R;
-	    if constexpr (with_mag_bias)   Tm.template block<3,3>(OFF_BM,OFF_BM) = R;
-	
+
 	    Pext = Tm * Pext * Tm.transpose();
 	    symmetrize_Pext_();
-	
+
 	    // Optional: α cache is now in new B' but it was computed using old dt history.
 	    // have_prev_omega_ = false; alpha_b_.setZero();
 	}
@@ -993,8 +948,8 @@ class Kalman3D_Wave {
 
 // Implementation
 
-template <typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
-Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::Kalman3D_Wave(
+template <typename T, bool with_gyro_bias, bool with_accel_bias>
+Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::Kalman3D_Wave(
     Vector3 const& sigma_a,
     Vector3 const& sigma_g,
     Vector3 const& sigma_m,
@@ -1031,22 +986,17 @@ Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::Kalman3D_Wave(
     if constexpr (with_accel_bias) {
         Pext.template block<3,3>(OFF_BA, OFF_BA) = Matrix3::Identity() * sigma_bacc0_ * sigma_bacc0_;
     }
-    if constexpr (with_mag_bias) {
-        Pext.template block<3,3>(OFF_BM, OFF_BM) =
-            Matrix3::Identity() * sigma_bmag0_ * sigma_bmag0_;
-        xext.template segment<3>(OFF_BM).setZero();
-    }
-              
+
     const T sigma_v0 = T(1.0);    // m/s
     const T sigma_p0 = T(20.0);   // m
     const T sigma_S0 = T(50.0);   // m·s
     set_initial_linear_uncertainty(sigma_v0, sigma_p0, sigma_S0);
 }
 
-template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
-typename Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::MatrixBaseN
-Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::initialize_Q(
-              typename Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::Vector3 sigma_g, T b0) {
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
+typename Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::MatrixBaseN
+Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::initialize_Q(
+              typename Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::Vector3 sigma_g, T b0) {
     MatrixBaseN Q; Q.setZero();
     if constexpr (with_gyro_bias) {
         Q.template topLeftCorner<3,3>() = sigma_g.array().square().matrix().asDiagonal(); // gyro RW
@@ -1057,8 +1007,8 @@ Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::initialize_Q(
     return Q;
 }
 
-template <typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::set_aw_stationary_cov_full(const Matrix3& Sigma_in)
+template <typename T, bool with_gyro_bias, bool with_accel_bias>
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::set_aw_stationary_cov_full(const Matrix3& Sigma_in)
 {
     // Symmetrize + very light SPD projection
     Matrix3 S = T(0.5) * (Sigma_in + Sigma_in.transpose());
@@ -1083,8 +1033,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::set_aw_st
 // Inputs:
 //   acc_body  — accelerometer specific force in body frame (NED)
 //   mag_body  — magnetometer measurement in body frame (NED)
-template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::initialize_from_acc_mag(
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::initialize_from_acc_mag(
     Vector3 const& acc_body,
     Vector3 const& mag_body)
 {
@@ -1123,9 +1073,9 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::initializ
     v2ref = R_bw() * mag;  // body to world, µT
 }
 
-template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
 Eigen::Quaternion<T>
-Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::quaternion_from_acc(Vector3 const& acc)
+Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::quaternion_from_acc(Vector3 const& acc)
 {
     // Raw accelerometer is specific force; at rest in NED: acc ≈ (0,0,-g) in body
     // We want body +Z (down) to align with world +Z (down), i.e. align zb to -acc.
@@ -1158,11 +1108,11 @@ Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::quaternion_fro
     return q;
 }
 
-template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::initialize_from_acc(Vector3 const& acc_body)
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::initialize_from_acc(Vector3 const& acc_body)
 {
     const Vector3 acc = deheel_vector_(acc_body);
-  
+
     T anorm = acc.norm();
     if (anorm < T(1e-8)) {
        throw std::runtime_error("Invalid accelerometer vector: norm too small for initialization");
@@ -1174,8 +1124,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::initializ
     qref.normalize();
 }
 
-template <typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::initialize_from_truth(
+template <typename T, bool with_gyro_bias, bool with_accel_bias>
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::initialize_from_truth(
     const Vector3 &p_ned, const Vector3 &v_ned,
     const Eigen::Quaternion<T> &q_bw, const Vector3 &a_w_ned)
 {
@@ -1204,14 +1154,14 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::initializ
     Pext.setZero();
     const T p_0 = T(1e-5);
     Pext.diagonal().array() = p_0;
-}    
-              
-template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::time_update(
+}
+
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     Vector3 const& gyr_body, T Ts)
 {
     last_dt_ = Ts;   // Remember last dt
-                
+
     // De-heel gyro into virtual frame B' using current wind_heel_rad_
     const Vector3 gyr = deheel_vector_(gyr_body);   // ω^{B'}
 
@@ -1238,7 +1188,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::time_upda
         alpha_b_.setZero();
         have_prev_omega_ = true;
     }
-    prev_omega_b_ = omega_b;           
+    prev_omega_b_ = omega_b;
 
     // Δθ = ω·Ts → right-multiplicative quaternion increment
     Eigen::Quaternion<T> dq = quat_from_delta_theta((last_gyr_bias_corrected * Ts).eval());
@@ -1265,17 +1215,17 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::time_upda
     if constexpr (with_gyro_bias) {
 		Matrix3 Rstep, Bstep;
 		rot_and_B_from_wt_(w, Ts, Rstep, Bstep);
-		
+
 		// exact discrete attitude error transition
 		F_AA.template topLeftCorner<3,3>() = Rstep;
-		
+
 		// exact cross-term instead of -I*Ts
 		F_AA.template block<3,3>(0,3) = Bstep;
     }
 
     MatrixBaseN& Q_AA = Q_AA_scratch_;
     Q_AA.setZero();
-    
+
     if (!use_exact_att_bias_Qd_) {
         // fast path
         Q_AA = Qbase * Ts;
@@ -1286,7 +1236,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::time_upda
         if constexpr (with_gyro_bias) {
             Qbg = Qbase.template bottomRightCorner<3,3>();
         }
-    
+
         // ∫ R(s) Qg R(s)^T ds  (exact if isotropic; Simpson for anisotropic)
         Matrix3 I_R;
         if (is_isotropic3_(Qg)) {
@@ -1294,22 +1244,22 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::time_upda
         } else {
             I_R = simpson_R_Q_RT_(w, Ts, Qg);               // very accurate, still cheap
         }
-    
+
         // ∫ B(s) Qbg B(s)^T ds  (Simpson)
         Matrix3 I_BB = Matrix3::Zero();
         if constexpr (with_gyro_bias) {
             I_BB = simpson_B_Q_BT_(w, Ts, Qbg);
         }
-    
+
         // Q_{θθ} = I_R + I_BB
         const Matrix3 Qtt = I_R + I_BB;
-    
+
         // Q_{bb} = Qbg * Ts
         Matrix3 Qbb = Matrix3::Zero();
         if constexpr (with_gyro_bias) {
             Qbb = Qbg * Ts;
         }
-    
+
         // Q_{θb} = (∫ B(s) ds) * Qbg    (closed form)
         Matrix3 Qtb = Matrix3::Zero();
         if constexpr (with_gyro_bias) {
@@ -1317,7 +1267,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::time_upda
             integral_B_ds_(w, Ts, IB);
             Qtb = IB * Qbg;
         }
-    
+
         // Pack into BASE_N × BASE_N
         Q_AA.template topLeftCorner<3,3>() = Qtt;
         if constexpr (with_gyro_bias) {
@@ -1325,7 +1275,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::time_upda
             Q_AA.template bottomLeftCorner<3,3>()  = Qtb.transpose();
             Q_AA.template bottomRightCorner<3,3>() = Qbb;
         }
-    
+
         // Hygiene
         Q_AA = T(0.5) * (Q_AA + Q_AA.transpose());
         if constexpr (with_gyro_bias) {
@@ -1334,7 +1284,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::time_upda
             project_psd<T,3>(Q_AA, T(1e-12));
         }
     }
-    
+
     // Always propagate attitude(+gyro-bias) covariance
     {
         constexpr int NA = BASE_N;
@@ -1343,7 +1293,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::time_upda
         Pext.template block<NA,NA>(0,0).noalias() = tmpAA * F_AA.transpose();
         Pext.template block<NA,NA>(0,0).noalias() += Q_AA;
     }
-              
+
     // Linear subsystem [v,p,S,a_w] (12×12)
     Matrix12& F_LL = F_LL_scratch_; F_LL.setZero();
     Matrix12& Q_LL = Q_LL_scratch_; Q_LL.setZero();
@@ -1368,14 +1318,14 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::time_upda
             Eigen::Matrix<T,4,4> Qaxis_unit;
             QdAxis4x1_analytic(tau_aw, Ts, T(1), Qaxis_unit);
             Qaxis_unit = T(0.5) * (Qaxis_unit + Qaxis_unit.transpose()); // hygiene
-        
+
             // SPD, symmetric copy of Σ_aw (3x3)
             const Matrix3 Sig = T(0.5) * (Sigma_aw_stat + Sigma_aw_stat.transpose());
-        
+
             Q_LL.setZero();
             // group offsets in interleaved state order
             const int goff[4] = {0, 3, 6, 9}; // v, p, S, a
-        
+
             // Blockwise assembly: each 3x3 block is Sig scaled by the 4x4 scalar
             for (int g = 0; g < 4; ++g) {
                 for (int h = 0; h < 4; ++h) {
@@ -1400,48 +1350,48 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::time_upda
             }
             Q_LL = T(0.5) * (Q_LL + Q_LL.transpose());
         }
-                  
+
         // Mean propagation for [v,p,S,a_w]
         Vector12& x_lin_prev = x_lin_prev_scratch_;
         x_lin_prev.template segment<3>(0)  = xext.template segment<3>(OFF_V);
         x_lin_prev.template segment<3>(3)  = xext.template segment<3>(OFF_P);
         x_lin_prev.template segment<3>(6)  = xext.template segment<3>(OFF_S);
         x_lin_prev.template segment<3>(9)  = xext.template segment<3>(OFF_AW);
-    
+
         Vector12& x_lin_next = x_lin_next_scratch_;
         x_lin_next.noalias() = F_LL * x_lin_prev;
         xext.template segment<3>(OFF_V)  = x_lin_next.template segment<3>(0);
         xext.template segment<3>(OFF_P)  = x_lin_next.template segment<3>(3);
         xext.template segment<3>(OFF_S)  = x_lin_next.template segment<3>(6);
         xext.template segment<3>(OFF_AW) = x_lin_next.template segment<3>(9);
-    
+
         // Covariance propagation (blockwise)
         constexpr int NA = BASE_N;
         constexpr int NL = 12;
-                
+
         // LL block
         Matrix12& tmpLL = tmpLL_scratch_;
-        
+
         // tmpLL = F_LL * P_LL_old
         tmpLL.noalias() = F_LL * Pext.template block<NL,NL>(OFF_V,OFF_V);
-        
+
         // P_LL_new = tmpLL * F_LLᵀ + Q_LL
         Pext.template block<NL,NL>(OFF_V,OFF_V).noalias() = tmpLL * F_LL.transpose();
         Pext.template block<NL,NL>(OFF_V,OFF_V).noalias() += Q_LL;
-        
+
         // AL block (cross-covariance)
         MatrixBaseN12& tmpAL = tmpAL_scratch_;
-        
+
         // tmpAL = F_AA * P_AL_old
         tmpAL.noalias() = F_AA * Pext.template block<NA,NL>(0,OFF_V);
-        
+
         // P_AL_new = tmpAL * F_LLᵀ
         Pext.template block<NA,NL>(0,OFF_V).noalias() = tmpAL * F_LL.transpose();
-        
+
         // Keep symmetry: P_LA = P_ALᵀ
         Pext.template block<NL,NA>(OFF_V,0) = Pext.template block<NA,NL>(0,OFF_V).transpose();
     }
-          
+
     // Optional accel bias RW and cross terms (F_BB = I)
     if constexpr (with_accel_bias) {
         constexpr int NB = 3;
@@ -1464,35 +1414,6 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::time_upda
         }
     }
 
-    // Optional mag bias RW and cross terms (F_BM = I)
-    if constexpr (with_mag_bias) {
-        constexpr int NB = 3;
-    
-        // P_BM_BM += Q_bmag * Ts
-        auto P_BM = Pext.template block<NB,NB>(OFF_BM, OFF_BM);
-        P_BM.noalias() += Q_bmag_ * Ts;
-        Pext.template block<NB,NB>(OFF_BM, OFF_BM) = P_BM;
-    
-        // Cross-covariances: AB, LB propagate with F_AA / F_LL
-        constexpr int NA = BASE_N;
-        Eigen::Matrix<T,NA,NB> tmpAM = F_AA * Pext.template block<NA,NB>(0, OFF_BM);
-        Pext.template block<NA,NB>(0, OFF_BM) = tmpAM;
-        Pext.template block<NB,NA>(OFF_BM, 0) = tmpAM.transpose();
-    
-        if (linear_block_enabled_) {
-            constexpr int NL = 12;
-            Eigen::Matrix<T,NL,NB> tmpLM = F_LL * Pext.template block<NL,NB>(OFF_V, OFF_BM);
-            Pext.template block<NL,NB>(OFF_V, OFF_BM) = tmpLM;
-            Pext.template block<NB,NL>(OFF_BM, OFF_V) = tmpLM.transpose();
-        }
-    
-        // If accel-bias exists too, keep BA<->BM symmetry (F=I for both)
-        if constexpr (with_accel_bias) {
-            // nothing to do: both are constant states; cross-cov stays as-is
-            // (your symmetrize_Pext_() will keep it clean)
-        }
-    }          
-
     symmetrize_Pext_();   // Symmetry hygiene
 
     // Integral pseudo-measurement drift correction (only if linear block is live)
@@ -1506,18 +1427,18 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::time_upda
     }
 }
 
-template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measurement_update_acc_only(
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_only(
     Vector3 const& acc_meas_body, T tempC)
-{  
+{
     last_acc_diag_ = MeasDiag3{};
     last_acc_diag_.accepted = false;
-				
+
     const bool use_ba = (with_accel_bias && acc_bias_updates_enabled_);
-                
+
     // De-heel measured accel into B'
     const Vector3 acc_meas = deheel_vector_(acc_meas_body);
-          
+
     // Physical accelerometer measurement model
     const Vector3 g_world(0,0,+gravity_magnitude_);
 
@@ -1529,7 +1450,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
         const Vector3  r_imu_bprime = deheel_vector_(r_imu_wrt_cog_body_phys_);
 
         lever.noalias() += alpha_bprime.cross(r_imu_bprime)
-                        +  omega_bprime.cross(omega_bprime.cross(r_imu_bprime));				
+                        +  omega_bprime.cross(omega_bprime.cross(r_imu_bprime));
     }
 
     Matrix3 J_bg = Matrix3::Zero();
@@ -1558,7 +1479,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
 
             J_bg = J_alpha_part - J_omega_part;
         }
-    }				
+    }
 
     // Accel bias term (temp-dependent)
     Vector3 ba_term = Vector3::Zero();
@@ -1577,12 +1498,12 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
         // linear block disabled → marginalize aw in S, mean uses gravity only
         f_pred = R_wb() * (Vector3::Zero() - g_world) + lever + ba_term;
     }
-    
+
     const Vector3 f_meas = acc_meas;
     const Vector3 r = f_meas - f_pred;
 
     last_acc_diag_.r = r;
-				
+
     // Jacobians from linearization at CoG-only part (lever-arm is attitude-independent)
     Matrix3 J_att;
     Matrix3 J_aw;
@@ -1598,7 +1519,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
         J_att = -skew_symmetric_matrix(f_grav_b);
         J_aw.setZero(); // no aw Jacobian when linear is OFF
     }
-                
+
     // Innovation covariance S = C P Cᵀ + Racc (3×3)
     Matrix3& S_mat = S_scratch_;
     S_mat = Racc;
@@ -1606,15 +1527,15 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
         constexpr int OFF_TH = 0;
         const int off_aw = OFF_AW;
         const int off_ba = OFF_BA;
-    
+
         const Matrix3 P_th_th = Pext.template block<3,3>(OFF_TH, OFF_TH);
         S_mat.noalias() += J_att * P_th_th * J_att.transpose();
-    
+
         if (linear_block_enabled_) {
             // normal full model terms
             const Matrix3 P_th_aw = Pext.template block<3,3>(OFF_TH, off_aw);
             const Matrix3 P_aw_aw = Pext.template block<3,3>(off_aw,  off_aw);
-    
+
             S_mat.noalias() += J_att * P_th_aw * J_aw.transpose();
             S_mat.noalias() += J_aw  * P_th_aw.transpose() * J_att.transpose();
             S_mat.noalias() += J_aw  * P_aw_aw * J_aw.transpose();
@@ -1628,12 +1549,12 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
 		    const Matrix3 P_ba_ba = Pext.template block<3,3>(off_ba, off_ba);
 		    if (use_ba) {
 		        const Matrix3 P_th_ba = Pext.template block<3,3>(OFF_TH, off_ba);
-		
+
 		        // J_ba = I
 		        S_mat.noalias() += J_att * P_th_ba;
 		        S_mat.noalias() += P_th_ba.transpose() * J_att.transpose();
 		        S_mat.noalias() += P_ba_ba;
-		
+
 		        if (linear_block_enabled_) {
 		            const Matrix3 P_aw_ba = Pext.template block<3,3>(off_aw, off_ba);
 		            S_mat.noalias() += J_aw * P_aw_ba;
@@ -1643,11 +1564,11 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
 		        // BA frozen: marginalize its uncertainty (and any existing cross-cov) into S.
 		        // (If code already zeroed P_th_ba/P_aw_ba when disabling BA updates, these are 0 anyway.)
 		        const Matrix3 P_th_ba = Pext.template block<3,3>(OFF_TH, off_ba);
-		
+
 		        // J_ba = I
 		        S_mat.noalias() += J_att * P_th_ba;
 		        S_mat.noalias() += P_th_ba.transpose() * J_att.transpose();
-		
+
 		        if (linear_block_enabled_) {
 		            const Matrix3 P_aw_ba = Pext.template block<3,3>(off_aw, off_ba);
 		            S_mat.noalias() += J_aw * P_aw_ba;
@@ -1655,18 +1576,18 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
 		        }
 		        S_mat.noalias() += P_ba_ba;
 		    }
-		} 
+		}
         if constexpr (with_gyro_bias) {
             if (use_imu_lever_arm_) {
                 constexpr int OFF_BG = 3;
-        
+
                 const Matrix3 P_th_bg = Pext.template block<3,3>(0, OFF_BG);
                 const Matrix3 P_bg_bg = Pext.template block<3,3>(OFF_BG, OFF_BG);
-        
+
                 S_mat.noalias() += J_att * P_th_bg * J_bg.transpose();
                 S_mat.noalias() += J_bg  * P_th_bg.transpose() * J_att.transpose();
                 S_mat.noalias() += J_bg  * P_bg_bg * J_bg.transpose();
-        
+
                 if (linear_block_enabled_) {
                     const Matrix3 P_aw_bg = Pext.template block<3,3>(OFF_AW, OFF_BG);
                     S_mat.noalias() += J_aw * P_aw_bg * J_bg.transpose();
@@ -1682,7 +1603,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
             }
         }
     }
-                
+
     // PCᵀ = P Cᵀ (NX×3)
     MatrixNX3& PCt = PCt_scratch_; PCt.setZero();
     {
@@ -1705,11 +1626,11 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
                 const auto P_all_bg = Pext.template block<NX,3>(0, 3);
                 PCt.noalias() += P_all_bg * J_bg.transpose();
             }
-        }		
+        }
     }
     if (!linear_block_enabled_) {
         freeze_linear_rows_(PCt);
-    }       
+    }
     if constexpr (with_accel_bias) {
         if (!use_ba) freeze_acc_bias_rows_(PCt);
     }
@@ -1728,29 +1649,29 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
     last_acc_diag_.nis = nis3_from_ldlt_(ldlt, r);
     MatrixNX3& K = K_scratch_;
     K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
-				
+
     if (!linear_block_enabled_) {
-        freeze_linear_rows_(K);                
+        freeze_linear_rows_(K);
     }
     if constexpr (with_accel_bias) {
         if (!use_ba) freeze_acc_bias_rows_(K);
-    }     
-                
+    }
+
     xext.noalias() += K * r;          // State update
     joseph_update3_(K, S_mat, PCt);   // Covariance update
 
     // Apply quaternion correction
     applyQuaternionCorrectionFromErrorState();
-    last_acc_diag_.accepted = true;			
+    last_acc_diag_.accepted = true;
 }
 
-template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measurement_update_mag_only(
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_only(
     const Vector3& mag_meas_body)
 {
     last_mag_diag_ = MeasDiag3{};
     last_mag_diag_.accepted = false;
-				
+
     // De-heel magnetometer into B'
     const Vector3 mag_meas = deheel_vector_(mag_meas_body);
 
@@ -1765,41 +1686,27 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
     // Optional dot-product sign fix (helps if ref polarity is off or "horizontal only" is used)
     if (v2hat.dot(mag_meas) < T(0)) {
         v2hat = -v2hat;
-    }				
-				
-    Vector3 zhat = v2hat;
-    if constexpr (with_mag_bias) {
-        zhat += xext.template segment<3>(OFF_BM);
     }
+
+    const Vector3 zhat = v2hat;
     const Vector3 r = mag_meas - zhat;
-    last_mag_diag_.r = r;				
+    last_mag_diag_.r = r;
 
     // Jacobian uses the no-bias predicted vector
     const Matrix3 J_att = -skew_symmetric_matrix(v2hat);
-				    
+
     // Innovation covariance S = C P Cᵀ + R
     Matrix3& S_mat = S_scratch_;
     S_mat = Rmag;
-    
+
     const Matrix3 P_th_th = Pext.template block<3,3>(0,0);
     S_mat.noalias() += J_att * P_th_th * J_att.transpose();
-    
-    if constexpr (with_mag_bias) {
-        const Matrix3 P_th_bm = Pext.template block<3,3>(0, OFF_BM);
-        const Matrix3 P_bm_bm = Pext.template block<3,3>(OFF_BM, OFF_BM);
-    
-        S_mat.noalias() += J_att * P_th_bm;                      // J_bm = I
-        S_mat.noalias() += P_th_bm.transpose() * J_att.transpose();
-        S_mat.noalias() += P_bm_bm;
-    }
-    
+
+
     // PCᵀ = P Cᵀ
     MatrixNX3& PCt = PCt_scratch_;
     PCt.setZero();
     PCt.noalias() += Pext.template block<NX,3>(0,0) * J_att.transpose();
-    if constexpr (with_mag_bias) {
-        PCt.noalias() += Pext.template block<NX,3>(0, OFF_BM);  // J_bm = I
-    }
 
     if (!linear_block_enabled_) {
         freeze_linear_rows_(PCt);
@@ -1808,8 +1715,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
 		if (!acc_bias_updates_enabled_) {
 		    freeze_acc_bias_rows_(PCt);
 		}
-    }				
-                
+    }
+
     Eigen::LDLT<Matrix3> ldlt;
     if (!safe_ldlt3_(S_mat, ldlt, Rmag.norm())) {
         last_mag_diag_.S = S_mat;
@@ -1821,7 +1728,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
     last_mag_diag_.nis = nis3_from_ldlt_(ldlt, r);
     MatrixNX3& K = K_scratch_;
     K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
-				
+
     if (!linear_block_enabled_) {
         freeze_linear_rows_(K);
     }
@@ -1830,19 +1737,19 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
 		    freeze_acc_bias_rows_(K);
 		}
     }
-				
+
     // State + covariance update
     xext.noalias() += K * r;
     joseph_update3_(K, S_mat, PCt);
-    applyQuaternionCorrectionFromErrorState(); 
-	last_mag_diag_.accepted = true;			
+    applyQuaternionCorrectionFromErrorState();
+	last_mag_diag_.accepted = true;
 }
 
 // specific force prediction (BODY'):
 //   f_b' = R_wb (a_w − g) + α^{B'} × r_imu^{B'} + ω^{B'} × (ω^{B'} × r_imu^{B'}) + b_a(temp)
-template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
 Matrix<T,3,1>
-Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::accelerometer_measurement_func(T tempC) const {
+Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::accelerometer_measurement_func(T tempC) const {
     const Vector3 g_world(0,0,+gravity_magnitude_);
     const Vector3 aw = xext.template segment<3>(OFF_AW);
 
@@ -1865,12 +1772,12 @@ Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::accelerometer_
         const Vector3 ba  = ba0 + k_a_ * (tempC - tempC_ref);
         fb += ba;
     }
-    return fb;             
+    return fb;
 }
-				
+
 // utility functions
-template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
-Matrix<T, 3, 3> Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::skew_symmetric_matrix(const Eigen::Ref<const Vector3>& vec) const {
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
+Matrix<T, 3, 3> Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::skew_symmetric_matrix(const Eigen::Ref<const Vector3>& vec) const {
     Matrix3 M;
     M << 0, -vec(2), vec(1),
          vec(2), 0, -vec(0),
@@ -1878,8 +1785,8 @@ Matrix<T, 3, 3> Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>
     return M;
 }
 
-template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::applyQuaternionCorrectionFromErrorState()
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyQuaternionCorrectionFromErrorState()
 {
     Eigen::Quaternion<T> corr = quat_from_delta_theta((xext.template segment<3>(0)).eval());
     qref = qref * corr;
@@ -1888,11 +1795,11 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::applyQuat
     xext.template head<3>().setZero();
 }
 
-template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::applyIntegralZeroPseudoMeas()
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoMeas()
 {
     if (!linear_block_enabled_) return;
-                
+
     constexpr int off_S = OFF_S;   // offset of S block (3 states)
 
     // Innovation: target S = 0
@@ -1907,8 +1814,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::applyInte
     PCt.noalias() = Pext.template block<NX,3>(0, off_S);
 	if constexpr (with_accel_bias) {
         if (!acc_bias_updates_enabled_) freeze_acc_bias_rows_(PCt);
-    }			
-                
+    }
+
     Eigen::LDLT<Matrix3> ldlt;
     if (!safe_ldlt3_(S_mat, ldlt, R_S.norm())) return;
     MatrixNX3& K = K_scratch_;
@@ -1923,9 +1830,9 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::applyInte
     // Apply quaternion correction (attitude may get nudged via cross-covariances)
     applyQuaternionCorrectionFromErrorState();
 }
-              
-template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measurement_update_position_pseudo(
+
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_position_pseudo(
     const Vector3& p_meas, const Vector3& sigma_meas)
 {
     if (!linear_block_enabled_) return;
@@ -1978,8 +1885,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
     applyQuaternionCorrectionFromErrorState();
 }
 
-template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measurement_update_velocity_pseudo(
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_velocity_pseudo(
     const Vector3& v_meas, const Vector3& sigma_meas)
 {
     if (!linear_block_enabled_) return;
@@ -2022,8 +1929,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
     applyQuaternionCorrectionFromErrorState();
 }
 
-template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measurement_update_vert_velocity_pseudo(
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_vert_velocity_pseudo(
     T vz_meas, T sigma_meas)
 {
     if (!linear_block_enabled_) return;
@@ -2063,9 +1970,9 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::measureme
 
     applyQuaternionCorrectionFromErrorState();
 }
-              
-template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::PhiAxis4x1_analytic(
+
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::PhiAxis4x1_analytic(
     T tau, T h, Eigen::Matrix<T,4,4>& Phi_axis)
 {
     const auto P = make_prims<T>(h, tau);
@@ -2108,8 +2015,8 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::PhiAxis4x
 //   sigma2  = stationary variance of a [ (m/s^2)^2 ]
 // Outputs:
 //   Qd_axis = (4x4) discrete covariance contribution for [v, p, S, a]
-template<typename T, bool with_gyro_bias, bool with_accel_bias, bool with_mag_bias>
-void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::QdAxis4x1_analytic(
+template<typename T, bool with_gyro_bias, bool with_accel_bias>
+void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
     T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis)
 {
     // Guard very small tau
@@ -2132,7 +2039,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias, with_mag_bias>::QdAxis4x1
     //   Q_Sa ≈ σ² (    h^4/(12 τ) − h^5/(12 τ²)                         )
     //   Q_aa ≈ σ² ( 2 h/τ − 2 h^2/τ² + 4 h^3/(3 τ^3)
     //                         − 2 h^4/(3 τ^4) + 4 h^5/(15 τ^5) )
-    //         
+    //
     // and Q is symmetric.  Terms like Q_pS, Q_SS are O(h^6..h^7) and
     // safely negligible in the x≲1e−2 regime.
 
