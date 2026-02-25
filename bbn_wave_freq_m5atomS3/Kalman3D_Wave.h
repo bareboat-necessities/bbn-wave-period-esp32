@@ -327,7 +327,7 @@ class Kalman3D_Wave {
             // Just disabled: decouple base (A) from linear (L)
             zero_AL_cross_cov_once_();
 
-            // Optional: also decouple accel/mag biases from the linear block
+            // Optional: also decouple accel bias from the linear block
             // if you consider those part of the "A" subsystem when linear is off.
             if constexpr (with_accel_bias) {
                 Pext.template block<12,3>(OFF_V, OFF_BA).setZero();
