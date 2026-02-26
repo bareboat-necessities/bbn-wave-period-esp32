@@ -377,7 +377,12 @@ public:
     wave_freq_hz_ = (spectral_fp_valid_ && std::isfinite(spectral_fp_hz_smth_) && spectral_fp_hz_smth_ > 0.0f)
                   ? std::clamp(spectral_fp_hz_smth_, min_freq_hz_, max_freq_hz_)
                   : std::clamp(freq_hz_slow_,        min_freq_hz_, max_freq_hz_);
-        
+
+    // If a new spectrum block arrived, update f0_app immediately (even in spectral mode).
+    if (spectrum_new_block && spectral_fp_valid_) {
+      apply_oscillators_tune_();
+    }    
+
     if (enable_tuner_) {
       // Use LPF'ed vertical accel here too (reduces ringing / freq overshoot)
       update_tuner_(dt, a_vert_lp, wave_freq_hz_);
