@@ -1045,6 +1045,29 @@ private:
   float spectral_q_budget_sum_           = NAN;  // smoothed current budget
   float spectral_q_budget_ref_disp_scale_m_ = NAN;
 
+  static float omegaFromHz_(float f_hz) {
+    return 2.0f * float(M_PI) * f_hz;
+  }
+  
+  static float sigmaEtaFromSigmaA_F_(float sigma_a, float f_hz) {
+    if (!(sigma_a > 0.0f) || !std::isfinite(sigma_a)) return NAN;
+    if (!(f_hz > 0.0f) || !std::isfinite(f_hz)) return NAN;
+    const float w = omegaFromHz_(f_hz);
+    return sigma_a / std::max(1e-9f, w*w);
+  }
+  
+  // Longuet-Higgins mean envelope amplitude E[R]
+  static float lhMeanEnvelope_(float sigma_eta) {
+    if (!(sigma_eta > 0.0f) || !std::isfinite(sigma_eta)) return NAN;
+    return std::sqrt(float(M_PI) / 2.0f) * sigma_eta;
+  }
+  
+  // Significant wave height Hs ≈ 4 sigma_eta
+  static float lhHs_(float sigma_eta) {
+    if (!(sigma_eta > 0.0f) || !std::isfinite(sigma_eta)) return NAN;
+    return 4.0f * sigma_eta;
+  }
+
   void init_spectrum_adapter_() {
     reset_spectrum_adapter_();
   }
@@ -1356,28 +1379,28 @@ public:
 
     impl_.updateTime(dt, gyro_body_ned, acc_body_ned, tempC);
 
-const auto cur_stage = impl_.getStartupStage();
-
-if (cur_stage != last_impl_startup_stage_) {
-  // Entered Cold (e.g. after tilt reset): reset mag-init accumulators ONCE
-  if (cur_stage == SeaStateFusionFilter2<trackerT>::StartupStage::Cold) {
-    mag_ref_set_ = false;
-    mag_auto_.reset();
-
-    last_mag_time_sec_ = NAN;
-    dt_mag_sec_ = NAN;
-
-    // Reset fallback means too, so we don't mix pre/post-reset attitude regimes
-    fallback_acc_mean_.setZero();
-    fallback_mag_mean_.setZero();
-    fallback_mean_count_ = 0;
-
-    // Start a fresh deadline window from now (or from mag delay if still before it)
-    mag_ref_deadline_sec_ = std::max(t_, cfg_.mag_delay_sec) + cfg_.mag_ref_timeout_sec;
-  }
-
-  last_impl_startup_stage_ = cur_stage;
-}
+    const auto cur_stage = impl_.getStartupStage();
+    
+    if (cur_stage != last_impl_startup_stage_) {
+      // Entered Cold (e.g. after tilt reset): reset mag-init accumulators ONCE
+      if (cur_stage == SeaStateFusionFilter2<trackerT>::StartupStage::Cold) {
+        mag_ref_set_ = false;
+        mag_auto_.reset();
+    
+        last_mag_time_sec_ = NAN;
+        dt_mag_sec_ = NAN;
+    
+        // Reset fallback means too, so we don't mix pre/post-reset attitude regimes
+        fallback_acc_mean_.setZero();
+        fallback_mag_mean_.setZero();
+        fallback_mean_count_ = 0;
+    
+        // Start a fresh deadline window from now (or from mag delay if still before it)
+        mag_ref_deadline_sec_ = std::max(t_, cfg_.mag_delay_sec) + cfg_.mag_ref_timeout_sec;
+      }
+    
+      last_impl_startup_stage_ = cur_stage;
+    }
 
     if (stage_ == Stage::Warming && impl_.isAdaptiveLive()) {
       stage_ = Stage::Live;
