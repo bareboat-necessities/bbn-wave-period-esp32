@@ -714,8 +714,11 @@ private:
     if (spectral_mode_matching_enable_ && spectrum_.ready()) {
       Hs_m = (float)spectrum_.computeHs();   // Hs = 4*sqrt(m0) from S_eta
     } else {
-      Hs_m = NAN; // keep whatever was set at init; don't inject wrong amplitude
+      // narrowband fallback from tuner sigma_a and wave frequency
+      const float sigma_eta = sigmaEtaFromSigmaA_F_(sigma_a, f_hz);
+      if (std::isfinite(sigma_eta) && sigma_eta > 0.0f) Hs_m = 4.0f * sigma_eta;
     }
+    Hs_m = std::clamp(Hs_m, 0.05f, 15.0f);
   
     // Keep your existing damping/horizontal heuristics for now (these don't cause the blow-up).
     const float sea = std::max(0.0f, tune_.sigma_applied);
