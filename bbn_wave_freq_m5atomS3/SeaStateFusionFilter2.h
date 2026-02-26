@@ -692,7 +692,13 @@ private:
   
   void apply_oscillators_tune_() {
     if (!mekf_) return;
-  
+
+    // Once spectrum is ready and we're doing spectral mode matching,
+    // do NOT call set_broadband_params(), it will overwrite per-mode f/q.
+    if (spectral_mode_matching_enable_ && spectrum_.ready()) {
+      return;
+    }
+    
     // Wave accel std-dev (m/s^2). Keep a small floor so math doesn't go singular.
     const float sigma_a = std::max(std::max(0.05f, acc_noise_floor_sigma_), tune_.sigma_applied);
   
@@ -738,7 +744,8 @@ private:
       const float a = expBlendAlpha_(adapt_every_secs_, broadband_f0_tau_sec_);
       broadband_f0_applied_hz_ += a * (f0_cmd_hz - broadband_f0_applied_hz_);
     }
-  
+
+    if (!std::isfinite(Hs_m)) return;
     mekf_->set_broadband_params(broadband_f0_applied_hz_, Hs_m, zeta_mid, horiz_scale);
   }
 
@@ -851,10 +858,10 @@ private:
     tune_.sigma_applied += alpha * (sigma_t - tune_.sigma_applied);
 
     if (time_ - last_adapt_time_sec_ > adapt_every_secs_) {
-      if (tuner_.isFreqReady() || (spectral_fp_valid_ && spectrum_.ready())) {
-        apply_oscillators_tune_();
+      if (!(spectral_mode_matching_enable_ && spectrum_.ready())) {
+        if (tuner_.isFreqReady() || spectral_fp_valid_) apply_oscillators_tune_();
       }
-      apply_adaptive_rms_tuning_(); // apply adaptive RMS-focused scaling knobs
+      apply_adaptive_rms_tuning_();
       last_adapt_time_sec_ = time_;
     }
   }
