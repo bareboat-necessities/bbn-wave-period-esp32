@@ -38,7 +38,7 @@ constexpr float MIN_FREQ_HZ = 0.05f;
 constexpr float MAX_FREQ_HZ = 5.0f;
 
 constexpr float MIN_TAU_S   = 0.02f;
-constexpr float MAX_TAU_S   = 4.5f;
+constexpr float MAX_TAU_S   = 12.0f;
 constexpr float MAX_SIGMA_A = 6.0f;
 
 constexpr float ADAPT_TAU_SEC          = 1.5f;
@@ -370,7 +370,7 @@ public:
     
         fp_raw = std::clamp(fp_raw, fmin, fmax);
     
-        // --- Confidence gate: reject “flat” or noisy peaks ---
+        // Confidence gate: reject “flat” or noisy peaks
         // peak/median in-band on S_eta. If the spectrum is flat, fp is basically random.
         const auto Seta  = spectrum_.getDisplacementSpectrum(); // Vec (copy)
         const auto freqs = spectrum_.getFrequencies();
@@ -409,7 +409,7 @@ public:
         }
     
         if (accept) {
-          // --- Jump limit: prevent harmonic flips (e.g. 0.12 -> 0.28 in one update) ---
+          // Jump limit: prevent harmonic flips (e.g. 0.12 -> 0.28 in one update)
           // Use previous smoothed fp if available, else fall back to tracker slow.
           float f_ref = std::isfinite(spectral_fp_hz_smth_) && spectral_fp_hz_smth_ > 0.0f
                       ? spectral_fp_hz_smth_
