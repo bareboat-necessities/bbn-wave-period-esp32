@@ -442,7 +442,7 @@ public:
                   : std::clamp(freq_hz_slow_,        min_freq_hz_, max_freq_hz_);
 
     // If a new spectrum block arrived, update f0_app immediately (even in spectral mode).
-    if (spectrum_new_block && spectral_fp_valid_) {
+    if (spectrum_new_block && spectrum_.ready()) {
       apply_oscillators_tune_();
     }    
 
