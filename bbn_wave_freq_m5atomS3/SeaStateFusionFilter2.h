@@ -263,9 +263,16 @@ public:
       // Trust Z a lot more for heave reconstruction
       const float infl_z = std::clamp(0.52f + 0.02f * std::min(sea, 3.0f) + 0.03f * dyn, 0.50f, 0.78f);
       
-      const Eigen::Vector3f sig_live(sig_nom.x() * infl_xy,
-                                     sig_nom.y() * infl_xy,
-                                     sig_nom.z() * infl_z);
+      Eigen::Vector3f sig_live(sig_nom.x() * infl_xy,
+                               sig_nom.y() * infl_xy,
+                               sig_nom.z() * infl_z);
+      
+      // HARD FLOOR: never claim accel std-dev below your noise floor
+      const float floor = std::max(0.12f, acc_noise_floor_sigma_);
+      sig_live.x() = std::max(sig_live.x(), floor);
+      sig_live.y() = std::max(sig_live.y(), floor);
+      sig_live.z() = std::max(sig_live.z(), floor);
+      
       mekf_->set_Racc(sig_live);
     }
   
