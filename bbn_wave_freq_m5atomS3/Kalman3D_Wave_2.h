@@ -736,6 +736,10 @@ public:
                                   float horiz_ratio,
                                   float q_floor = 1e-8f)
   {
+    std::array<T,KMODES> omega_old{};
+    std::array<T,KMODES> zeta_old{};
+    for (int k=0;k<KMODES;++k) { omega_old[k]=omega_[k]; zeta_old[k]=zeta_[k]; }
+      
     const T hr = std::clamp(T(horiz_ratio), T(0), T(1));
   
     for (int k = 0; k < KMODES; ++k) {
@@ -750,11 +754,16 @@ public:
       mode_omega_rad_s_(k) = omega;
       mode_q_axis_(k) = Vec3(qxy, qxy, qz_k);
     }
-  
+
+    rescale_wave_for_mode_param_change_(omega_old, zeta_old);
     on_wave_mode_params_changed_();
   }
       
   void set_broadband_params(T f0_hz, T Hs_m, T zeta_mid = T(0.08), T horiz_scale = T(0.35)) {
+    std::array<T,KMODES> omega_old{};
+    std::array<T,KMODES> zeta_old{};
+    for (int k=0;k<KMODES;++k) { omega_old[k]=omega_[k]; zeta_old[k]=zeta_[k]; }
+      
     const T w0 = T(2)*T(M_PI)*std::max(T(1e-4), f0_hz);
 
     for (int k=0;k<KMODES;++k) {
@@ -813,6 +822,7 @@ public:
       }
       var_aw(ax) = std::max(T(0), v);
     }
+    rescale_wave_for_mode_param_change_(omega_old, zeta_old);
     Sigma_aw_disabled_world_ = Mat3::Zero();
     Sigma_aw_disabled_world_(0,0) = var_aw.x();
     Sigma_aw_disabled_world_(1,1) = var_aw.y();
@@ -1819,7 +1829,66 @@ private:
   EIGEN_STRONG_INLINE void freeze_wave_rows_(Eigen::MatrixBase<Derived>& M) const {
     M.template block<WAVE_N,3>(OFF_WAVE,0).setZero();
   }
-
+  
+  // Rescale wave states and covariance so the *instantaneous wave accel contribution*
+  // stays continuous when (omega,zeta) change.
+  // For each mode: preserve  -ω² p  and  -2ζω v  at the moment of parameter change.
+  //
+  // p_new = (ω_old² / ω_new²) * p_old
+  // v_new = (ζ_old*ω_old / (ζ_new*ω_new)) * v_old
+  //
+  // Covariance update: P <- D P Dᵀ for the affected wave-state indices.
+  void rescale_wave_for_mode_param_change_(const std::array<T,KMODES>& omega_old,
+                                          const std::array<T,KMODES>& zeta_old)
+  {
+    // Build per-wave-state scale (WAVE_N = 6*KMODES, ordering p(3),v(3) per mode).
+    std::array<T, WAVE_N> s{};
+    for (int i = 0; i < WAVE_N; ++i) s[i] = T(1);
+  
+    for (int k = 0; k < KMODES; ++k) {
+      const T wo = omega_old[k];
+      const T wn = omega_[k];
+      const T zo = zeta_old[k];
+      const T zn = zeta_[k];
+  
+      if (!(std::isfinite(wo) && std::isfinite(wn) && wo > T(1e-6) && wn > T(1e-6))) continue;
+      const T zod = (std::isfinite(zo) && zo > T(1e-6)) ? zo : T(1);
+      const T znd = (std::isfinite(zn) && zn > T(1e-6)) ? zn : T(1);
+  
+      const T sp = (wo*wo) / (wn*wn);
+      const T sv = (zod*wo) / (znd*wn);
+  
+      for (int ax = 0; ax < 3; ++ax) {
+        s[6*k + 0 + ax] = sp;  // p
+        s[6*k + 3 + ax] = sv;  // v
+      }
+    }
+  
+    // Apply to state
+    for (int i = 0; i < WAVE_N; ++i) {
+      const int idx = OFF_WAVE + i;
+      const T si = s[i];
+      if (si != T(1)) x_(idx) *= si;
+    }
+  
+    // Apply to covariance: P <- D P D^T on those indices (row then col)
+    for (int i = 0; i < WAVE_N; ++i) {
+      const int idx = OFF_WAVE + i;
+      const T si = s[i];
+      if (si != T(1)) P_.row(idx) *= si;
+    }
+    for (int i = 0; i < WAVE_N; ++i) {
+      const int idx = OFF_WAVE + i;
+      const T si = s[i];
+      if (si != T(1)) P_.col(idx) *= si;
+    }
+  
+    symmetrize_P_();
+    clamp_P_diag_(T(1e-15));
+    symmetrize_P_();
+    enforce_axis_independence_P_();
+  }
+      
   EIGEN_STRONG_INLINE void joseph_update3_(const MatX3& K, const Mat3& S, const MatX3& PCt) {
     for (int i=0;i<NX;++i) {
       for (int j=i;j<NX;++j) {
