@@ -873,14 +873,20 @@ private:
 
   void adapt_mekf_(float dt, float tau_t, float sigma_t) {
     const float alpha = 1.0f - std::exp(-dt / adapt_tau_sec_);
-
+  
     tune_.tau_applied   += alpha * (tau_t   - tune_.tau_applied);
     tune_.sigma_applied += alpha * (sigma_t - tune_.sigma_applied);
-
+  
     if (time_ - last_adapt_time_sec_ > adapt_every_secs_) {
-      if (!(spectral_mode_matching_enable_ && spectrum_.ready())) {
-        if (tuner_.isFreqReady() || spectral_fp_valid_) apply_oscillators_tune_();
+  
+      // ALWAYS update f0_app bookkeeping (and possibly broadband params),
+      // even when spectrum is ready. apply_oscillators_tune_() itself
+      // already returns early (after updating broadband_f0_applied_hz_)
+      // when spectral mode matching is active and spectrum is ready.
+      if (tuner_.isFreqReady() || spectral_fp_valid_) {
+        apply_oscillators_tune_();
       }
+  
       apply_adaptive_rms_tuning_();
       last_adapt_time_sec_ = time_;
     }
