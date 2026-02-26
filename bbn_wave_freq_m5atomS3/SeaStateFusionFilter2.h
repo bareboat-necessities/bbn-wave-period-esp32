@@ -354,30 +354,46 @@ public:
       base_logvar_ema_ = (1.0f - base_logvar_alpha_) * base_logvar_ema_ + base_logvar_alpha_ * e2;
     }
     
-    // Spectral peak (DISPLACEMENT) -> fp_disp (smoothed + jump-limited + confidence-gated)
+    // Spectral frequency estimates from DISPLACEMENT spectrum:
+    //   - fp_disp : peak (argmax), good for "never exceed" constraint but can flap
+    //   - fc_disp : log-moment center, much more stable -> use for wave_freq/tau/f0_cmd
     if (spectrum_new_block && spectrum_.ready()) {
     
-      // Use the spectrum’s own analysis band (your members), but DO NOT clamp to min_freq_hz_ here,
-      // because that reintroduces the 0.12 peg if min_freq_hz_ is still 0.12 somewhere.
       const float fmin = std::max(0.02f, spectral_mode_fmin_hz_);
       const float fmax = std::max(fmin + 1e-3f, spectral_mode_fmax_hz_);
     
-      // Raw peak
-      float fp_raw = (float)spectrum_.estimatePeakFrequencyHz();
-      if (!std::isfinite(fp_raw) || fp_raw <= 0.0f) {
-        // do not update
-      } else {
+      // --- Raw estimates ---
+      float fp_raw = (float)spectrum_.estimatePeakFrequencyHz();     // peak of S_eta
+      const auto st = spectrum_.estimateLogFreqStats();              // moments of S_eta
+      float fc_raw = (float)st.f_center_hz;                          // exp(mu_logf)
     
-        fp_raw = std::clamp(fp_raw, fmin, fmax);
+      if (std::isfinite(fp_raw) && fp_raw > 0.0f) fp_raw = std::clamp(fp_raw, fmin, fmax);
+      else fp_raw = NAN;
     
-        // Confidence gate: reject “flat” or noisy peaks
-        // peak/median in-band on S_eta. If the spectrum is flat, fp is basically random.
-        const auto Seta  = spectrum_.getDisplacementSpectrum(); // Vec (copy)
+      if (std::isfinite(fc_raw) && fc_raw > 0.0f) fc_raw = std::clamp(fc_raw, fmin, fmax);
+      else fc_raw = NAN;
+    
+      // --- Confidence gate (reject flat / noisy / inconsistent spectra) ---
+      bool accept = true;
+    
+      // Need meaningful variance
+      const double m0 = st.m0;
+      if (!(std::isfinite(m0) && m0 > 1e-8)) accept = false;
+    
+      // Width gate: if spectrum is extremely wide, peak is unstable; still allow center but more strict consistency
+      const double siglog = st.sig_logf;
+      if (!(std::isfinite(siglog) && siglog > 0.0 && siglog < 0.95)) accept = false;
+    
+      // Require both estimates
+      if (!std::isfinite(fp_raw) || !std::isfinite(fc_raw)) accept = false;
+    
+      // Peak/median gate (your prior logic)
+      if (accept) {
+        const auto Seta  = spectrum_.getDisplacementSpectrum();
         const auto freqs = spectrum_.getFrequencies();
     
-        int i_pk = -1;
         double pk = -1.0;
-        std::array<double, 28> band_vals{}; // Nfreq=28 in your instantiation
+        std::array<double, 28> band_vals{};
         int nb = 0;
     
         for (int i = 0; i < 28; ++i) {
@@ -385,61 +401,69 @@ public:
           if (!(f >= fmin && f <= fmax)) continue;
     
           const double v = std::max(0.0, (double)Seta[i]);
-          if (std::isfinite(v)) {
-            if (nb < (int)band_vals.size()) band_vals[nb++] = v;
-            if (v > pk) { pk = v; i_pk = i; }
-          }
+          if (!std::isfinite(v)) continue;
+    
+          if (nb < (int)band_vals.size()) band_vals[nb++] = v;
+          if (v > pk) pk = v;
         }
     
-        bool accept = (i_pk >= 0 && nb >= 7); // need some bins
+        accept = (nb >= 7 && pk > 0.0);
     
         if (accept) {
-          // median
           auto tmp = band_vals;
           const int mid = nb / 2;
           std::nth_element(tmp.begin(), tmp.begin() + mid, tmp.begin() + nb);
           const double med = std::max(1e-18, tmp[mid]);
-    
           const double peak_ratio = pk / med;
     
-          // This is the key: if peak isn't at least ~2x median, don't trust it.
-          if (!(std::isfinite(peak_ratio) && peak_ratio >= 2.0)) {
-            accept = false;
-          }
+          // Make this stricter than before; if it fails, don't trust fp (and don't retune with it).
+          if (!(std::isfinite(peak_ratio) && peak_ratio >= 2.6)) accept = false;
         }
+      }
     
-        if (accept) {
-          // Jump limit: prevent harmonic flips (e.g. 0.12 -> 0.28 in one update)
-          // Use previous smoothed fp if available, else fall back to tracker slow.
-          float f_ref = std::isfinite(spectral_fp_hz_smth_) && spectral_fp_hz_smth_ > 0.0f
-                      ? spectral_fp_hz_smth_
-                      : std::clamp(freq_hz_slow_, fmin, fmax);
+      // Consistency gate: peak and center must be reasonably close (prevents harmonic flips)
+      if (accept) {
+        const float dlog = std::fabs(std::log(std::max(1e-6f, fp_raw)) - std::log(std::max(1e-6f, fc_raw)));
+        // within ~±30% (log(1.3)≈0.262); loosen slightly for broad seas
+        const float dlog_max = (float)std::clamp(0.26 + 0.25 * siglog, 0.26, 0.45);
+        if (!(dlog <= dlog_max)) accept = false;
+      }
     
-          // allow +35% / -30% per spectrum update
-          const float up   = 1.35f;
-          const float down = 0.70f;
-          fp_raw = std::clamp(fp_raw, f_ref * down, f_ref * up);
-          fp_raw = std::clamp(fp_raw, fmin, fmax);
+      if (accept) {
+        // Jump-limit CENTER (peak can flap; center is what we drive)
+        float fc_ref = (std::isfinite(spectral_fc_hz_smth_) && spectral_fc_hz_smth_ > 0.0f)
+                     ? spectral_fc_hz_smth_
+                     : std::clamp(freq_hz_slow_, fmin, fmax);
     
-          // Smooth fp on spectrum cadence (NOT IMU dt)
-          const float dt_spec = std::max(1e-3f, (float)spectrum_.updatePeriodSec());
-          const float a_spec  = expBlendAlpha_(dt_spec, spectral_fp_tau_sec_);
+        // allow +18% / -15% per spectrum update (tight!)
+        fc_raw = std::clamp(fc_raw, fc_ref * 0.85f, fc_ref * 1.18f);
+        fc_raw = std::clamp(fc_raw, fmin, fmax);
     
-          if (!std::isfinite(spectral_fp_hz_smth_) || spectral_fp_hz_smth_ <= 0.0f) {
-            spectral_fp_hz_smth_ = fp_raw;
-          } else {
-            spectral_fp_hz_smth_ += a_spec * (fp_raw - spectral_fp_hz_smth_);
-          }
+        // Jump-limit PEAK too, but looser
+        float fp_ref = (std::isfinite(spectral_fp_hz_smth_) && spectral_fp_hz_smth_ > 0.0f)
+                     ? spectral_fp_hz_smth_
+                     : fc_raw;
+        fp_raw = std::clamp(fp_raw, fp_ref * 0.75f, fp_ref * 1.33f);
+        fp_raw = std::clamp(fp_raw, fmin, fmax);
     
-          spectral_fp_valid_ = true;
-        }
+        // Smooth on spectrum cadence
+        const float dt_spec = std::max(1e-3f, (float)spectrum_.updatePeriodSec());
+    
+        const float a_fp = expBlendAlpha_(dt_spec, spectral_fp_tau_sec_);
+        if (!std::isfinite(spectral_fp_hz_smth_) || spectral_fp_hz_smth_ <= 0.0f) spectral_fp_hz_smth_ = fp_raw;
+        else spectral_fp_hz_smth_ += a_fp * (fp_raw - spectral_fp_hz_smth_);
+        spectral_fp_valid_ = true;
+    
+        const float a_fc = expBlendAlpha_(dt_spec, spectral_fc_tau_sec_);
+        if (!std::isfinite(spectral_fc_hz_smth_) || spectral_fc_hz_smth_ <= 0.0f) spectral_fc_hz_smth_ = fc_raw;
+        else spectral_fc_hz_smth_ += a_fc * (fc_raw - spectral_fc_hz_smth_);
+        spectral_fc_valid_ = true;
       }
     }
     
-    // Keep this simple: when spectrum is valid, wave/tau use fp_disp directly.
-    wave_freq_hz_ = (spectral_fp_valid_ && std::isfinite(spectral_fp_hz_smth_) && spectral_fp_hz_smth_ > 0.0f)
-                  ? std::clamp(spectral_fp_hz_smth_, min_freq_hz_, max_freq_hz_)
-                  : std::clamp(freq_hz_slow_,        min_freq_hz_, max_freq_hz_);
+    wave_freq_hz_ = (spectral_fc_valid_ && std::isfinite(spectral_fc_hz_smth_) && spectral_fc_hz_smth_ > 0.0f)
+              ? std::clamp(spectral_fc_hz_smth_, min_freq_hz_, max_freq_hz_)
+              : std::clamp(freq_hz_slow_,        min_freq_hz_, max_freq_hz_);
 
     // NEW SPECTRUM BLOCK: retune oscillator bank once (≈2 s cadence), then restore spectral q once.
     if (spectrum_new_block && spectrum_.ready()) {
@@ -801,22 +825,34 @@ private:
     }
     f0_base_hz = std::clamp(f0_base_hz, min_freq_hz_, max_freq_hz_);
   
-    // Spectral displacement peak (smoothed)
+    // Spectral peak (for hard "never exceed") and spectral center (for stability)
     const bool have_fp =
         spectral_fp_valid_ &&
         std::isfinite(spectral_fp_hz_smth_) &&
         (spectral_fp_hz_smth_ > 0.0f);
-  
+    
     const float fp_disp = have_fp
         ? std::clamp(spectral_fp_hz_smth_, min_freq_hz_, max_freq_hz_)
         : NAN;
-  
+    
+    const bool have_fc =
+        spectral_fc_valid_ &&
+        std::isfinite(spectral_fc_hz_smth_) &&
+        (spectral_fc_hz_smth_ > 0.0f);
+    
+    const float fc_disp = have_fc
+        ? std::clamp(spectral_fc_hz_smth_, min_freq_hz_, max_freq_hz_)
+        : NAN;
+    
     // Command f0:
-    // - If we have displacement peak, use it (hard constraint).
-    // - Otherwise fall back to base.
-    float f0_cmd_hz = have_fp ? fp_disp : f0_base_hz;
-    f0_cmd_hz = std::clamp(f0_cmd_hz, min_freq_hz_, max_freq_hz_);
+    // - Prefer stable spectral center when available
+    // - Else fall back to base
+    float f0_cmd_hz = have_fc ? fc_disp : f0_base_hz;
+    
+    // HARD constraint you want: f0 must never exceed displacement peak if peak is valid
     if (have_fp) f0_cmd_hz = std::min(f0_cmd_hz, fp_disp);
+    
+    f0_cmd_hz = std::clamp(f0_cmd_hz, min_freq_hz_, max_freq_hz_);
   
     // Smooth applied f0 using SPECTRUM cadence when ready (prevents fast thrash).
     float dt_blend = adapt_every_secs_;
@@ -1122,8 +1158,12 @@ private:
   float spectral_fp_hz_       = NAN;   // raw peak frequency from latest spectrum block
   float spectral_fp_hz_smth_  = NAN;   // smoothed peak
   bool  spectral_fp_valid_    = false;
-
   float spectral_fp_tau_sec_  = 3.0f;  // peak smoothing (seconds)
+
+  // Displacement-spectrum LOG-CENTER (more stable than peak)
+  float spectral_fc_hz_smth_ = NAN;   // smoothed exp(mu_logf)
+  bool  spectral_fc_valid_   = false;
+  float spectral_fc_tau_sec_ = 6.0f;  // center smoothing (seconds)
 
   // Feed peak into broadband center frequency
   float spectral_f0_blend_      = 0.85f; // 0=ignore spectral, 1=use only spectral
@@ -1200,7 +1240,10 @@ private:
     spectral_fp_hz_      = NAN;
     spectral_fp_hz_smth_ = NAN;
     spectral_fp_valid_   = false;
-  
+
+    spectral_fc_hz_smth_ = NAN;
+    spectral_fc_valid_   = false;
+    
     broadband_f0_applied_hz_ = NAN;
   
     spectral_applied_initialized_ = false;
@@ -1272,15 +1315,68 @@ private:
       zeta_k[k] = std::clamp(z, 0.003f, 0.20f);
     }
   
-    // Estimate qz for these fixed centers (physically: var_p from S_eta, then q=4*zeta*omega^3*var)
-    std::array<float, K> qz_mode{};
+    // Raw per-mode q from current spectrum
+    std::array<float, K> qz_raw{};
     spectrum_.template estimateModeQzFixedCenters<K>(
         f_cur_hz,
-        qz_mode,
+        qz_raw,
         zeta_k,
         spectral_q_gain_,
         spectral_q_floor_,
         spectral_q_cap_);
+  
+    // Step-limit + EMA smooth q (this is what your knobs were for)
+    const float dt_apply = std::max(1e-3f, spectral_apply_every_sec_);
+    const float a_q = expBlendAlpha_(dt_apply, spectral_q_apply_tau_sec_);
+  
+    if (!spectral_applied_initialized_) {
+      for (int k = 0; k < K; ++k) {
+        spectral_qz_applied_[k] = std::clamp(qz_raw[k], spectral_q_floor_, spectral_q_cap_);
+      }
+      spectral_applied_initialized_ = true;
+    } else {
+      for (int k = 0; k < K; ++k) {
+        const float q_prev = std::max(spectral_q_floor_, spectral_qz_applied_[k]);
+        float q = std::clamp(qz_raw[k], spectral_q_floor_, spectral_q_cap_);
+  
+        // Limit per-apply jumps
+        const float q_min = q_prev * spectral_q_step_down_ratio_;
+        const float q_max = q_prev * spectral_q_step_up_ratio_;
+        q = std::clamp(q, q_min, q_max);
+  
+        spectral_qz_applied_[k] = q_prev + a_q * (q - q_prev);
+        spectral_qz_applied_[k] = std::clamp(spectral_qz_applied_[k], spectral_q_floor_, spectral_q_cap_);
+      }
+    }
+  
+    // Initialize + smooth total-q budget (prevents overall stiffness/amplitude bouncing)
+    float sum_q = 0.0f;
+    for (int k = 0; k < K; ++k) sum_q += spectral_qz_applied_[k];
+  
+    if (!spectral_q_budget_initialized_) {
+      spectral_q_budget_initialized_ = true;
+      spectral_q_budget_base_sum_ = std::max(sum_q, float(K) * spectral_q_floor_);
+      spectral_q_budget_sum_      = spectral_q_budget_base_sum_;
+  
+      float disp0 = getDisplacementScale(true);
+      if (!std::isfinite(disp0) || disp0 <= 0.0f) disp0 = 1.0f;
+      spectral_q_budget_ref_disp_scale_m_ = disp0;
+    }
+  
+    const float tgt = spectral_q_budget_target_from_tuner_();
+    if (std::isfinite(tgt) && tgt > 0.0f) {
+      const float a_b = expBlendAlpha_(dt_apply, spectral_q_budget_tau_sec_);
+      spectral_q_budget_sum_ += a_b * (tgt - spectral_q_budget_sum_);
+  
+      // Rescale to match budget (bounded)
+      const float sum_now = std::max(1e-12f, sum_q);
+      float s = spectral_q_budget_sum_ / sum_now;
+      s = std::clamp(s, 0.55f, 1.65f);
+  
+      for (int k = 0; k < K; ++k) {
+        spectral_qz_applied_[k] = std::clamp(spectral_qz_applied_[k] * s, spectral_q_floor_, spectral_q_cap_);
+      }
+    }
   
     // XY ratio
     const float hr = std::clamp(spectral_horiz_q_ratio_, 0.0f, 1.0f);
@@ -1289,7 +1385,10 @@ private:
     mekf_->set_wave_Q_scale(1.0f);
   
     // Push q only (freqs unchanged because we pass f_cur_hz back)
-    mekf_->set_wave_mode_freqs_and_qz(f_cur_hz, qz_mode, hr, spectral_q_floor_);
+    std::array<float, K> qz_out{};
+    for (int k = 0; k < K; ++k) qz_out[k] = spectral_qz_applied_[k];
+  
+    mekf_->set_wave_mode_freqs_and_qz(f_cur_hz, qz_out, hr, spectral_q_floor_);
   }
 };
 
