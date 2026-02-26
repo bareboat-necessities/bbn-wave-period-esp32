@@ -807,9 +807,7 @@ private:
     f_for_amp = std::clamp(f_for_amp, min_freq_hz_, max_freq_hz_);
   
     // Hs from tuner-consistent narrowband amplitude
-    const float f = std::clamp(wave_freq_hz_, min_freq_hz_, max_freq_hz_);
-    const float w = 2.0f * float(M_PI) * std::max(1e-4f, f);
-    const float sigma_a = std::max(0.05f, tune_.sigma_applied);
+    const float w = 2.0f * float(M_PI) * std::max(1e-4f, f_for_amp);
     const float sigma_eta = sigma_a / std::max(1e-9f, w*w);
     float Hs_m = std::clamp(4.0f * sigma_eta, 0.05f, 15.0f);
   
