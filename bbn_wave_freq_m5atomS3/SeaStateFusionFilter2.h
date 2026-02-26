@@ -1214,6 +1214,8 @@ private:
   float spectral_q_step_down_ratio_ = 0.55f;  // per-apply max shrink (before EMA)
 
   bool spectral_applied_initialized_ = false;
+  bool spectral_mode_freq_initialized_ = false;
+  std::array<float, Kalman3D_Wave_2<float>::kWaveModes> spectral_f_applied_hz_{};
   std::array<float, Kalman3D_Wave_2<float>::kWaveModes> spectral_qz_applied_{};
 
   // Total-q budget (anchored to tuner displacement scale)
@@ -1263,6 +1265,8 @@ private:
     broadband_f0_applied_hz_ = NAN;
   
     spectral_applied_initialized_ = false;
+    spectral_mode_freq_initialized_ = false;
+    spectral_f_applied_hz_.fill(FREQ_GUESS);
     spectral_qz_applied_.fill(0.0f);
   
     spectral_q_budget_initialized_ = false;
@@ -1323,7 +1327,7 @@ private:
   
     constexpr int K = Kalman3D_Wave_2<float>::kWaveModes;
   
-    // Current fixed mode centers + damping from the filter
+    // Current mode centers + damping from the filter
     std::array<float, K> f_cur_hz{};
     std::array<float, K> zeta_k{};
     mekf_->get_wave_mode_freqs_hz(f_cur_hz);
@@ -1339,18 +1343,47 @@ private:
       zeta_k[k] = std::clamp(z, 0.003f, 0.20f);
     }
   
-    // Raw per-mode q from current spectrum
+    // Raw per-mode (f,q) from current spectrum.
+    // IMPORTANT: adapt BOTH centers and q (not only q at fixed centers),
+    // otherwise rough/slow seas can stay mis-centered and underfit badly.
+    std::array<float, K> f_raw_hz{};
     std::array<float, K> qz_raw{};
-    spectrum_.template estimateModeQzFixedCenters<K>(
-        f_cur_hz,
+    spectrum_.template estimateModeQz<K>(
+        f_raw_hz,
         qz_raw,
         zeta_k,
+        spectral_mode_fmin_hz_,
+        spectral_mode_fmax_hz_,
         spectral_q_gain_,
         spectral_q_floor_,
         spectral_q_cap_);
-  
-    // Step-limit + EMA smooth q (this is what your knobs were for)
+
+    // Step-limit + EMA smooth mode centers.
     const float dt_apply = std::max(1e-3f, spectral_apply_every_sec_);
+    const float a_f = expBlendAlpha_(dt_apply, spectral_q_apply_tau_sec_);
+    if (!spectral_mode_freq_initialized_) {
+      for (int k = 0; k < K; ++k) {
+        const float fk = std::isfinite(f_raw_hz[k]) ? f_raw_hz[k] : f_cur_hz[k];
+        spectral_f_applied_hz_[k] = std::clamp(fk, spectral_mode_fmin_hz_, spectral_mode_fmax_hz_);
+      }
+      spectral_mode_freq_initialized_ = true;
+    } else {
+      for (int k = 0; k < K; ++k) {
+        const float f_prev = std::clamp(spectral_f_applied_hz_[k], spectral_mode_fmin_hz_, spectral_mode_fmax_hz_);
+        float f_tgt = std::isfinite(f_raw_hz[k]) ? f_raw_hz[k] : f_prev;
+        f_tgt = std::clamp(f_tgt, spectral_mode_fmin_hz_, spectral_mode_fmax_hz_);
+
+        // Keep frequency movement smooth and physically plausible per apply.
+        const float f_min = f_prev * 0.88f;
+        const float f_max = f_prev * 1.14f;
+        f_tgt = std::clamp(f_tgt, f_min, f_max);
+
+        spectral_f_applied_hz_[k] = f_prev + a_f * (f_tgt - f_prev);
+        spectral_f_applied_hz_[k] = std::clamp(spectral_f_applied_hz_[k], spectral_mode_fmin_hz_, spectral_mode_fmax_hz_);
+      }
+    }
+
+    // Step-limit + EMA smooth q (this is what your knobs were for)
     const float a_q = expBlendAlpha_(dt_apply, spectral_q_apply_tau_sec_);
   
     if (!spectral_applied_initialized_) {
@@ -1408,11 +1441,11 @@ private:
     // If we're pushing per-mode q directly, keep global scale neutral
     mekf_->set_wave_Q_scale(1.0f);
   
-    // Push q only (freqs unchanged because we pass f_cur_hz back)
+    // Push both adapted centers and q.
     std::array<float, K> qz_out{};
     for (int k = 0; k < K; ++k) qz_out[k] = spectral_qz_applied_[k];
-  
-    mekf_->set_wave_mode_freqs_and_qz(f_cur_hz, qz_out, hr, spectral_q_floor_);
+
+    mekf_->set_wave_mode_freqs_and_qz(spectral_f_applied_hz_, qz_out, hr, spectral_q_floor_);
   }
 };
 
