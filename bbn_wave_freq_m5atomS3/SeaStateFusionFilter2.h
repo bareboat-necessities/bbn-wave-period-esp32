@@ -382,7 +382,7 @@ public:
     
       // Width gate: if spectrum is extremely wide, peak is unstable; still allow center but more strict consistency
       const double siglog = st.sig_logf;
-      if (!(std::isfinite(siglog) && siglog > 0.0 && siglog < 0.95)) accept = false;
+      if (!(std::isfinite(siglog) && siglog > 0.0 && siglog < 1.20)) accept = false;
     
       // Require both estimates
       if (!std::isfinite(fp_raw) || !std::isfinite(fc_raw)) accept = false;
@@ -407,7 +407,7 @@ public:
           if (v > pk) pk = v;
         }
     
-        accept = (nb >= 7 && pk > 0.0);
+        accept = (nb >= 5 && pk > 0.0);
     
         if (accept) {
           auto tmp = band_vals;
@@ -417,7 +417,7 @@ public:
           const double peak_ratio = pk / med;
     
           // Make this stricter than before; if it fails, don't trust fp (and don't retune with it).
-          if (!(std::isfinite(peak_ratio) && peak_ratio >= 2.6)) accept = false;
+          if (!(std::isfinite(peak_ratio) && peak_ratio >= 1.6)) accept = false;
         }
       }
     
@@ -425,7 +425,7 @@ public:
       if (accept) {
         const float dlog = std::fabs(std::log(std::max(1e-6f, fp_raw)) - std::log(std::max(1e-6f, fc_raw)));
         // within ~±30% (log(1.3)≈0.262); loosen slightly for broad seas
-        const float dlog_max = (float)std::clamp(0.26 + 0.25 * siglog, 0.26, 0.45);
+        const float dlog_max = (float)std::clamp(0.32 + 0.30 * siglog, 0.32, 0.60);
         if (!(dlog <= dlog_max)) accept = false;
       }
     
