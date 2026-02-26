@@ -506,10 +506,11 @@ public:
     if (time_ >= next_debug_print_time_sec_) {
       next_debug_print_time_sec_ = time_ + debug_print_every_sec_;
       printf(
-        "f_slow:%6.3f  f_wave:%6.3f  fp_disp:%6.3f  f0_app:%6.3f\n",
+        "f_slow:%6.3f  f_wave:%6.3f  fp:%6.3f  fc:%6.3f  f0_app:%6.3f\n",
         (double)freq_hz_slow_,
         (double)wave_freq_hz_,
         (double)(spectral_fp_valid_ ? spectral_fp_hz_smth_ : NAN),
+        (double)(spectral_fc_valid_ ? spectral_fc_hz_smth_ : NAN),
         (double)(std::isfinite(broadband_f0_applied_hz_) ? broadband_f0_applied_hz_ : NAN)
       );
     }
