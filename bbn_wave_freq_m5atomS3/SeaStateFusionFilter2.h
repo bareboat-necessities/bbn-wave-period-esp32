@@ -765,7 +765,7 @@ private:
 
   void update_tuner_(float dt, float a_vert_inertial_up, float wave_freq_hz) {
     tuner_.update(dt, a_vert_inertial_up, wave_freq_hz);
-
+  
     switch (startup_stage_) {
       case StartupStage::Cold:
         if (startup_stage_t_ >= online_tune_warmup_sec_) {
@@ -773,43 +773,58 @@ private:
           startup_stage_t_ = 0.0f;
         }
         return;
-
+  
       case StartupStage::TunerWarm:
         if (!tuner_.isFreqReady()) return;
-        if (tuner_.isReady()) {
-          enterLive_();
-        }
+        if (tuner_.isReady()) enterLive_();
         break;
-
+  
       case StartupStage::Live:
         break;
     }
-
-    float f_used = wave_freq_hz;
-    if (!std::isfinite(f_used) || f_used <= 0.0f) {
-      // fallback only if needed
-      f_used = tuner_.getFrequencyHz();
+  
+    // sigma from variance
+    float var_total = acc_noise_floor_sigma_ * acc_noise_floor_sigma_;
+    if (tuner_.isVarReady()) var_total = std::max(0.0f, tuner_.getAccelVariance());
+  
+    const float var_noise = acc_noise_floor_sigma_ * acc_noise_floor_sigma_;
+    float var_wave = var_total - var_noise;
+    if (var_wave < 0.0f) var_wave = 0.0f;
+  
+    if (freq_stillness_.isStill()) {
+      const float still_t = std::max(0.0f, freq_stillness_.getStillTime());
+      constexpr float STILL_VAR_DECAY_SEC = 1.0f;
+      float atten = std::exp(-still_t / STILL_VAR_DECAY_SEC);
+      atten = std::clamp(atten, 0.0f, 1.0f);
+      var_wave *= atten;
     }
+  
+    var_wave = std::max(var_wave, 1e-6f);
+    const float sigma_wave = std::sqrt(var_wave);
+  
+    // tau from wave_freq_hz
+    float f_used = wave_freq_hz;
+    if (!std::isfinite(f_used) || f_used <= 0.0f) f_used = tuner_.getFrequencyHz();
     if (!std::isfinite(f_used) || f_used < min_freq_hz_) f_used = min_freq_hz_;
     if (f_used > max_freq_hz_) f_used = max_freq_hz_;
-    
-    float tau_raw = tau_coeff_ * 0.5f / f_used;
-
+  
+    const float tau_raw = tau_coeff_ * 0.5f / f_used;
+  
     if (enable_clamp_) {
-      tau_target_   = std::min(std::max(tau_raw,  min_tau_s_), max_tau_s_);
-      sigma_target_ = std::min(sigma_wave * sigma_coeff_,      max_sigma_a_);
+      tau_target_   = std::clamp(tau_raw, min_tau_s_, max_tau_s_);
+      sigma_target_ = std::min(sigma_wave * sigma_coeff_, max_sigma_a_);
     } else {
       tau_target_   = tau_raw;
       sigma_target_ = sigma_wave;
     }
-
+  
     if (!tuner_.isVarReady()) {
       sigma_target_ = std::max(sigma_target_, std::max(0.05f, acc_noise_floor_sigma_));
     }
-
+  
     tau_target_   = std::clamp(tau_target_,   min_tau_s_, max_tau_s_);
     sigma_target_ = std::clamp(sigma_target_, 0.05f,      max_sigma_a_);
-    
+  
     adapt_mekf_(dt, tau_target_, sigma_target_);
   }
 
