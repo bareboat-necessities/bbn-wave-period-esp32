@@ -687,38 +687,32 @@ private:
   
   void apply_oscillators_tune_() {
     if (!mekf_) return;
-
-    // Once spectrum is ready and we're doing spectral mode matching,
-    // do NOT call set_broadband_params(), it will overwrite per-mode f/q.
-    if (spectral_mode_matching_enable_ && spectrum_.ready()) {
-      return;
-    }
-    
-    // Wave accel std-dev (m/s^2). Keep a small floor so math doesn't go singular.
+  
+    // Wave accel std-dev (m/s^2). Keep a floor.
     const float sigma_a = std::max(std::max(0.05f, acc_noise_floor_sigma_), tune_.sigma_applied);
   
-    // Use the frequency you decided is the "wave/displacement" frequency.
-    float f_hz = wave_freq_hz_;
-    if (!std::isfinite(f_hz) || f_hz <= 0.0f) f_hz = freq_hz_slow_;
-    f_hz = std::clamp(f_hz, min_freq_hz_, max_freq_hz_);
+    // Frequency used for narrowband amplitude fallback
+    float f_for_amp = wave_freq_hz_;
+    if (!std::isfinite(f_for_amp) || f_for_amp <= 0.0f) f_for_amp = freq_hz_slow_;
+    f_for_amp = std::clamp(f_for_amp, min_freq_hz_, max_freq_hz_);
   
-    // Longuet–Higgins-consistent elevation/heave scale:
-    // σ_η = σ_a / ω², Hs ≈ 4σ_η
-    const float sigma_eta = sigmaEtaFromSigmaA_F_(sigma_a, f_hz);
+    // Hs from spectrum (preferred) or narrowband fallback from sigma_a / ω^2
     float Hs_m = NAN;
     if (spectral_mode_matching_enable_ && spectrum_.ready()) {
-      Hs_m = (float)spectrum_.computeHs();   // Hs = 4*sqrt(m0) from S_eta
-    } else {
-      // narrowband fallback from tuner sigma_a and wave frequency
-      const float sigma_eta = sigmaEtaFromSigmaA_F_(sigma_a, f_hz);
+      const double hs = spectrum_.computeHs();
+      if (std::isfinite(hs) && hs > 0.0) Hs_m = (float)hs;
+    }
+    if (!std::isfinite(Hs_m)) {
+      const float sigma_eta = sigmaEtaFromSigmaA_F_(sigma_a, f_for_amp);
       if (std::isfinite(sigma_eta) && sigma_eta > 0.0f) Hs_m = 4.0f * sigma_eta;
     }
+    if (!std::isfinite(Hs_m)) return;
     Hs_m = std::clamp(Hs_m, 0.05f, 15.0f);
   
-    // Keep your existing damping/horizontal heuristics for now (these don't cause the blow-up).
+    // Heuristics (keep yours)
     const float sea = std::max(0.0f, tune_.sigma_applied);
-    const float zeta_mid     = std::clamp(0.017f + 0.003f * std::min(sea, 3.0f), 0.016f, 0.026f);
-    const float horiz_scale  = std::clamp(0.18f + 0.04f * std::min(sea, 2.0f), 0.18f, 0.28f);
+    const float zeta_mid    = std::clamp(0.017f + 0.003f * std::min(sea, 3.0f), 0.016f, 0.026f);
+    const float horiz_scale = std::clamp(0.18f + 0.04f * std::min(sea, 2.0f), 0.18f, 0.28f);
   
     // BASE f0: tracker/tuner driven
     float f0_base_hz = freq_hz_slow_;
@@ -730,20 +724,48 @@ private:
     }
     f0_base_hz = std::clamp(f0_base_hz, min_freq_hz_, max_freq_hz_);
   
-    // Spectral-corrected command for broadband center frequency
+    // fp_disp (spectral PEAK) if available
+    const bool have_fp = spectral_fp_valid_ && std::isfinite(spectral_fp_hz_smth_) && spectral_fp_hz_smth_ > 0.0f;
+    const float fp_disp = have_fp ? std::clamp(spectral_fp_hz_smth_, min_freq_hz_, max_freq_hz_) : NAN;
+  
+    // Command f0: blend toward spectral peak, BUT NEVER ABOVE spectral peak.
     float f0_cmd_hz = f0_base_hz;
-    if (spectral_fp_valid_ && std::isfinite(spectral_fp_hz_smth_) && spectral_fp_hz_smth_ > 0.0f) {
-      f0_cmd_hz = std::clamp(spectral_fp_hz_smth_, min_freq_hz_, max_freq_hz_);
+    if (have_fp) {
+      const float b = std::clamp(spectral_f0_blend_, 0.0f, 1.0f);
+  
+      // log-domain blend for stability
+      const float lf0 = std::log(std::max(1e-4f, f0_base_hz));
+      const float lfp = std::log(std::max(1e-4f, fp_disp));
+      f0_cmd_hz = std::exp((1.0f - b) * lf0 + b * lfp);
+  
+      // HARD constraint you asked for:
+      f0_cmd_hz = std::min(f0_cmd_hz, fp_disp);
+    }
+    f0_cmd_hz = std::clamp(f0_cmd_hz, min_freq_hz_, max_freq_hz_);
+  
+    // Smooth applied f0 ALWAYS (even when we won't call set_broadband_params)
+    {
+      const float dt_a = std::max(1e-3f, adapt_every_secs_);
+      const float a = expBlendAlpha_(dt_a, broadband_f0_tau_sec_);
+  
+      if (!std::isfinite(broadband_f0_applied_hz_) || broadband_f0_applied_hz_ <= 0.0f) {
+        broadband_f0_applied_hz_ = f0_cmd_hz;
+      } else {
+        broadband_f0_applied_hz_ += a * (f0_cmd_hz - broadband_f0_applied_hz_);
+      }
+  
+      // HARD constraint again after smoothing:
+      if (have_fp) broadband_f0_applied_hz_ = std::min(broadband_f0_applied_hz_, fp_disp);
+      broadband_f0_applied_hz_ = std::clamp(broadband_f0_applied_hz_, min_freq_hz_, max_freq_hz_);
     }
   
-    // Smooth applied f0
-    if (!std::isfinite(broadband_f0_applied_hz_)) broadband_f0_applied_hz_ = f0_cmd_hz;
-    else {
-      const float a = expBlendAlpha_(adapt_every_secs_, broadband_f0_tau_sec_);
-      broadband_f0_applied_hz_ += a * (f0_cmd_hz - broadband_f0_applied_hz_);
+    // If spectrum is ready AND spectral mode matching is enabled, DO NOT overwrite per-mode params.
+    // But f0_app is still updated for debug + internal consistency.
+    if (spectral_mode_matching_enable_ && spectrum_.ready()) {
+      return;
     }
-
-    if (!std::isfinite(Hs_m)) return;
+  
+    // Otherwise, drive the broadband oscillator bank
     mekf_->set_broadband_params(broadband_f0_applied_hz_, Hs_m, zeta_mid, horiz_scale);
   }
 
