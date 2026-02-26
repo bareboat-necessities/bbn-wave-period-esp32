@@ -890,7 +890,7 @@ private:
     // Apply broadband params so mode freqs track f0_app.
     // (Spectral q will be restored in updateTime() on spectrum blocks, and on your timed cadence.)
     Hs_applied_m_ = Hs_m;
-    mekf_->set_broadband_params(broadband_f0_applied_hz_, Hs_applied_m_, zeta_mid, horiz_scale);
+    mekf_->set_broadband_params(broadband_f0_applied_hz_, Hs_applied_m_ / 2.0f, zeta_mid, horiz_scale);
   }
 
   // Adaptive knobs that depend on current sea-state energy.
