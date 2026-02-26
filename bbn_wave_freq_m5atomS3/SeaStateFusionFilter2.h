@@ -260,14 +260,16 @@ public:
       const float infl_xy_base = std::clamp(1.20f + 0.85f * std::min(sea, 3.0f), 1.20f, 3.80f);
       const float infl_xy = std::clamp(infl_xy_base * (1.0f + 2.5f * dyn), 1.0f, 10.0f);
       
-      // Trust Z a lot more for heave reconstruction
-      const float infl_z = std::clamp(0.52f + 0.02f * std::min(sea, 3.0f) + 0.03f * dyn, 0.50f, 0.78f);
-      
+      const float infl_z = std::clamp(1.0f + 0.60f * dyn, 1.0f, 2.5f);
       Eigen::Vector3f sig_live(sig_nom.x() * infl_xy,
                                sig_nom.y() * infl_xy,
                                sig_nom.z() * infl_z);
       
-      // HARD FLOOR: never claim accel std-dev below your noise floor
+      // Never go below nominal sensor sigma 
+      sig_live.x() = std::max(sig_live.x(), sig_nom.x());
+      sig_live.y() = std::max(sig_live.y(), sig_nom.y());
+      sig_live.z() = std::max(sig_live.z(), sig_nom.z());
+      
       const float floor = std::max(0.12f, acc_noise_floor_sigma_);
       sig_live.x() = std::max(sig_live.x(), floor);
       sig_live.y() = std::max(sig_live.y(), floor);
@@ -938,6 +940,7 @@ private:
   float freq_hz_      = FREQ_GUESS;
   float freq_hz_slow_ = FREQ_GUESS;
   float f_raw_        = FREQ_GUESS;
+  float wave_freq_hz_ = FREQ_GUESS;   // the frequency we trust for wave/tau (spectral if available)
 
   float a_vert_up_ = 0.0f;
 
