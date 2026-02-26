@@ -148,7 +148,7 @@ public:
   bool isAdaptiveLive() const noexcept { return startup_stage_ == StartupStage::Live; }
 
   void tune_for_wave_RMS_() {
-    mekf_->set_wave_Q_scale(1.10f);
+    mekf_->set_wave_Q_scale(0.9f);
   
     // much smaller bias learning so bias doesn't absorb wave residual
     mekf_->set_accel_bias_update_scale(0.02f);
