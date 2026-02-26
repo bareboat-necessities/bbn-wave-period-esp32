@@ -354,22 +354,85 @@ public:
       base_logvar_ema_ = (1.0f - base_logvar_alpha_) * base_logvar_ema_ + base_logvar_alpha_ * e2;
     }
     
-    // Spectral peak (DISPLACEMENT) -> fp_disp (smoothed)
+    // Spectral peak (DISPLACEMENT) -> fp_disp (smoothed + jump-limited + confidence-gated)
     if (spectrum_new_block && spectrum_.ready()) {
-      const double fp = spectrum_.estimatePeakFrequencyHz();     // PEAK of S_eta
-      if (std::isfinite(fp) && fp > 0.0) {
-        const float fp_clamped = std::clamp((float)fp, min_freq_hz_, max_freq_hz_);
     
-        // Smooth fp on the spectrum update cadence (NOT IMU dt)
-        const float dt_spec = std::max(1e-3f, (float)spectrum_.updatePeriodSec());
-        const float a_spec  = expBlendAlpha_(dt_spec, spectral_fp_tau_sec_);
+      // Use the spectrum’s own analysis band (your members), but DO NOT clamp to min_freq_hz_ here,
+      // because that reintroduces the 0.12 peg if min_freq_hz_ is still 0.12 somewhere.
+      const float fmin = std::max(0.02f, spectral_mode_fmin_hz_);
+      const float fmax = std::max(fmin + 1e-3f, spectral_mode_fmax_hz_);
     
-        if (!std::isfinite(spectral_fp_hz_smth_) || spectral_fp_hz_smth_ <= 0.0f) {
-          spectral_fp_hz_smth_ = fp_clamped;
-        } else {
-          spectral_fp_hz_smth_ += a_spec * (fp_clamped - spectral_fp_hz_smth_);
+      // Raw peak
+      float fp_raw = (float)spectrum_.estimatePeakFrequencyHz();
+      if (!std::isfinite(fp_raw) || fp_raw <= 0.0f) {
+        // do not update
+      } else {
+    
+        fp_raw = std::clamp(fp_raw, fmin, fmax);
+    
+        // --- Confidence gate: reject “flat” or noisy peaks ---
+        // peak/median in-band on S_eta. If the spectrum is flat, fp is basically random.
+        const auto Seta  = spectrum_.getDisplacementSpectrum(); // Vec (copy)
+        const auto freqs = spectrum_.getFrequencies();
+    
+        int i_pk = -1;
+        double pk = -1.0;
+        std::array<double, 28> band_vals{}; // Nfreq=28 in your instantiation
+        int nb = 0;
+    
+        for (int i = 0; i < 28; ++i) {
+          const double f = freqs[i];
+          if (!(f >= fmin && f <= fmax)) continue;
+    
+          const double v = std::max(0.0, (double)Seta[i]);
+          if (std::isfinite(v)) {
+            if (nb < (int)band_vals.size()) band_vals[nb++] = v;
+            if (v > pk) { pk = v; i_pk = i; }
+          }
         }
-        spectral_fp_valid_ = true;
+    
+        bool accept = (i_pk >= 0 && nb >= 7); // need some bins
+    
+        if (accept) {
+          // median
+          auto tmp = band_vals;
+          const int mid = nb / 2;
+          std::nth_element(tmp.begin(), tmp.begin() + mid, tmp.begin() + nb);
+          const double med = std::max(1e-18, tmp[mid]);
+    
+          const double peak_ratio = pk / med;
+    
+          // This is the key: if peak isn't at least ~2x median, don't trust it.
+          if (!(std::isfinite(peak_ratio) && peak_ratio >= 2.0)) {
+            accept = false;
+          }
+        }
+    
+        if (accept) {
+          // --- Jump limit: prevent harmonic flips (e.g. 0.12 -> 0.28 in one update) ---
+          // Use previous smoothed fp if available, else fall back to tracker slow.
+          float f_ref = std::isfinite(spectral_fp_hz_smth_) && spectral_fp_hz_smth_ > 0.0f
+                      ? spectral_fp_hz_smth_
+                      : std::clamp(freq_hz_slow_, fmin, fmax);
+    
+          // allow +35% / -30% per spectrum update
+          const float up   = 1.35f;
+          const float down = 0.70f;
+          fp_raw = std::clamp(fp_raw, f_ref * down, f_ref * up);
+          fp_raw = std::clamp(fp_raw, fmin, fmax);
+    
+          // Smooth fp on spectrum cadence (NOT IMU dt)
+          const float dt_spec = std::max(1e-3f, (float)spectrum_.updatePeriodSec());
+          const float a_spec  = expBlendAlpha_(dt_spec, spectral_fp_tau_sec_);
+    
+          if (!std::isfinite(spectral_fp_hz_smth_) || spectral_fp_hz_smth_ <= 0.0f) {
+            spectral_fp_hz_smth_ = fp_raw;
+          } else {
+            spectral_fp_hz_smth_ += a_spec * (fp_raw - spectral_fp_hz_smth_);
+          }
+    
+          spectral_fp_valid_ = true;
+        }
       }
     }
     
