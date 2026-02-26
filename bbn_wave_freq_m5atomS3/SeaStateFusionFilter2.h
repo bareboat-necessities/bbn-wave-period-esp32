@@ -1271,7 +1271,7 @@ private:
 
     // Tie the spectral total-q budget to the tuner's displacement-scale estimate,
     // but preserve the baseline budget captured at spectral activation.
-    float disp_now = getDisplacementScale(true);
+    float disp_now = disp_scale_from_tuner_();   // instead of getDisplacementScale(true)
     if (!std::isfinite(disp_now) || disp_now <= 0.0f) {
       return spectral_q_budget_base_sum_;
     }
@@ -1289,6 +1289,14 @@ private:
     const float max_budget = float(Kalman3D_Wave_2<float>::kWaveModes) * spectral_q_cap_;
 
     return std::clamp(tgt, min_budget, max_budget);
+  }
+
+  float disp_scale_from_tuner_() const {
+    const float f = std::clamp(wave_freq_hz_, min_freq_hz_, max_freq_hz_);
+    const float w = 2.0f * float(M_PI) * std::max(1e-4f, f);
+    const float sigma_a = std::max(0.05f, tune_.sigma_applied);
+    const float sigma_eta = sigma_a / std::max(1e-9f, w*w);
+    return std::sqrt(float(M_PI) / 2.0f) * sigma_eta;
   }
 
   void apply_spectral_mode_matching_() {
