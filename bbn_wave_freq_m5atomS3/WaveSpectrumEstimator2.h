@@ -678,105 +678,113 @@ private:
     return num2 / std::max(den2, 1e-16);
   }
 
-void computeSpectrum_() {
-  // Read the latest Nblock samples from circular buffer (oldest -> newest)
-  const int N = Nblock;
-  const int start_idx = write_index_; // write_index_ points to oldest slot after wrap
-
-  // Linear detrend statistics
-  double sumx = 0.0, sumn = 0.0, sumn2 = 0.0, sumnx = 0.0;
-  int idx = start_idx;
-  for (int n = 0; n < N; ++n) {
-    const double x = buffer_[idx];
-    sumx  += x;
-    sumn  += double(n);
-    sumn2 += double(n) * double(n);
-    sumnx += double(n) * x;
-    idx = (idx + 1) % Nblock;
-  }
-
-  const double denom_lin = double(N) * sumn2 - sumn * sumn;
-  const double a_lin = (std::fabs(denom_lin) > 1e-18)
-                     ? ((double(N) * sumnx - sumn * sumx) / denom_lin)
-                     : 0.0;
-  const double b_lin = (sumx - a_lin * sumn) / double(N);
-
-  // One-sided PSD scale [units^2/Hz] for periodogram with window
-  const double base_scale = 2.0 / (fs_ * window_sum_sq_);
-
-  // Low-frequency regularization knee also depends on block length
-  // (keeps inversion from exploding below what the block can resolve)
-  const double Tblk = double(N) / fs_;
-  const double f_blk = 1.0 / std::max(1e-6, 6.0 * Tblk); // conservative
-  const double f_knee = std::max(cfg_.reg_f0_hz, f_blk);
-
-  // Constant regularization knee (IMPORTANT: do NOT tie to 0.6*f)
-  const double wr = 2.0 * kPi * f_knee;
-  const double wr4 = wr * wr * wr * wr;
-
-  for (int i = 0; i < Nfreq; ++i) {
-    const double f = freqs_[i];
-
-    // ---- Goertzel on detrended+windowed block -> measured acceleration PSD S_aa_meas
-    double s1 = 0.0, s2 = 0.0;
-    int j = start_idx;
+  void computeSpectrum_() {
+    // Read the latest Nblock samples from circular buffer (oldest -> newest)
+    const int N = Nblock;
+    const int start_idx = write_index_; // write_index_ points to oldest slot after wrap
+  
+    // Linear detrend statistics
+    double sumx = 0.0, sumn = 0.0, sumn2 = 0.0, sumnx = 0.0;
+    int idx = start_idx;
     for (int n = 0; n < N; ++n) {
-      const double x = buffer_[j];
-      const double xd = x - (a_lin * double(n) + b_lin);
-      const double xw = xd * window_[n];
-
-      const double sn = xw + goertzel_coeff_[i] * s1 - s2;
-      s2 = s1;
-      s1 = sn;
-
-      j = (j + 1) % Nblock;
+      const double x = buffer_[idx];
+      sumx  += x;
+      sumn  += double(n);
+      sumn2 += double(n) * double(n);
+      sumnx += double(n) * x;
+      idx = (idx + 1) % Nblock;
     }
-
-    const double power = s1 * s1 + s2 * s2 - s1 * s2 * goertzel_coeff_[i];
-    const double S_aa_meas = std::max(0.0, power * base_scale); // [m^2/s^4]/Hz
-
-    // ---- Deconvolve HP/LP magnitude response at raw rate (guarded, but not over-suppressive)
-    const double Om_raw = 2.0 * kPi * f / fs_raw_;
-    const double H2 = biquadMag2_(hp1_, Om_raw)
-                    * biquadMag2_(hp2_, Om_raw)
-                    * biquadMag2_(lp_,  Om_raw);
-
-    // Floor on |H|^2 to cap deconvolution gain instead of additive epsilon.
-    // Example: H2_floor=1e-4 -> max deconv gain = 1e4 (40 dB)
-    const double H2_floor = 1e-4;
-    const double H2_eff = std::max(H2, H2_floor);
-
-    double S_aa_true = S_aa_meas / H2_eff;
-    if (!std::isfinite(S_aa_true) || S_aa_true < 0.0) S_aa_true = 0.0;
-
-    // ---- Displacement conversion with stable low-f regularization
-    // Use: S_eta = S_aa / (w^4 + wr^4)
-    // This behaves like 1/w^4 well above knee, but avoids crushing the whole band.
-    const double w = 2.0 * kPi * f;
-    const double w2 = w * w;
-    const double w4 = w2 * w2;
-
-    const double denom_disp = std::max(1e-24, w4 + wr4);
-    double S_eta = S_aa_true / denom_disp;
-
-    if (!std::isfinite(S_eta) || S_eta < 0.0) S_eta = 0.0;
-
-    // Optional PSD EMA (stabilizes adaptation)
-    if (cfg_.psd_ema_enable) {
-      if (!have_psd_ema_) psd_ema_[i] = S_eta;
-      else                psd_ema_[i] = (1.0 - cfg_.psd_ema_alpha) * psd_ema_[i]
-                                      + cfg_.psd_ema_alpha * S_eta;
-      last_psd_eta_[i] = psd_ema_[i];
-    } else {
-      last_psd_eta_[i] = S_eta;
+  
+    const double denom_lin = double(N) * sumn2 - sumn * sumn;
+    const double a_lin = (std::fabs(denom_lin) > 1e-18)
+                       ? ((double(N) * sumnx - sumn * sumx) / denom_lin)
+                       : 0.0;
+    const double b_lin = (sumx - a_lin * sumn) / double(N);
+  
+    // Time-domain variance of detrended block (after HP/LP/decim, before window)
+    double sum_xd2 = 0.0;
+    {
+      int j = start_idx;
+      for (int n = 0; n < N; ++n) {
+        const double x = buffer_[j];
+        const double xd = x - (a_lin * double(n) + b_lin);
+        sum_xd2 += xd * xd;
+        j = (j + 1) % Nblock;
+      }
     }
+    const double var_time = sum_xd2 / double(N); // [m^2/s^4]
+    
+    // One-sided PSD scale [units^2/Hz] for periodogram with window
+    const double base_scale = 2.0 / (fs_ * window_sum_sq_);
+  
+    // Low-frequency regularization knee also depends on block length
+    // (keeps inversion from exploding below what the block can resolve)
+    const double Tblk = double(N) / fs_;
+    const double f_blk = 1.0 / std::max(1e-6, 6.0 * Tblk); // conservative
+    const double f_knee = std::max(cfg_.reg_f0_hz, f_blk);
+  
+    // Constant regularization knee (IMPORTANT: do NOT tie to 0.6*f)
+    const double wr = 2.0 * kPi * f_knee;
+    const double wr4 = wr * wr * wr * wr;
+  
+    for (int i = 0; i < Nfreq; ++i) {
+      const double f = freqs_[i];
+      // Goertzel on detrended+windowed block -> measured acceleration PSD S_aa_meas
+      double s1 = 0.0, s2 = 0.0;
+      int j = start_idx;
+      for (int n = 0; n < N; ++n) {
+        const double x = buffer_[j];
+        const double xd = x - (a_lin * double(n) + b_lin);
+        const double xw = xd * window_[n];
+        const double sn = xw + goertzel_coeff_[i] * s1 - s2;
+        s2 = s1;
+        s1 = sn;
+        j = (j + 1) % Nblock;
+      }
+      const double power = s1 * s1 + s2 * s2 - s1 * s2 * goertzel_coeff_[i];
+      const double S_aa_meas = std::max(0.0, power * base_scale); // [m^2/s^4]/Hz
+  
+      // Deconvolve HP/LP magnitude response at raw rate (guarded, but not over-suppressive)
+      const double Om_raw = 2.0 * kPi * f / fs_raw_;
+      const double H2 = biquadMag2_(hp1_, Om_raw)
+                      * biquadMag2_(hp2_, Om_raw)
+                      * biquadMag2_(lp_,  Om_raw);
+  
+      // Floor on |H|^2 to cap deconvolution gain instead of additive epsilon.
+      // Example: H2_floor=1e-4 -> max deconv gain = 1e4 (40 dB)
+      const double H2_floor = 1e-4;
+      const double H2_eff = std::max(H2, H2_floor);
+  
+      double S_aa_true = S_aa_meas / H2_eff;
+      if (!std::isfinite(S_aa_true) || S_aa_true < 0.0) S_aa_true = 0.0;
+  
+      // Displacement conversion with stable low-f regularization
+      // Use: S_eta = S_aa / (w^4 + wr^4)
+      // This behaves like 1/w^4 well above knee, but avoids crushing the whole band.
+      const double w = 2.0 * kPi * f;
+      const double w2 = w * w;
+      const double w4 = w2 * w2;
+  
+      const double denom_disp = std::max(1e-24, w4 + wr4);
+      double S_eta = S_aa_true / denom_disp;
+  
+      if (!std::isfinite(S_eta) || S_eta < 0.0) S_eta = 0.0;
+  
+      // Optional PSD EMA (stabilizes adaptation)
+      if (cfg_.psd_ema_enable) {
+        if (!have_psd_ema_) psd_ema_[i] = S_eta;
+        else                psd_ema_[i] = (1.0 - cfg_.psd_ema_alpha) * psd_ema_[i]
+                                        + cfg_.psd_ema_alpha * S_eta;
+        last_psd_eta_[i] = psd_ema_[i];
+      } else {
+        last_psd_eta_[i] = S_eta;
+      }
+    }
+    have_psd_ema_ = true;
+  
+    // Tiny 3-tap smoothing on log-f axis (reduces jitter in mode split)
+    smoothLogFreq3Tap_();
   }
-
-  have_psd_ema_ = true;
-
-  // Tiny 3-tap smoothing on log-f axis (reduces jitter in mode split)
-  smoothLogFreq3Tap_();
-}
 
   void smoothLogFreq3Tap_() {
     if (Nfreq < 3) return;
