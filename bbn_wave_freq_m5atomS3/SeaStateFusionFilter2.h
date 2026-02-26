@@ -353,15 +353,35 @@ public:
       const float e2 = e * e;
       base_logvar_ema_ = (1.0f - base_logvar_alpha_) * base_logvar_ema_ + base_logvar_alpha_ * e2;
     }
-    
+
+    // Spectral fusion (log-domain), using CURRENT freq_hz_slow_
     if (spectrum_new_block && spectrum_.ready()) {
       const auto st = spectrum_.estimateLogFreqStats();
-      if (std::isfinite(st.f_center_hz) && st.f_center_hz > 0.0) {
-        spectral_fp_hz_smth_ = std::clamp((float)st.f_center_hz, min_freq_hz_, max_freq_hz_);
-        spectral_fp_valid_ = true;
+    
+      if (std::isfinite(st.f_center_hz) && st.f_center_hz > 0.0 && std::isfinite(st.sig_logf)) {
+        const float f_spec = std::clamp((float)st.f_center_hz, min_freq_hz_, max_freq_hz_);
+    
+        const float R_spec = std::max(1e-4f, (float)(st.sig_logf * st.sig_logf));
+        const float R_base = std::max(1e-4f, base_logvar_ema_);
+    
+        const float lf_base = std::log(std::max(1e-4f, freq_hz_slow_));
+        const float lf_spec = std::log(std::max(1e-4f, f_spec));
+    
+        const float w_base = 1.0f / R_base;
+        const float w_spec = 1.0f / R_spec;
+    
+        const float lf_fused = (w_base * lf_base + w_spec * lf_spec) / (w_base + w_spec);
+        const float f_fused  = std::clamp(std::exp(lf_fused), min_freq_hz_, max_freq_hz_);
+    
+        spectral_fp_hz_smth_ = f_fused;
+        spectral_fp_valid_   = true;
       }
     }
-    wave_freq_hz_ = (spectral_fp_valid_ ? spectral_fp_hz_smth_ : freq_hz_slow_);
+    
+    // wave_freq_hz_ is what we trust for wave/tau (spectral if valid, else tracker slow)
+    wave_freq_hz_ = spectral_fp_valid_ && std::isfinite(spectral_fp_hz_smth_) && spectral_fp_hz_smth_ > 0.0f
+                  ? std::clamp(spectral_fp_hz_smth_, min_freq_hz_, max_freq_hz_)
+                  : std::clamp(freq_hz_slow_,        min_freq_hz_, max_freq_hz_);
     
     if (enable_tuner_) {
       // Use LPF'ed vertical accel here too (reduces ringing / freq overshoot)
