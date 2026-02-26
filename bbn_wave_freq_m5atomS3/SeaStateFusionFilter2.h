@@ -532,11 +532,16 @@ public:
   }
 
   inline float getDisplacementScale(bool smoothed = true) const noexcept {
-    const float tau   = smoothed ? tune_.tau_applied   : tau_target_;
-    const float sigma = smoothed ? tune_.sigma_applied : sigma_target_;
-    if (!std::isfinite(sigma) || !std::isfinite(tau)) return NAN;
-    constexpr float C_HS = 2.0f * std::sqrt(2.0f) / (M_PI * M_PI);
-    return C_HS * sigma * tau * tau;
+    // Interpret "scale" as Longuet–Higgins mean envelope amplitude E[R] (meters).
+    const float sigma_a = smoothed ? tune_.sigma_applied : sigma_target_;
+    if (!std::isfinite(sigma_a) || sigma_a <= 0.0f) return NAN;
+  
+    float f_hz = wave_freq_hz_;
+    if (!std::isfinite(f_hz) || f_hz <= 0.0f) f_hz = freq_hz_slow_;
+    f_hz = std::clamp(f_hz, min_freq_hz_, max_freq_hz_);
+  
+    const float sigma_eta = sigmaEtaFromSigmaA_F_(sigma_a, f_hz); // σ_η = σ_a / ω²
+    return lhMeanEnvelope_(sigma_eta);                            // E[R] = √(π/2) σ_η
   }
   
   static float loglog_interp_extrap_(float x, const float* xs, const float* ys, int n)
@@ -690,17 +695,24 @@ private:
   void apply_oscillators_tune_() {
     if (!mekf_) return;
   
-    const float tau = std::clamp(tune_.tau_applied, min_tau_s_, max_tau_s_);
-    const float sZ  = std::max(std::max(0.05f, acc_noise_floor_sigma_), tune_.sigma_applied);
+    // Wave accel std-dev (m/s^2). Keep a small floor so math doesn't go singular.
+    const float sigma_a = std::max(std::max(0.05f, acc_noise_floor_sigma_), tune_.sigma_applied);
   
-    constexpr float C_HS = 2.0f * std::sqrt(2.0f) / (float(M_PI) * float(M_PI));
+    // Use the frequency you decided is the "wave/displacement" frequency.
+    float f_hz = wave_freq_hz_;
+    if (!std::isfinite(f_hz) || f_hz <= 0.0f) f_hz = freq_hz_slow_;
+    f_hz = std::clamp(f_hz, min_freq_hz_, max_freq_hz_);
+  
+    // Longuet–Higgins-consistent elevation/heave scale:
+    // σ_η = σ_a / ω², Hs ≈ 4σ_η
+    const float sigma_eta = sigmaEtaFromSigmaA_F_(sigma_a, f_hz);
+    float Hs_m = lhHs_(sigma_eta);
+    if (!std::isfinite(Hs_m) || Hs_m < 0.0f) Hs_m = 0.0f;
+  
+    // Keep your existing damping/horizontal heuristics for now (these don't cause the blow-up).
     const float sea = std::max(0.0f, tune_.sigma_applied);
-  
-    const float zeta_mid = std::clamp(0.017f + 0.003f * std::min(sea, 3.0f), 0.016f, 0.026f);
-    const float horiz_scale = std::clamp(0.18f + 0.04f * std::min(sea, 2.0f), 0.18f, 0.28f);
-  
-    const float hs_gain = std::clamp(1.0f + 0.1f * std::min(sea, 2.0f), 1.0f, 1.2f);
-    const float Hs_m = std::max(0.0f, hs_gain * C_HS * sZ * tau * tau);
+    const float zeta_mid     = std::clamp(0.017f + 0.003f * std::min(sea, 3.0f), 0.016f, 0.026f);
+    const float horiz_scale  = std::clamp(0.18f + 0.04f * std::min(sea, 2.0f), 0.18f, 0.28f);
   
     // BASE f0: tracker/tuner driven
     float f0_base_hz = freq_hz_slow_;
@@ -712,17 +724,19 @@ private:
     }
     f0_base_hz = std::clamp(f0_base_hz, min_freq_hz_, max_freq_hz_);
   
-    // Fused/spectral-corrected command
+    // Spectral-corrected command for broadband center frequency
     float f0_cmd_hz = f0_base_hz;
     if (spectral_fp_valid_ && std::isfinite(spectral_fp_hz_smth_) && spectral_fp_hz_smth_ > 0.0f) {
       f0_cmd_hz = std::clamp(spectral_fp_hz_smth_, min_freq_hz_, max_freq_hz_);
     }
-
+  
+    // Smooth applied f0
     if (!std::isfinite(broadband_f0_applied_hz_)) broadband_f0_applied_hz_ = f0_cmd_hz;
     else {
       const float a = expBlendAlpha_(adapt_every_secs_, broadband_f0_tau_sec_);
       broadband_f0_applied_hz_ += a * (f0_cmd_hz - broadband_f0_applied_hz_);
     }
+  
     mekf_->set_broadband_params(broadband_f0_applied_hz_, Hs_m, zeta_mid, horiz_scale);
   }
 
@@ -1049,20 +1063,21 @@ private:
     return 2.0f * float(M_PI) * f_hz;
   }
   
+  // σ_η = σ_a / ω²  (narrowband assumption)
   static float sigmaEtaFromSigmaA_F_(float sigma_a, float f_hz) {
     if (!(sigma_a > 0.0f) || !std::isfinite(sigma_a)) return NAN;
     if (!(f_hz > 0.0f) || !std::isfinite(f_hz)) return NAN;
     const float w = omegaFromHz_(f_hz);
-    return sigma_a / std::max(1e-9f, w*w);
+    return sigma_a / std::max(1e-9f, w * w);
   }
   
-  // Longuet-Higgins mean envelope amplitude E[R]
+  // Longuet–Higgins mean envelope: E[R] = √(π/2) σ_η
   static float lhMeanEnvelope_(float sigma_eta) {
     if (!(sigma_eta > 0.0f) || !std::isfinite(sigma_eta)) return NAN;
     return std::sqrt(float(M_PI) / 2.0f) * sigma_eta;
   }
   
-  // Significant wave height Hs ≈ 4 sigma_eta
+  // Significant height: Hs ≈ 4 σ_η
   static float lhHs_(float sigma_eta) {
     if (!(sigma_eta > 0.0f) || !std::isfinite(sigma_eta)) return NAN;
     return 4.0f * sigma_eta;
@@ -1073,17 +1088,22 @@ private:
   }
   
   void reset_spectrum_adapter_() {
-    // Hard reset estimator state
     spectrum_ = WaveSpectrumEstimator2<28, 512>{};
-
+  
+    spectral_fp_hz_      = NAN;
+    spectral_fp_hz_smth_ = NAN;
+    spectral_fp_valid_   = false;
+  
+    broadband_f0_applied_hz_ = NAN;
+  
     spectral_applied_initialized_ = false;
     spectral_qz_applied_.fill(0.0f);
-
+  
     spectral_q_budget_initialized_ = false;
     spectral_q_budget_base_sum_ = NAN;
     spectral_q_budget_sum_ = NAN;
     spectral_q_budget_ref_disp_scale_m_ = NAN;
-
+  
     last_spectral_apply_time_sec_ = -1e9;
   }
 
