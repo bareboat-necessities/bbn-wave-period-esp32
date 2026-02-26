@@ -207,46 +207,116 @@ public:
     return 4.0 * std::sqrt(std::max(0.0, m0));
   }
 
-  // Peak frequency of displacement spectrum using log-parabolic interpolation
+  // Peak frequency of displacement spectrum using a ROBUST two-stage approach:
+  //
+  // 1) Build an acceleration-PSD proxy from the displacement PSD:
+  //      Saa_proxy(f) = S_eta(f) * (w^4 + wr^4)
+  //    which cancels the 1/w^4 amplification that tends to make the lowest bin win.
+  //
+  // 2) Find the peak of Saa_proxy (stable), then only search for the displacement peak
+  //    inside a band around that stable peak.
   double estimatePeakFrequencyHz() const {
-    int k = 0;
+    if (!warm_) return 0.0;
+  
+    const double f_min = std::max(1e-6, cfg_.f_min_hz);
+    const double f_max = std::max(f_min + 1e-6, cfg_.f_max_hz);
+  
+    // Must match computeSpectrum_ knee logic (so the proxy uses the same wr^4)
+    const double Tblk  = (fs_ > 0.0) ? (double(Nblock) / fs_) : 0.0;
+    const double f_blk = 1.0 / std::max(1e-6, 6.0 * std::max(1e-9, Tblk));
+    const double f_knee = std::max(cfg_.reg_f0_hz, f_blk);
+  
+    const double wr  = 2.0 * kPi * f_knee;
+    const double wr2 = wr * wr;
+    const double wr4 = wr2 * wr2;
+  
+    auto Saa_proxy = [&](int i)->double {
+      const double f = freqs_[i];
+      if (!(f > 0.0)) return 0.0;
+      const double Seta = std::max(0.0, last_psd_eta_[i]);
+      if (!(Seta > 0.0) || !std::isfinite(Seta)) return 0.0;
+  
+      const double w  = 2.0 * kPi * f;
+      const double w2 = w * w;
+      const double w4 = w2 * w2;
+  
+      const double v = Seta * (w4 + wr4);
+      return (std::isfinite(v) && v > 0.0) ? v : 0.0;
+    };
+  
+    auto interp_log_parabola = [&](int k, auto y_of_idx)->double {
+      if (k <= 0 || k >= (Nfreq - 1)) return freqs_[k];
+  
+      const double f0 = freqs_[k - 1], f1 = freqs_[k], f2 = freqs_[k + 1];
+      if (!(f0 > 0.0 && f1 > 0.0 && f2 > 0.0)) return f1;
+  
+      const double x0 = std::log(f0), x1 = std::log(f1), x2 = std::log(f2);
+      const double y0 = safeLog_(std::max(1e-18, y_of_idx(k - 1)));
+      const double y1 = safeLog_(std::max(1e-18, y_of_idx(k)));
+      const double y2 = safeLog_(std::max(1e-18, y_of_idx(k + 1)));
+  
+      const double d01 = x0 - x1;
+      const double d02 = x0 - x2;
+      const double d12 = x1 - x2;
+      if (std::fabs(d01 * d02 * d12) < 1e-18) return f1;
+  
+      const double L0a = 1.0 / (d01 * d02);
+      const double L1a = 1.0 / ((x1 - x0) * (x1 - x2));
+      const double L2a = 1.0 / ((x2 - x0) * (x2 - x1));
+  
+      const double a = y0 * L0a + y1 * L1a + y2 * L2a;
+      const double b = y0 * (-(x1 + x2) * L0a)
+                     + y1 * (-(x0 + x2) * L1a)
+                     + y2 * (-(x0 + x1) * L2a);
+  
+      if (!(a < 0.0)) return f1;
+  
+      const double xpk = -b / (2.0 * a);
+      const double fpk = std::exp(xpk);
+  
+      if (!(fpk > std::min(f0, f2) && fpk < std::max(f0, f2))) return f1;
+      return fpk;
+    };
+  
+    // Stage 1: peak in acceleration proxy (stable)
+    int k_acc = -1;
     double vmax = -1.0;
     for (int i = 0; i < Nfreq; ++i) {
-      if (last_psd_eta_[i] > vmax) { vmax = last_psd_eta_[i]; k = i; }
+      const double f = freqs_[i];
+      if (!(f >= f_min && f <= f_max)) continue;
+      const double v = Saa_proxy(i);
+      if (v > vmax) { vmax = v; k_acc = i; }
     }
-
-    if (k <= 0 || k >= (Nfreq - 1)) return freqs_[k];
-
-    const double f0 = freqs_[k - 1], f1 = freqs_[k], f2 = freqs_[k + 1];
-    if (!(f0 > 0.0 && f1 > 0.0 && f2 > 0.0)) return f1;
-
-    const double x0 = std::log(f0), x1 = std::log(f1), x2 = std::log(f2);
-    const double y0 = safeLog_(last_psd_eta_[k - 1]);
-    const double y1 = safeLog_(last_psd_eta_[k]);
-    const double y2 = safeLog_(last_psd_eta_[k + 1]);
-
-    const double d01 = x0 - x1;
-    const double d02 = x0 - x2;
-    const double d12 = x1 - x2;
-
-    if (std::fabs(d01 * d02 * d12) < 1e-18) return f1;
-
-    const double L0a = 1.0 / (d01 * d02);
-    const double L1a = 1.0 / ((x1 - x0) * (x1 - x2));
-    const double L2a = 1.0 / ((x2 - x0) * (x2 - x1));
-
-    const double a = y0 * L0a + y1 * L1a + y2 * L2a;
-    const double b = y0 * (-(x1 + x2) * L0a)
-                   + y1 * (-(x0 + x2) * L1a)
-                   + y2 * (-(x0 + x1) * L2a);
-
-    if (!(a < 0.0)) return f1;
-
-    const double xpk = -b / (2.0 * a);
-    const double fpk = std::exp(xpk);
-
-    if (!(fpk > std::min(f0, f2) && fpk < std::max(f0, f2))) return f1;
-    return fpk;
+    if (k_acc < 0) return std::clamp(freqs_[0], f_min, f_max);
+  
+    const double f_acc_pk = std::clamp(interp_log_parabola(k_acc, Saa_proxy), f_min, f_max);
+  
+    // Stage 2: displacement peak search only near f_acc_pk
+    // Wide enough to handle shift between accel and disp peaks, but excludes the very-low-f garbage.
+    const double f_lo = std::max(f_min, f_acc_pk / 1.9);
+    const double f_hi = std::min(f_max, f_acc_pk * 1.35);
+  
+    int k_disp = -1;
+    double vmax_eta = -1.0;
+    for (int i = 0; i < Nfreq; ++i) {
+      const double f = freqs_[i];
+      if (!(f >= f_lo && f <= f_hi)) continue;
+      const double v = std::max(0.0, last_psd_eta_[i]);
+      if (v > vmax_eta) { vmax_eta = v; k_disp = i; }
+    }
+  
+    if (k_disp < 0) {
+      // fallback: if band is empty (shouldn't happen), use accel-peak
+      return f_acc_pk;
+    }
+  
+    auto Seta_of_idx = [&](int i)->double {
+      const double v = std::max(0.0, last_psd_eta_[i]);
+      return (std::isfinite(v) && v > 0.0) ? v : 0.0;
+    };
+  
+    const double f_disp_pk = std::clamp(interp_log_parabola(k_disp, Seta_of_idx), f_min, f_max);
+    return f_disp_pk;
   }
 
   /*
