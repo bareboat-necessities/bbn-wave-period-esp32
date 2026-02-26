@@ -472,11 +472,13 @@ public:
       ? std::clamp(spectral_fp_hz_smth_, min_freq_hz_, max_freq_hz_)
       : std::clamp(freq_hz_slow_,       min_freq_hz_, max_freq_hz_);
 
-    // NEW SPECTRUM BLOCK: retune oscillator bank once (≈2 s cadence), then restore spectral q once.
+    // NEW SPECTRUM BLOCK: retune oscillator bank once (≈2 s cadence).
+    // If spectrum-mode matching is active and ready, this does NOT call
+    // set_broadband_params(), so per-mode spectral frequencies/q stay authoritative.
     if (spectrum_new_block && spectrum_.ready()) {
       apply_oscillators_tune_();
-    
-      // set_broadband_params() overwrites q; restore spectral q immediately (but only at spectrum cadence).
+
+      // Re-apply spectral mode matching at spectrum cadence.
       if (startup_stage_ == StartupStage::Live &&
           enable_linear_block_ &&
           spectral_mode_matching_enable_)
@@ -887,10 +889,15 @@ private:
     if (have_fp) broadband_f0_applied_hz_ = std::min(broadband_f0_applied_hz_, fp_disp);
     broadband_f0_applied_hz_ = std::clamp(broadband_f0_applied_hz_, min_freq_hz_, max_freq_hz_);
   
-    // Apply broadband params so mode freqs track f0_app.
-    // (Spectral q will be restored in updateTime() on spectrum blocks, and on your timed cadence.)
+    const bool use_spectral_modes = spectral_mode_matching_enable_ && spectrum_.ready();
+
+    // Once full-spectrum mode matching is available, keep per-mode spectral
+    // frequency/q as the source of truth and skip broadband reshaping.
+    // Before spectrum warm-up, keep broadband fallback behavior.
     Hs_applied_m_ = Hs_m;
-    mekf_->set_broadband_params(broadband_f0_applied_hz_, Hs_applied_m_ / 2.0f, zeta_mid, horiz_scale);
+    if (!use_spectral_modes) {
+      mekf_->set_broadband_params(broadband_f0_applied_hz_, Hs_applied_m_ / 2.0f, zeta_mid, horiz_scale);
+    }
   }
 
   // Adaptive knobs that depend on current sea-state energy.
