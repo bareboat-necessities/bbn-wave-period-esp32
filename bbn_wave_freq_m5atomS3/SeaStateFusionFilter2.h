@@ -506,12 +506,13 @@ public:
     if (time_ >= next_debug_print_time_sec_) {
       next_debug_print_time_sec_ = time_ + debug_print_every_sec_;
       printf(
-        "f_slow:%6.3f  f_wave:%6.3f  fp:%6.3f  fc:%6.3f  f0_app:%6.3f\n",
+        "f_slow:%6.3f  f_wave:%6.3f  fp:%6.3f  fc:%6.3f  f0_app:%6.3f  Hs_m:%6.3f\n",
         (double)freq_hz_slow_,
         (double)wave_freq_hz_,
         (double)(spectral_fp_valid_ ? spectral_fp_hz_smth_ : NAN),
         (double)(spectral_fc_valid_ ? spectral_fc_hz_smth_ : NAN),
-        (double)(std::isfinite(broadband_f0_applied_hz_) ? broadband_f0_applied_hz_ : NAN)
+        (double)(std::isfinite(broadband_f0_applied_hz_) ? broadband_f0_applied_hz_ : NAN),
+        (double)Hs_applied_m_
       );
     }
   }
@@ -810,7 +811,7 @@ private:
     const float w = 2.0f * float(M_PI) * std::max(1e-4f, f);
     const float sigma_a = std::max(0.05f, tune_.sigma_applied);
     const float sigma_eta = sigma_a / std::max(1e-9f, w*w);
-    Hs_m = std::clamp(4.0f * sigma_eta, 0.05f, 15.0f);
+    float Hs_m = std::clamp(4.0f * sigma_eta, 0.05f, 15.0f);
   
     // Keep your heuristics
     const float sea = std::max(0.0f, tune_.sigma_applied);
@@ -869,7 +870,8 @@ private:
   
     // Apply broadband params so mode freqs track f0_app.
     // (Spectral q will be restored in updateTime() on spectrum blocks, and on your timed cadence.)
-    mekf_->set_broadband_params(broadband_f0_applied_hz_, Hs_m, zeta_mid, horiz_scale);
+    Hs_applied_m_ = Hs_m;
+    mekf_->set_broadband_params(broadband_f0_applied_hz_, Hs_applied_m_, zeta_mid, horiz_scale);
   }
 
   // Adaptive knobs that depend on current sea-state energy.
@@ -1163,6 +1165,7 @@ private:
   float spectral_f0_blend_      = 0.85f; // 0=ignore spectral, 1=use only spectral
   float broadband_f0_applied_hz_= NAN;   // smoothed f0 actually passed to set_broadband_params
   float broadband_f0_tau_sec_   = 2.0f;  // smoothing for applied f0
+  float Hs_applied_m_ = NAN;
 
   // Debug print cadence
   float  debug_print_every_sec_      = 5.0f;
