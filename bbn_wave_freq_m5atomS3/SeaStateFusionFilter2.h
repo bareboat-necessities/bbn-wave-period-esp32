@@ -461,16 +461,31 @@ public:
       }
     }
     
-    // Drive wave/tau from displacement PEAK when available.
-    // (Center can be biased low -> causes huge disp/vel as p ~ 1/omega^2)
     const bool have_fp =
         spectral_fp_valid_ &&
         std::isfinite(spectral_fp_hz_smth_) &&
         (spectral_fp_hz_smth_ > 0.0f);
-    
-    wave_freq_hz_ = have_fp
-      ? std::clamp(spectral_fp_hz_smth_, min_freq_hz_, max_freq_hz_)
-      : std::clamp(freq_hz_slow_,       min_freq_hz_, max_freq_hz_);
+
+    const bool have_fc =
+        spectral_fc_valid_ &&
+        std::isfinite(spectral_fc_hz_smth_) &&
+        (spectral_fc_hz_smth_ > 0.0f);
+
+    const float f_base = std::clamp(freq_hz_slow_, min_freq_hz_, max_freq_hz_);
+    const float fp = have_fp ? std::clamp(spectral_fp_hz_smth_, min_freq_hz_, max_freq_hz_) : f_base;
+    const float fc = have_fc ? std::clamp(spectral_fc_hz_smth_, min_freq_hz_, max_freq_hz_) : fp;
+
+    // Robust wave-frequency drive: avoid hard-lock to fp when spectrum center collapses low.
+    // Keep a floor tied to fc and retain some tracker influence via spectral_f0_blend_.
+    float f_spec = have_fp ? (0.72f * fp + 0.28f * fc) : f_base;
+    if (have_fc) {
+      const float f_floor = 1.10f * fc;
+      f_spec = std::max(f_spec, f_floor);
+    }
+    f_spec = std::clamp(f_spec, min_freq_hz_, max_freq_hz_);
+
+    const float b = std::clamp(spectral_f0_blend_, 0.0f, 1.0f);
+    wave_freq_hz_ = std::clamp((1.0f - b) * f_base + b * f_spec, min_freq_hz_, max_freq_hz_);
 
     // NEW SPECTRUM BLOCK: retune oscillator bank once (≈2 s cadence), then restore spectral q once.
     if (spectrum_new_block && spectrum_.ready()) {
@@ -851,26 +866,35 @@ private:
     }
     f0_base_hz = std::clamp(f0_base_hz, min_freq_hz_, max_freq_hz_);
   
-    // Spectral displacement peak (smoothed)
+    // Spectral displacement descriptors (smoothed)
     const bool have_fp =
         spectral_fp_valid_ &&
         std::isfinite(spectral_fp_hz_smth_) &&
         (spectral_fp_hz_smth_ > 0.0f);
-    
+
+    const bool have_fc =
+        spectral_fc_valid_ &&
+        std::isfinite(spectral_fc_hz_smth_) &&
+        (spectral_fc_hz_smth_ > 0.0f);
+
     const float fp_disp = have_fp
         ? std::clamp(spectral_fp_hz_smth_, min_freq_hz_, max_freq_hz_)
         : NAN;
-    
-    // Command f0:
-    // - If we have displacement peak, USE IT.
-    // - Otherwise fall back to base.
-    float f0_cmd_hz = have_fp ? fp_disp : f0_base_hz;
-    f0_cmd_hz = std::clamp(f0_cmd_hz, min_freq_hz_, max_freq_hz_);
-    
-    // HARD constraint you want: f0 must never exceed displacement peak if peak is valid
-    if (have_fp) f0_cmd_hz = std::min(f0_cmd_hz, fp_disp);
-    
-    f0_cmd_hz = std::clamp(f0_cmd_hz, min_freq_hz_, max_freq_hz_);
+    const float fc_disp = have_fc
+        ? std::clamp(spectral_fc_hz_smth_, min_freq_hz_, max_freq_hz_)
+        : fp_disp;
+
+    // Command f0 from robust spectral estimate + base frequency blend.
+    float f_spec = have_fp ? (0.72f * fp_disp + 0.28f * fc_disp) : f0_base_hz;
+    if (have_fc) {
+      const float f_floor = 1.10f * fc_disp;
+      f_spec = std::max(f_spec, f_floor);
+    }
+    f_spec = std::clamp(f_spec, min_freq_hz_, max_freq_hz_);
+
+    const float b = std::clamp(spectral_f0_blend_, 0.0f, 1.0f);
+    float f0_cmd_hz = std::clamp((1.0f - b) * f0_base_hz + b * f_spec,
+                                 min_freq_hz_, max_freq_hz_);
   
     // Smooth applied f0 using SPECTRUM cadence when ready (prevents fast thrash).
     float dt_blend = adapt_every_secs_;
@@ -887,8 +911,12 @@ private:
       broadband_f0_applied_hz_ += a * (f0_cmd_hz - broadband_f0_applied_hz_);
     }
   
-    // Hard constraint after smoothing:
-    if (have_fp) broadband_f0_applied_hz_ = std::min(broadband_f0_applied_hz_, fp_disp);
+    // Keep applied f0 physically close to spectral center/peak, without hard clipping to fp.
+    if (have_fc) {
+      const float lo = std::max(min_freq_hz_, 0.85f * fc_disp);
+      const float hi = std::min(max_freq_hz_, (have_fp ? 1.40f * fp_disp : 1.60f * fc_disp));
+      broadband_f0_applied_hz_ = std::clamp(broadband_f0_applied_hz_, lo, hi);
+    }
     broadband_f0_applied_hz_ = std::clamp(broadband_f0_applied_hz_, min_freq_hz_, max_freq_hz_);
   
     // Apply broadband params so mode freqs track f0_app.
