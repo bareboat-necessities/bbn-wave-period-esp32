@@ -805,18 +805,14 @@ private:
     if (!std::isfinite(f_for_amp) || f_for_amp <= 0.0f) f_for_amp = freq_hz_slow_;
     f_for_amp = std::clamp(f_for_amp, min_freq_hz_, max_freq_hz_);
   
-    // Hs from spectrum (preferred) or narrowband fallback from sigma_a / ω^2
-    float Hs_m = NAN;
-    if (spectral_mode_matching_enable_ && spectrum_.ready()) {
-      const double hs = spectrum_.computeHs();
-      if (std::isfinite(hs) && hs > 0.0) Hs_m = (float)hs;
+    // Hs from tuner-consistent narrowband amplitude
+    {
+      const float f = std::clamp(wave_freq_hz_, min_freq_hz_, max_freq_hz_);
+      const float w = 2.0f * float(M_PI) * std::max(1e-4f, f);
+      const float sigma_a = std::max(0.05f, tune_.sigma_applied);
+      const float sigma_eta = sigma_a / std::max(1e-9f, w*w);
+      Hs_m = std::clamp(4.0f * sigma_eta, 0.05f, 15.0f);
     }
-    if (!std::isfinite(Hs_m)) {
-      const float sigma_eta = sigmaEtaFromSigmaA_F_(sigma_a, f_for_amp);
-      if (std::isfinite(sigma_eta) && sigma_eta > 0.0f) Hs_m = 4.0f * sigma_eta;
-    }
-    if (!std::isfinite(Hs_m)) return;
-    Hs_m = std::clamp(Hs_m, 0.05f, 15.0f);
   
     // Keep your heuristics
     const float sea = std::max(0.0f, tune_.sigma_applied);
