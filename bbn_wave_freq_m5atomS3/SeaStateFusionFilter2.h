@@ -782,7 +782,7 @@ private:
     const float zeta_mid    = std::clamp(0.017f + 0.003f * std::min(sea, 3.0f), 0.016f, 0.026f);
     const float horiz_scale = std::clamp(0.18f + 0.04f * std::min(sea, 2.0f), 0.18f, 0.28f);
   
-    // Base f0 (tracker/tuner driven) used only when spectral peak is NOT available.
+    // Base f0 (tracker/tuner driven) used when spectral peak is NOT available.
     float f0_base_hz = freq_hz_slow_;
     if (tuner_.isFreqReady()) {
       const float ft = tuner_.getFrequencyHz();
@@ -796,19 +796,26 @@ private:
     const bool have_fp = spectral_fp_valid_ &&
                          std::isfinite(spectral_fp_hz_smth_) &&
                          (spectral_fp_hz_smth_ > 0.0f);
-    const float fp_disp = have_fp ? std::clamp(spectral_fp_hz_smth_, min_freq_hz_, max_freq_hz_) : NAN;
+    const float fp_disp = have_fp
+        ? std::clamp(spectral_fp_hz_smth_, min_freq_hz_, max_freq_hz_)
+        : NAN;
   
     // Command f0:
-    // - If we have displacement peak, USE IT (no blend) and enforce hard constraint.
+    // - If we have displacement peak, use it and enforce hard constraint.
     // - Otherwise fall back to base.
     float f0_cmd_hz = have_fp ? fp_disp : f0_base_hz;
     f0_cmd_hz = std::clamp(f0_cmd_hz, min_freq_hz_, max_freq_hz_);
     if (have_fp) f0_cmd_hz = std::min(f0_cmd_hz, fp_disp);
   
-    // Smooth applied f0 (always update the debug value)
+    // Smooth applied f0:
+    // IMPORTANT: use spectrum cadence when ready, not adapt_every_secs_.
+    float dt_blend = adapt_every_secs_;
+    if (spectrum_.ready()) {
+      const float ds = (float)spectrum_.updatePeriodSec();
+      if (std::isfinite(ds) && ds > 1e-3f) dt_blend = ds;
+    }
     {
-      const float dt_a = std::max(1e-3f, adapt_every_secs_);
-      const float a = expBlendAlpha_(dt_a, broadband_f0_tau_sec_);
+      const float a = expBlendAlpha_(std::max(1e-3f, dt_blend), broadband_f0_tau_sec_);
   
       if (!std::isfinite(broadband_f0_applied_hz_) || broadband_f0_applied_hz_ <= 0.0f) {
         broadband_f0_applied_hz_ = f0_cmd_hz;
@@ -821,13 +828,20 @@ private:
       broadband_f0_applied_hz_ = std::clamp(broadband_f0_applied_hz_, min_freq_hz_, max_freq_hz_);
     }
   
-    // If spectrum is ready AND spectral mode matching is enabled, DO NOT overwrite per-mode params.
-    if (spectral_mode_matching_enable_ && spectrum_.ready()) {
-      return;
-    }
-  
-    // Otherwise, drive the broadband oscillator bank
+    // Always apply broadband params so the FILTER'S MODE FREQUENCIES follow f0_app,
+    // even when spectral mode matching is enabled.
     mekf_->set_broadband_params(broadband_f0_applied_hz_, Hs_m, zeta_mid, horiz_scale);
+  
+    // If spectral mode matching is enabled+ready, immediately overwrite q with spectral q
+    // (so broadband q doesn't dominate between spectrum updates).
+    if (startup_stage_ == StartupStage::Live &&
+        enable_linear_block_ &&
+        spectral_mode_matching_enable_ &&
+        spectrum_.ready())
+    {
+      apply_spectral_mode_matching_();
+      last_spectral_apply_time_sec_ = time_; // prevents double-apply in the timed block
+    }
   }
 
   // Adaptive knobs that depend on current sea-state energy.
