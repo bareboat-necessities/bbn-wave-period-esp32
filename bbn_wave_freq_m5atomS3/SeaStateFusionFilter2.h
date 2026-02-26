@@ -858,6 +858,7 @@ private:
     freq_hz_      = FREQ_GUESS;
     freq_hz_slow_ = FREQ_GUESS;
     f_raw_        = FREQ_GUESS;
+    wave_freq_hz_ = FREQ_GUESS;
 
     dir_filter_ = KalmanWaveDirection(2.0f * static_cast<float>(M_PI) * FREQ_GUESS);
     dir_sign_state_ = UNCERTAIN;
