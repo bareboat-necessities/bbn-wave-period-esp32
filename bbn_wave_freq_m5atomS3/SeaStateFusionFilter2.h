@@ -703,8 +703,13 @@ private:
     if (spectral_fp_valid_ && std::isfinite(spectral_fp_hz_smth_) && spectral_fp_hz_smth_ > 0.0f) {
       f0_cmd_hz = std::clamp(spectral_fp_hz_smth_, min_freq_hz_, max_freq_hz_);
     }
-  
-    mekf_->set_broadband_params(f0_cmd_hz, Hs_m, zeta_mid, horiz_scale);
+
+    if (!std::isfinite(broadband_f0_applied_hz_)) broadband_f0_applied_hz_ = f0_cmd_hz;
+    else {
+      const float a = expBlendAlpha_(adapt_every_secs_, broadband_f0_tau_sec_);
+      broadband_f0_applied_hz_ += a * (f0_cmd_hz - broadband_f0_applied_hz_);
+    }
+    mekf_->set_broadband_params(broadband_f0_applied_hz_, Hs_m, zeta_mid, horiz_scale);
   }
 
   // Adaptive knobs that depend on current sea-state energy.
