@@ -461,9 +461,16 @@ public:
       }
     }
     
-    wave_freq_hz_ = (spectral_fc_valid_ && std::isfinite(spectral_fc_hz_smth_) && spectral_fc_hz_smth_ > 0.0f)
-              ? std::clamp(spectral_fc_hz_smth_, min_freq_hz_, max_freq_hz_)
-              : std::clamp(freq_hz_slow_,        min_freq_hz_, max_freq_hz_);
+    // Drive wave/tau from displacement PEAK when available.
+    // (Center can be biased low -> causes huge disp/vel as p ~ 1/omega^2)
+    const bool have_fp =
+        spectral_fp_valid_ &&
+        std::isfinite(spectral_fp_hz_smth_) &&
+        (spectral_fp_hz_smth_ > 0.0f);
+    
+    wave_freq_hz_ = have_fp
+      ? std::clamp(spectral_fp_hz_smth_, min_freq_hz_, max_freq_hz_)
+      : std::clamp(freq_hz_slow_,       min_freq_hz_, max_freq_hz_);
 
     // NEW SPECTRUM BLOCK: retune oscillator bank once (≈2 s cadence), then restore spectral q once.
     if (spectrum_new_block && spectrum_.ready()) {
