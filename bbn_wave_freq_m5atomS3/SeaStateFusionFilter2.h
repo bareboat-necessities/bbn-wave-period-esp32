@@ -491,8 +491,12 @@ public:
       update_tuner_(dt, a_vert_lp, wave_freq_hz_);
     }
 
-    if (spectrum_new_block && spectral_mode_matching_enable_ &&
-        startup_stage_ == StartupStage::Live && (time_ - last_spectral_apply_time_sec_) >= spectral_apply_every_sec_)
+    // Keep q adaptation live between spectrum blocks as well:
+    // q_k target is refreshed by new spectrum frames, but the rate-limited
+    // / budget-smoothed state should continue moving on its own cadence.
+    if (spectral_mode_matching_enable_ && spectrum_.ready() &&
+        startup_stage_ == StartupStage::Live &&
+        (time_ - last_spectral_apply_time_sec_) >= spectral_apply_every_sec_)
     {
       apply_spectral_mode_matching_();
       last_spectral_apply_time_sec_ = time_;
@@ -1197,7 +1201,7 @@ private:
   // Spectrum -> q_k conversion knobs
   float spectral_q_gain_         = 1.0f;    // main knob
   float spectral_q_floor_        = 1e-6f;
-  float spectral_q_cap_          = 25.0f;   // per-mode cap (pre/post normalize clamp)
+  float spectral_q_cap_          = 60.0f;   // per-mode cap (pre/post normalize clamp)
   float spectral_horiz_q_ratio_  = 0.22f;   // XY q = ratio * Z q
 
   // Allowed analysis range for spectral fitting (not applied as mode centers anymore)
@@ -1395,7 +1399,9 @@ private:
       // Rescale to match budget (bounded)
       const float sum_now = std::max(1e-12f, sum_q);
       float s = spectral_q_budget_sum_ / sum_now;
-      s = std::clamp(s, 0.55f, 1.65f);
+      // Allow stronger upward correction in rough seas; downward side
+      // remains tighter to avoid sudden stiffening -> sloshy estimates.
+      s = std::clamp(s, 0.55f, 2.20f);
   
       for (int k = 0; k < K; ++k) {
         spectral_qz_applied_[k] = std::clamp(spectral_qz_applied_[k] * s, spectral_q_floor_, spectral_q_cap_);
