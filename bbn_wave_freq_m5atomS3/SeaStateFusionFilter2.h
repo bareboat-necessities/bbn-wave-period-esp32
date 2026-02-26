@@ -328,31 +328,6 @@ public:
       // Feed RAW vertical inertial accel; estimator has its own HP/LP/decimation.
       spectrum_new_block = spectrum_.processSample(static_cast<double>(a_vert_up_));
     }
-
-    if (spectrum_new_block && spectrum_.ready()) {
-      const auto st = spectrum_.estimateLogFreqStats();
-    
-      if (std::isfinite(st.f_center_hz) && st.f_center_hz > 0.0 && std::isfinite(st.sig_logf)) {
-        const float f_spec = std::clamp((float)st.f_center_hz, min_freq_hz_, max_freq_hz_);
-    
-        // log-domain measurement variances
-        const float R_spec = std::max(1e-4f, (float)(st.sig_logf * st.sig_logf)); // from spectrum spread
-        const float R_base = std::max(1e-4f, base_logvar_ema_);                   // from tracker self-noise
-    
-        const float lf_base = std::log(std::max(1e-4f, freq_hz_slow_));
-        const float lf_spec = std::log(std::max(1e-4f, f_spec));
-    
-        const float w_base = 1.0f / R_base;
-        const float w_spec = 1.0f / R_spec;
-    
-        const float lf_fused = (w_base * lf_base + w_spec * lf_spec) / (w_base + w_spec);
-        const float f_fused  = std::clamp(std::exp(lf_fused), min_freq_hz_, max_freq_hz_);
-    
-        // store this as the commanded broadband center frequency
-        spectral_fp_hz_smth_ = f_fused;   // reuse your existing variable if you want
-        spectral_fp_valid_   = true;
-      }
-    }
     
     // LPF for tracker/tuner input
     const float a_vert_lp = freq_input_lpf_.step(a_vert_up_, dt);
@@ -378,10 +353,39 @@ public:
       const float e2 = e * e;
       base_logvar_ema_ = (1.0f - base_logvar_alpha_) * base_logvar_ema_ + base_logvar_alpha_ * e2;
     }
-  
+
+    // Spectral fusion (log-domain), using CURRENT freq_hz_slow_
+    if (spectrum_new_block && spectrum_.ready()) {
+      const auto st = spectrum_.estimateLogFreqStats();
+    
+      if (std::isfinite(st.f_center_hz) && st.f_center_hz > 0.0 && std::isfinite(st.sig_logf)) {
+        const float f_spec = std::clamp((float)st.f_center_hz, min_freq_hz_, max_freq_hz_);
+    
+        const float R_spec = std::max(1e-4f, (float)(st.sig_logf * st.sig_logf));
+        const float R_base = std::max(1e-4f, base_logvar_ema_);
+    
+        const float lf_base = std::log(std::max(1e-4f, freq_hz_slow_));
+        const float lf_spec = std::log(std::max(1e-4f, f_spec));
+    
+        const float w_base = 1.0f / R_base;
+        const float w_spec = 1.0f / R_spec;
+    
+        const float lf_fused = (w_base * lf_base + w_spec * lf_spec) / (w_base + w_spec);
+        const float f_fused  = std::clamp(std::exp(lf_fused), min_freq_hz_, max_freq_hz_);
+    
+        spectral_fp_hz_smth_ = f_fused;
+        spectral_fp_valid_   = true;
+      }
+    }
+    
+    // wave_freq_hz_ is what we trust for wave/tau (spectral if valid, else tracker slow)
+    wave_freq_hz_ = spectral_fp_valid_ && std::isfinite(spectral_fp_hz_smth_) && spectral_fp_hz_smth_ > 0.0f
+                  ? std::clamp(spectral_fp_hz_smth_, min_freq_hz_, max_freq_hz_)
+                  : std::clamp(freq_hz_slow_,        min_freq_hz_, max_freq_hz_);
+    
     if (enable_tuner_) {
       // Use LPF'ed vertical accel here too (reduces ringing / freq overshoot)
-      update_tuner_(dt, a_vert_lp);
+      update_tuner_(dt, a_vert_lp, wave_freq_hz_);
     }
 
     if (spectrum_new_block && spectral_mode_matching_enable_ &&
@@ -399,11 +403,12 @@ public:
     if (time_ >= next_debug_print_time_sec_) {
       next_debug_print_time_sec_ = time_ + debug_print_every_sec_;
       printf(
-        "f_slow:%6.3f  fp_disp:%6.3f  f0_applied:%6.3f  stage:%d\n",
+        "f_slow:%6.3f  f_wave:%6.3f  fp_disp:%6.3f  f0_app:%6.3f\n",
         (double)freq_hz_slow_,
+        (double)wave_freq_hz_,
         (double)(spectral_fp_valid_ ? spectral_fp_hz_smth_ : NAN),
-        (double)(std::isfinite(broadband_f0_applied_hz_) ? broadband_f0_applied_hz_ : NAN),
-        (int)startup_stage_);
+        (double)(std::isfinite(broadband_f0_applied_hz_) ? broadband_f0_applied_hz_ : NAN)
+      );
     }
   }
 
@@ -758,8 +763,8 @@ private:
     mekf_->set_Q_bacc_rw(Eigen::Vector3f(rw_xy, rw_xy, rw_z));
   }
 
-  void update_tuner_(float dt, float a_vert_inertial_up) {
-    tuner_.update(dt, a_vert_inertial_up, freq_hz_slow_);
+  void update_tuner_(float dt, float a_vert_inertial_up, float wave_freq_hz) {
+    tuner_.update(dt, a_vert_inertial_up, wave_freq_hz);
 
     switch (startup_stage_) {
       case StartupStage::Cold:
@@ -780,28 +785,15 @@ private:
         break;
     }
 
-    float f_tune = tuner_.getFrequencyHz();
-    if (!std::isfinite(f_tune) || f_tune < min_freq_hz_) f_tune = min_freq_hz_;
-    if (f_tune > max_freq_hz_) f_tune = max_freq_hz_;
-
-    float var_total = acc_noise_floor_sigma_ * acc_noise_floor_sigma_;
-    if (tuner_.isVarReady()) var_total = std::max(0.0f, tuner_.getAccelVariance());
-
-    const float var_noise = acc_noise_floor_sigma_ * acc_noise_floor_sigma_;
-    float var_wave = var_total - var_noise;
-    if (var_wave < 0.0f) var_wave = 0.0f;
-
-    if (freq_stillness_.isStill()) {
-      const float still_t = std::max(0.0f, freq_stillness_.getStillTime());
-      constexpr float STILL_VAR_DECAY_SEC = 1.0f;
-      float atten = std::exp(-still_t / STILL_VAR_DECAY_SEC);
-      atten = std::min(std::max(atten, 0.0f), 1.0f);
-      var_wave *= atten;
+    float f_used = wave_freq_hz;
+    if (!std::isfinite(f_used) || f_used <= 0.0f) {
+      // fallback only if needed
+      f_used = tuner_.getFrequencyHz();
     }
-
-    var_wave = std::max(var_wave, 1e-6f);
-    float sigma_wave = std::sqrt(var_wave);
-    float tau_raw = tau_coeff_ * 0.5f / f_tune;
+    if (!std::isfinite(f_used) || f_used < min_freq_hz_) f_used = min_freq_hz_;
+    if (f_used > max_freq_hz_) f_used = max_freq_hz_;
+    
+    float tau_raw = tau_coeff_ * 0.5f / f_used;
 
     if (enable_clamp_) {
       tau_target_   = std::min(std::max(tau_raw,  min_tau_s_), max_tau_s_);
@@ -1102,7 +1094,7 @@ void apply_spectral_mode_matching_() {
 
   // Gentle inversion regularization for displacement spectrum
   {
-    float f_reg = 0.12f * std::max(min_freq_hz_, freq_hz_slow_);
+    float f_reg = 0.12f * std::max(min_freq_hz_, wave_freq_hz_);
     f_reg = std::clamp(f_reg, 0.02f, 0.08f);
     spectrum_.setRegularizationF0Hz(static_cast<double>(f_reg));
   }
@@ -1115,7 +1107,7 @@ void apply_spectral_mode_matching_() {
 
   for (int k = 0; k < K; ++k) {
     if (!std::isfinite(f_cur_hz[k]) || f_cur_hz[k] <= 0.0f) {
-      f_cur_hz[k] = std::clamp(freq_hz_slow_, spectral_mode_fmin_hz_, spectral_mode_fmax_hz_);
+      f_cur_hz[k] = std::clamp(wave_freq_hz_, spectral_mode_fmin_hz_, spectral_mode_fmax_hz_);
     } else {
       f_cur_hz[k] = std::clamp(f_cur_hz[k], spectral_mode_fmin_hz_, spectral_mode_fmax_hz_);
     }
