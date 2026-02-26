@@ -441,10 +441,19 @@ public:
                   ? std::clamp(spectral_fp_hz_smth_, min_freq_hz_, max_freq_hz_)
                   : std::clamp(freq_hz_slow_,        min_freq_hz_, max_freq_hz_);
 
-    // If a new spectrum block arrived, update f0_app immediately (even in spectral mode).
+    // NEW SPECTRUM BLOCK: retune oscillator bank once (≈2 s cadence), then restore spectral q once.
     if (spectrum_new_block && spectrum_.ready()) {
       apply_oscillators_tune_();
-    }    
+    
+      // set_broadband_params() overwrites q; restore spectral q immediately (but only at spectrum cadence).
+      if (startup_stage_ == StartupStage::Live &&
+          enable_linear_block_ &&
+          spectral_mode_matching_enable_)
+      {
+        apply_spectral_mode_matching_();
+        last_spectral_apply_time_sec_ = time_; // prevents immediate re-apply in the timed block
+      }
+    }  
 
     if (enable_tuner_) {
       // Use LPF'ed vertical accel here too (reduces ringing / freq overshoot)
@@ -954,14 +963,13 @@ private:
   
     if (time_ - last_adapt_time_sec_ > adapt_every_secs_) {
   
-      // ALWAYS update f0_app bookkeeping (and possibly broadband params),
-      // even when spectrum is ready. apply_oscillators_tune_() itself
-      // already returns early (after updating broadband_f0_applied_hz_)
-      // when spectral mode matching is active and spectrum is ready.
-      if (tuner_.isFreqReady() || spectral_fp_valid_) {
-        apply_oscillators_tune_();
+      // Do NOT retune oscillator bank at the 10 Hz adapt cadence once spectrum is ready.
+      // Retune only on NEW spectrum blocks in updateTime() (see Drop-in B).
+      if (!(spectral_mode_matching_enable_ && spectrum_.ready())) {
+        if (tuner_.isFreqReady() || spectral_fp_valid_) {
+          apply_oscillators_tune_();
+        }
       }
-  
       apply_adaptive_rms_tuning_();
       last_adapt_time_sec_ = time_;
     }
