@@ -704,8 +704,12 @@ private:
     // Longuet–Higgins-consistent elevation/heave scale:
     // σ_η = σ_a / ω², Hs ≈ 4σ_η
     const float sigma_eta = sigmaEtaFromSigmaA_F_(sigma_a, f_hz);
-    float Hs_m = lhHs_(sigma_eta);
-    if (!std::isfinite(Hs_m) || Hs_m < 0.0f) Hs_m = 0.0f;
+    float Hs_m = NAN;
+    if (spectral_mode_matching_enable_ && spectrum_.ready()) {
+      Hs_m = (float)spectrum_.computeHs();   // Hs = 4*sqrt(m0) from S_eta
+    } else {
+      Hs_m = NAN; // keep whatever was set at init; don't inject wrong amplitude
+    }
   
     // Keep your existing damping/horizontal heuristics for now (these don't cause the blow-up).
     const float sea = std::max(0.0f, tune_.sigma_applied);
