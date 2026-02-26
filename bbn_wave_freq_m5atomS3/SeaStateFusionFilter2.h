@@ -682,18 +682,28 @@ private:
     constexpr float C_HS = 2.0f * std::sqrt(2.0f) / (float(M_PI) * float(M_PI));
     const float sea = std::max(0.0f, tune_.sigma_applied);
   
-    // Keep damping modest (don't change too much since Z is already strong)
     const float zeta_mid = std::clamp(0.017f + 0.003f * std::min(sea, 3.0f), 0.016f, 0.026f);
-  
-    // BIG change: your current horiz_scale is too low
     const float horiz_scale = std::clamp(0.18f + 0.04f * std::min(sea, 2.0f), 0.18f, 0.28f);
   
-    // Preserve heave performance; don't go crazy on Hs prior
     const float hs_gain = std::clamp(1.0f + 0.1f * std::min(sea, 2.0f), 1.0f, 1.2f);
     const float Hs_m = std::max(0.0f, hs_gain * C_HS * sZ * tau * tau);
   
+    // BASE f0: tracker/tuner driven
+    float f0_base_hz = freq_hz_slow_;
+    if (tuner_.isFreqReady()) {
+      const float ft = tuner_.getFrequencyHz();
+      if (std::isfinite(ft) && ft > 0.0f) {
+        f0_base_hz = 0.20f * freq_hz_slow_ + 0.80f * ft;
+      }
+    }
+    f0_base_hz = std::clamp(f0_base_hz, min_freq_hz_, max_freq_hz_);
+  
+    // Fused/spectral-corrected command
     float f0_cmd_hz = f0_base_hz;
-    if (spectral_fp_valid_) f0_cmd_hz = spectral_fp_hz_smth_;
+    if (spectral_fp_valid_ && std::isfinite(spectral_fp_hz_smth_) && spectral_fp_hz_smth_ > 0.0f) {
+      f0_cmd_hz = std::clamp(spectral_fp_hz_smth_, min_freq_hz_, max_freq_hz_);
+    }
+  
     mekf_->set_broadband_params(f0_cmd_hz, Hs_m, zeta_mid, horiz_scale);
   }
 
