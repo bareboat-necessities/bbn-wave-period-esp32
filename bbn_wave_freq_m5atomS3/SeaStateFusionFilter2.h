@@ -714,12 +714,12 @@ private:
     if (!std::isfinite(Hs_m)) return;
     Hs_m = std::clamp(Hs_m, 0.05f, 15.0f);
   
-    // Heuristics (keep yours)
+    // Keep your heuristics
     const float sea = std::max(0.0f, tune_.sigma_applied);
     const float zeta_mid    = std::clamp(0.017f + 0.003f * std::min(sea, 3.0f), 0.016f, 0.026f);
     const float horiz_scale = std::clamp(0.18f + 0.04f * std::min(sea, 2.0f), 0.18f, 0.28f);
   
-    // BASE f0: tracker/tuner driven
+    // Base f0 (tracker/tuner driven) used only when spectral peak is NOT available.
     float f0_base_hz = freq_hz_slow_;
     if (tuner_.isFreqReady()) {
       const float ft = tuner_.getFrequencyHz();
@@ -729,26 +729,20 @@ private:
     }
     f0_base_hz = std::clamp(f0_base_hz, min_freq_hz_, max_freq_hz_);
   
-    // fp_disp (spectral PEAK) if available
-    const bool have_fp = spectral_fp_valid_ && std::isfinite(spectral_fp_hz_smth_) && spectral_fp_hz_smth_ > 0.0f;
+    // Spectral displacement peak (smoothed)
+    const bool have_fp = spectral_fp_valid_ &&
+                         std::isfinite(spectral_fp_hz_smth_) &&
+                         (spectral_fp_hz_smth_ > 0.0f);
     const float fp_disp = have_fp ? std::clamp(spectral_fp_hz_smth_, min_freq_hz_, max_freq_hz_) : NAN;
   
-    // Command f0: blend toward spectral peak, BUT NEVER ABOVE spectral peak.
-    float f0_cmd_hz = f0_base_hz;
-    if (have_fp) {
-      const float b = std::clamp(spectral_f0_blend_, 0.0f, 1.0f);
-  
-      // log-domain blend for stability
-      const float lf0 = std::log(std::max(1e-4f, f0_base_hz));
-      const float lfp = std::log(std::max(1e-4f, fp_disp));
-      f0_cmd_hz = std::exp((1.0f - b) * lf0 + b * lfp);
-  
-      // HARD constraint you asked for:
-      f0_cmd_hz = std::min(f0_cmd_hz, fp_disp);
-    }
+    // Command f0:
+    // - If we have displacement peak, USE IT (no blend) and enforce hard constraint.
+    // - Otherwise fall back to base.
+    float f0_cmd_hz = have_fp ? fp_disp : f0_base_hz;
     f0_cmd_hz = std::clamp(f0_cmd_hz, min_freq_hz_, max_freq_hz_);
+    if (have_fp) f0_cmd_hz = std::min(f0_cmd_hz, fp_disp);
   
-    // Smooth applied f0 ALWAYS (even when we won't call set_broadband_params)
+    // Smooth applied f0 (always update the debug value)
     {
       const float dt_a = std::max(1e-3f, adapt_every_secs_);
       const float a = expBlendAlpha_(dt_a, broadband_f0_tau_sec_);
@@ -765,7 +759,6 @@ private:
     }
   
     // If spectrum is ready AND spectral mode matching is enabled, DO NOT overwrite per-mode params.
-    // But f0_app is still updated for debug + internal consistency.
     if (spectral_mode_matching_enable_ && spectrum_.ready()) {
       return;
     }
