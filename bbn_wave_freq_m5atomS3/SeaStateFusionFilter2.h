@@ -1134,41 +1134,157 @@ private:
     if (!mekf_) return;
     if (!spectral_mode_matching_enable_) return;
     if (!spectrum_.ready()) return;
-    if (!enable_linear_block_) return;
   
     constexpr int K = Kalman3D_Wave_2<float>::kWaveModes;
   
-    // Get current damping ratios (used by q = 4*zeta*omega^3*var_p)
+    // If wave block is disabled, don't push spectral params.
+    if (!enable_linear_block_) return;
+  
+    // Gentle inversion regularization for displacement spectrum
+    {
+      float f_reg = 0.12f * std::max(min_freq_hz_, wave_freq_hz_);
+      f_reg = std::clamp(f_reg, 0.02f, 0.08f);
+      spectrum_.setRegularizationF0Hz(static_cast<double>(f_reg));
+    }
+  
+    // Current Kalman mode centers and damping
+    std::array<float, K> f_cur_hz{};
     std::array<float, K> zeta_k{};
+    mekf_->get_wave_mode_freqs_hz(f_cur_hz);
     mekf_->get_wave_mode_zetas(zeta_k);
+  
     for (int k = 0; k < K; ++k) {
+      if (!std::isfinite(f_cur_hz[k]) || f_cur_hz[k] <= 0.0f) {
+        f_cur_hz[k] = std::clamp(wave_freq_hz_, spectral_mode_fmin_hz_, spectral_mode_fmax_hz_);
+      } else {
+        f_cur_hz[k] = std::clamp(f_cur_hz[k], spectral_mode_fmin_hz_, spectral_mode_fmax_hz_);
+      }
+  
       float z = zeta_k[k];
       if (!std::isfinite(z) || z <= 0.0f) z = 0.02f;
       zeta_k[k] = std::clamp(z, 0.003f, 0.20f);
     }
   
-    // Spectrum -> (mode centers f_k) + (qz_k) using displacement PSD S_eta
-    std::array<float, K> f_mode_hz{};
-    std::array<float, K> qz_mode{};
+    // Estimate qz on FIXED mode centers (Q-only spectral adaptation)
+    float q_gain_eff = spectral_q_gain_;
+    {
+      const float sea = std::max(0.0f, tune_.sigma_applied);
+      q_gain_eff *= std::clamp(1.0f - 0.08f * std::min(sea, 3.0f), 0.75f, 1.0f);
+    }
   
-    spectrum_.template estimateModeQz<K>(
-        f_mode_hz,
-        qz_mode,
+    std::array<float, K> qz_raw{};
+    spectrum_.template estimateModeQzFixedCenters<K>(
+        f_cur_hz,
+        qz_raw,
         zeta_k,
-        spectral_mode_fmin_hz_,
-        spectral_mode_fmax_hz_,
-        spectral_q_gain_,
+        q_gain_eff,
         spectral_q_floor_,
         spectral_q_cap_);
   
-    // Horizontal ratio (constant is fine; physics is in vertical here)
-    const float hr = std::clamp(spectral_horiz_q_ratio_, 0.0f, 1.0f);
+    // Sanitize raw q
+    float raw_sum = 0.0f;
+    for (int k = 0; k < K; ++k) {
+      if (!std::isfinite(qz_raw[k]) || qz_raw[k] <= 0.0f) qz_raw[k] = spectral_q_floor_;
+      qz_raw[k] = std::clamp(qz_raw[k], spectral_q_floor_, spectral_q_cap_);
+      raw_sum += qz_raw[k];
+    }
+    if (!(raw_sum > 0.0f) || !std::isfinite(raw_sum)) return;
   
-    // When driving per-mode q directly, global wave_Q_scale must be neutral
+    // Initialize total-q budget on first valid spectral application
+    if (!spectral_q_budget_initialized_) {
+      spectral_q_budget_initialized_ = true;
+  
+      std::array<float, K> qz_cur{};
+      mekf_->get_wave_mode_qz(qz_cur);
+      
+      float qsum_cur = 0.0f;
+      for (int k = 0; k < K; ++k) {
+        const float qk = (std::isfinite(qz_cur[k]) && qz_cur[k] > 0.0f) ? qz_cur[k] : spectral_q_floor_;
+        qsum_cur += qk;
+      }
+      
+      const float min_budget = float(K) * spectral_q_floor_;
+      const float max_budget = float(K) * spectral_q_cap_;
+      
+      spectral_q_budget_base_sum_ = std::clamp(qsum_cur, min_budget, max_budget);
+      spectral_q_budget_sum_      = spectral_q_budget_base_sum_;
+      
+      float disp_ref = getDisplacementScale(true);
+      if (!std::isfinite(disp_ref) || disp_ref <= 0.0f) disp_ref = 0.1f;
+      spectral_q_budget_ref_disp_scale_m_ = disp_ref;
+    }
+  
+    // Smooth total-q budget target (tied to tuner displacement scale)
+    {
+      const float budget_tgt = spectral_q_budget_target_from_tuner_();
+      if (std::isfinite(budget_tgt) && budget_tgt > 0.0f) {
+        const float a_budget = expBlendAlpha_(spectral_apply_every_sec_, spectral_q_budget_tau_sec_);
+        if (!std::isfinite(spectral_q_budget_sum_) || spectral_q_budget_sum_ <= 0.0f) {
+          spectral_q_budget_sum_ = budget_tgt;
+        } else {
+          spectral_q_budget_sum_ += a_budget * (budget_tgt - spectral_q_budget_sum_);
+        }
+      }
+    }
+  
+    // Normalize per-mode q to the budget (critical: preserves overall aggressiveness)
+    std::array<float, K> qz_target{};
+    {
+      float budget = spectral_q_budget_sum_;
+      if (!std::isfinite(budget) || budget <= 0.0f) budget = raw_sum;
+  
+      const float min_budget = float(K) * spectral_q_floor_;
+      const float max_budget = float(K) * spectral_q_cap_;
+      budget = std::clamp(budget, min_budget, max_budget);
+  
+      const float scale = budget / std::max(raw_sum, 1e-12f);
+  
+      for (int k = 0; k < K; ++k) {
+        qz_target[k] = std::clamp(qz_raw[k] * scale, spectral_q_floor_, spectral_q_cap_);
+      }
+    }
+  
+    // Sea-state dependent XY/Z ratio (keep modest)
+    float hr = spectral_horiz_q_ratio_;
+    {
+      const float sea = std::max(0.0f, tune_.sigma_applied);
+      hr = std::clamp(hr + 0.02f * std::min(sea, 2.5f), 0.15f, 0.35f);
+    }
+  
+    // Per-mode slew-limit + EMA smoothing (Q only)
+    const float a_q = expBlendAlpha_(spectral_apply_every_sec_, spectral_q_apply_tau_sec_);
+  
+    std::array<float, K> qz_out{};
+    for (int k = 0; k < K; ++k) {
+      float q_tgt = std::clamp(qz_target[k], spectral_q_floor_, spectral_q_cap_);
+  
+      if (!spectral_applied_initialized_) {
+        spectral_qz_applied_[k] = q_tgt;
+      }
+  
+      const float q_prev = std::max(spectral_q_floor_, spectral_qz_applied_[k]);
+  
+      // Slew-limit before EMA
+      const float q_lo = std::max(spectral_q_floor_, spectral_q_step_down_ratio_ * q_prev);
+      const float q_hi = std::min(spectral_q_cap_,   spectral_q_step_up_ratio_   * q_prev);
+      q_tgt = std::clamp(q_tgt, q_lo, q_hi);
+  
+      spectral_qz_applied_[k] += a_q * (q_tgt - spectral_qz_applied_[k]);
+  
+      if (!std::isfinite(spectral_qz_applied_[k]) || spectral_qz_applied_[k] <= 0.0f) {
+        spectral_qz_applied_[k] = q_prev;
+      }
+  
+      qz_out[k] = std::clamp(spectral_qz_applied_[k], spectral_q_floor_, spectral_q_cap_);
+    }
+  
+    spectral_applied_initialized_ = true;
+  
+    // IMPORTANT: when spectral per-mode q is active, neutralize global q scale
     mekf_->set_wave_Q_scale(1.0f);
   
-    // Push BOTH frequencies and q (preserves existing zeta_k inside mekf)
-    mekf_->set_wave_mode_freqs_and_qz(f_mode_hz, qz_mode, hr, spectral_q_floor_);
+    // Push ONLY q (frequencies unchanged)
+    mekf_->set_wave_mode_freqs_and_qz(f_cur_hz, qz_out, hr, spectral_q_floor_);
   }
 };
 
