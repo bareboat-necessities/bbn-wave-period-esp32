@@ -806,12 +806,33 @@ private:
     if (!std::isfinite(f_for_amp) || f_for_amp <= 0.0f) f_for_amp = freq_hz_slow_;
     f_for_amp = std::clamp(f_for_amp, min_freq_hz_, max_freq_hz_);
   
-    // Hs from tuner-consistent narrowband amplitude
-    const float w = 2.0f * float(M_PI) * std::max(1e-4f, f_for_amp);
-    const float sigma_eta = sigma_a / std::max(1e-9f, w*w);
-    float Hs_m = std::clamp(4.0f * sigma_eta, 0.05f, 15.0f);
-  
-    // Keep your heuristics
+    float Hs_m = NAN;
+
+    if (spectral_mode_matching_enable_ && spectrum_.ready()) {
+      // m0 = ∫ S_eta(f) df  [m^2]
+      const auto st = spectrum_.estimateLogFreqStats();
+      if (std::isfinite(st.m0) && st.m0 > 1e-12) {
+        Hs_m = 4.0f * std::sqrt((float)st.m0);
+      }
+    }
+
+    // Fallback (only before spectrum warm): your old narrowband estimate
+    if (!std::isfinite(Hs_m) || Hs_m <= 0.0f) {
+      const float sigma_a = std::max(std::max(0.05f, acc_noise_floor_sigma_), tune_.sigma_applied);
+
+      float f_for_amp = wave_freq_hz_;
+      if (!std::isfinite(f_for_amp) || f_for_amp <= 0.0f) f_for_amp = freq_hz_slow_;
+      f_for_amp = std::clamp(f_for_amp, min_freq_hz_, max_freq_hz_);
+
+      const float w = 2.0f * float(M_PI) * std::max(1e-4f, f_for_amp);
+      const float sigma_eta = sigma_a / std::max(1e-9f, w*w);
+      Hs_m = 4.0f * sigma_eta;
+    }
+
+    // Safety 
+    Hs_m = std::clamp(Hs_m, 0.05f, 15.0f);
+    Hs_applied_m_ = Hs_m;
+    
     const float sea = std::max(0.0f, tune_.sigma_applied);
     const float zeta_mid    = std::clamp(0.017f + 0.003f * std::min(sea, 3.0f), 0.016f, 0.026f);
     const float horiz_scale = std::clamp(0.18f + 0.04f * std::min(sea, 2.0f), 0.18f, 0.28f);
