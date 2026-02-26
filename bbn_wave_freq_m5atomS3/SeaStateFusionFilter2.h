@@ -531,17 +531,15 @@ public:
     return std::fabs(mekf_->get_position().z());
   }
 
-  inline float getDisplacementScale(bool smoothed = true) const noexcept {
-    // Interpret "scale" as Longuet–Higgins mean envelope amplitude E[R] (meters).
-    const float sigma_a = smoothed ? tune_.sigma_applied : sigma_target_;
-    if (!std::isfinite(sigma_a) || sigma_a <= 0.0f) return NAN;
-  
-    float f_hz = wave_freq_hz_;
-    if (!std::isfinite(f_hz) || f_hz <= 0.0f) f_hz = freq_hz_slow_;
-    f_hz = std::clamp(f_hz, min_freq_hz_, max_freq_hz_);
-  
-    const float sigma_eta = sigmaEtaFromSigmaA_F_(sigma_a, f_hz); // σ_η = σ_a / ω²
-    return lhMeanEnvelope_(sigma_eta);                            // E[R] = √(π/2) σ_η
+  inline float getDisplacementScale(bool /*smoothed*/ = true) const noexcept {
+    // "Scale" = Longuet–Higgins mean envelope amplitude E[R] (meters)
+    if (spectral_mode_matching_enable_ && spectrum_.ready()) {
+      const auto st = spectrum_.estimateLogFreqStats();
+      const float m0 = std::max(0.0f, (float)st.m0);          // variance [m^2]
+      const float sigma_eta = std::sqrt(m0);                  // std-dev [m]
+      return std::sqrt(float(M_PI) / 2.0f) * sigma_eta;        // mean Rayleigh envelope
+    }
+    return NAN; // before spectrum is warm, don't lie
   }
   
   static float loglog_interp_extrap_(float x, const float* xs, const float* ys, int n)
