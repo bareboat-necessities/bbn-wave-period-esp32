@@ -832,7 +832,7 @@ private:
     }
     f0_base_hz = std::clamp(f0_base_hz, min_freq_hz_, max_freq_hz_);
   
-    // Spectral peak (for hard "never exceed") and spectral center (for stability)
+    // Spectral displacement peak (smoothed)
     const bool have_fp =
         spectral_fp_valid_ &&
         std::isfinite(spectral_fp_hz_smth_) &&
@@ -842,19 +842,11 @@ private:
         ? std::clamp(spectral_fp_hz_smth_, min_freq_hz_, max_freq_hz_)
         : NAN;
     
-    const bool have_fc =
-        spectral_fc_valid_ &&
-        std::isfinite(spectral_fc_hz_smth_) &&
-        (spectral_fc_hz_smth_ > 0.0f);
-    
-    const float fc_disp = have_fc
-        ? std::clamp(spectral_fc_hz_smth_, min_freq_hz_, max_freq_hz_)
-        : NAN;
-    
     // Command f0:
-    // - Prefer stable spectral center when available
-    // - Else fall back to base
-    float f0_cmd_hz = have_fc ? fc_disp : f0_base_hz;
+    // - If we have displacement peak, USE IT.
+    // - Otherwise fall back to base.
+    float f0_cmd_hz = have_fp ? fp_disp : f0_base_hz;
+    f0_cmd_hz = std::clamp(f0_cmd_hz, min_freq_hz_, max_freq_hz_);
     
     // HARD constraint you want: f0 must never exceed displacement peak if peak is valid
     if (have_fp) f0_cmd_hz = std::min(f0_cmd_hz, fp_disp);
