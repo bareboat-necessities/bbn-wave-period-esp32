@@ -417,12 +417,6 @@ public:
         }
     
         accept = (nb >= 5 && pk > 0.0);
-
-        if (accept && std::isfinite(zeta_mid_candidate)) {
-          std::array<float, Kalman3D_Wave_2<float>::kWaveModes> zetas{};
-          zetas.fill(zeta_mid_candidate);
-          mekf_->set_wave_mode_zetas(zetas);
-        }
     
         if (accept) {
           auto tmp = band_vals;
@@ -443,7 +437,13 @@ public:
         const float dlog_max = (float)std::clamp(0.32 + 0.30 * siglog, 0.32, 0.60);
         if (!(dlog <= dlog_max)) accept = false;
       }
-    
+
+      if (accept && std::isfinite(zeta_mid_candidate)) {
+        std::array<float, Kalman3D_Wave_2<float>::kWaveModes> zetas{};
+        zetas.fill(zeta_mid_candidate);
+        mekf_->set_wave_mode_zetas(zetas);
+      }
+      
       if (accept) {
         // Jump-limit CENTER (peak can flap; center is what we drive)
         float fc_ref = (std::isfinite(spectral_fc_hz_smth_) && spectral_fc_hz_smth_ > 0.0f)
