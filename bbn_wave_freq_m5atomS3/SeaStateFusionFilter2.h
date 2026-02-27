@@ -439,7 +439,7 @@ public:
       }
 
       if (accept && std::isfinite(zeta_mid_candidate)) {
-        std::array<float, Kalman3D_Wave_2<float>::kWaveModes> zetas{};
+        std::array<float, Kalman3D_Wave_3<float>::kWaveModes> zetas{};
         zetas.fill(zeta_mid_candidate);
         mekf_->set_wave_mode_zetas(zetas);
       }
