@@ -165,7 +165,7 @@ public:
                   const Eigen::Vector3f& sigma_g,
                   const Eigen::Vector3f& sigma_m)
   {
-    mekf_ = std::make_unique<Kalman3D_Wave_2<float>>(sigma_a, sigma_g, sigma_m);
+    mekf_ = std::make_unique<Kalman3D_Wave_3<float>>(sigma_a, sigma_g, sigma_m);
     init_spectrum_adapter_();
     tune_for_wave_RMS_();
     
@@ -1511,8 +1511,8 @@ private:
     ratio = std::clamp(ratio, 0.1f, 15.0f); // allow sea-state changes, avoid runaway
 
     const float tgt = spectral_q_budget_base_sum_ * ratio;
-    const float min_budget = float(Kalman3D_Wave_2<float>::kWaveModes) * spectral_q_floor_;
-    const float max_budget = float(Kalman3D_Wave_2<float>::kWaveModes) * spectral_q_cap_;
+    const float min_budget = float(Kalman3D_Wave_3<float>::kWaveModes) * spectral_q_floor_;
+    const float max_budget = float(Kalman3D_Wave_3<float>::kWaveModes) * spectral_q_cap_;
 
     return std::clamp(tgt, min_budget, max_budget);
   }
