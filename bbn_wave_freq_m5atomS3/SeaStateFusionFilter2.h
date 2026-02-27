@@ -453,7 +453,12 @@ public:
         // allow +18% / -15% per spectrum update (tight!)
         fc_raw = std::clamp(fc_raw, fc_ref * 0.85f, fc_ref * 1.18f);
         fc_raw = std::clamp(fc_raw, fmin, fmax);
-    
+
+        // Adaptive inversion knee: tie it to the displacement center.
+        // This prevents low-f residue from inflating m0/Hs.
+        const float reg = std::clamp(0.55f * fc_raw, 0.03f, 0.14f);
+        spectrum_.setRegularizationF0Hz((double)reg);
+        
         // Jump-limit PEAK too, but looser
         float fp_ref = (std::isfinite(spectral_fp_hz_smth_) && spectral_fp_hz_smth_ > 0.0f)
                      ? spectral_fp_hz_smth_
