@@ -425,87 +425,63 @@ public:
     const double minf = std::max(1e-3, double(min_mode_hz));
     const double maxf = std::max(minf + 1e-3, double(max_mode_hz));
   
-    // Robust displacement peak (already stabilized by your accel-proxy scheme)
+    // --- Full-band moments of displacement spectrum S_eta (this is your "fc") ---
+    double m0 = 0.0;
+    double mu_logf = 0.0;
+  
+    for (int i = 0; i < Nfreq; ++i) {
+      const double fi = freqs_[i];
+      if (!(fi >= minf && fi <= maxf)) continue;
+  
+      const double Ei = std::max(0.0, last_psd_eta_[i]) * std::max(0.0, df_[i]); // [m^2]
+      if (!(Ei > 0.0) || !std::isfinite(Ei)) continue;
+  
+      m0 += Ei;
+      mu_logf += Ei * std::log(std::max(1e-12, fi));
+    }
+  
+    if (!(m0 > 1e-12) || !std::isfinite(m0)) return;
+    mu_logf /= m0;
+  
+    double var_logf = 0.0;
+    for (int i = 0; i < Nfreq; ++i) {
+      const double fi = freqs_[i];
+      if (!(fi >= minf && fi <= maxf)) continue;
+  
+      const double Ei = std::max(0.0, last_psd_eta_[i]) * std::max(0.0, df_[i]);
+      if (!(Ei > 0.0) || !std::isfinite(Ei)) continue;
+  
+      const double d = std::log(std::max(1e-12, fi)) - mu_logf;
+      var_logf += Ei * d * d;
+    }
+    var_logf /= m0;
+  
+    const double sig_logf = std::sqrt(std::max(0.0, var_logf));
+    const double fc_est   = std::exp(mu_logf);
+  
+    // Optional: SMALL pull toward fp ONLY when very narrowband (keeps stability, doesn't "drive by fp")
+    double center_f = std::clamp(fc_est, minf, maxf);
     const double fp_est = estimatePeakFrequencyHz();
-    const bool have_fp = (std::isfinite(fp_est) && fp_est > 0.0);
-    const double fp = have_fp ? std::clamp(fp_est, minf, maxf) : NAN;
+    if (std::isfinite(fp_est) && fp_est > 0.0) {
+      const double fp = std::clamp(fp_est, minf, maxf);
   
-    // Trusted band around fp: wide enough for peak/center shift, narrow enough to
-    // exclude low-f 1/ω^4 inversion residue dominating moments.
-    double f_lo = minf;
-    double f_hi = maxf;
-    if (have_fp) {
-      f_lo = std::max(minf, fp / 1.9);
-      f_hi = std::min(maxf, fp * 1.35);
-      if (!(f_hi > f_lo)) { f_lo = minf; f_hi = maxf; }
-    }
+      // If spectrum is very narrow (sig_logf small), allow up to 15% pull toward fp.
+      // If broad, 0% pull.
+      const double b = std::clamp((0.22 - sig_logf) / 0.22, 0.0, 1.0) * 0.15;
   
-    // Robust log-moments inside [f_lo, f_hi]
-    auto compute_band_moments = [&](double lo, double hi,
-                                   double& out_m0,
-                                   double& out_mu_logf,
-                                   double& out_var_logf) -> bool
-    {
-      out_m0 = 0.0;
-      out_mu_logf = 0.0;
-      out_var_logf = 0.0;
-  
-      for (int i = 0; i < Nfreq; ++i) {
-        const double fi = freqs_[i];
-        if (!(fi >= lo && fi <= hi)) continue;
-  
-        const double Ei = std::max(0.0, last_psd_eta_[i]) * std::max(0.0, df_[i]); // [m^2]
-        if (!(Ei > 0.0) || !std::isfinite(Ei)) continue;
-  
-        out_m0 += Ei;
-        out_mu_logf += Ei * std::log(std::max(1e-12, fi));
+      if (b > 0.0) {
+        const double x = (1.0 - b) * std::log(std::max(1e-12, center_f)) +
+                         (b)       * std::log(std::max(1e-12, fp));
+        center_f = std::exp(x);
+        center_f = std::clamp(center_f, minf, maxf);
       }
-  
-      if (!(out_m0 > 1e-12) || !std::isfinite(out_m0)) return false;
-      out_mu_logf /= out_m0;
-  
-      for (int i = 0; i < Nfreq; ++i) {
-        const double fi = freqs_[i];
-        if (!(fi >= lo && fi <= hi)) continue;
-  
-        const double Ei = std::max(0.0, last_psd_eta_[i]) * std::max(0.0, df_[i]);
-        if (!(Ei > 0.0) || !std::isfinite(Ei)) continue;
-  
-        const double d = std::log(std::max(1e-12, fi)) - out_mu_logf;
-        out_var_logf += Ei * d * d;
-      }
-  
-      out_var_logf /= out_m0;
-      if (!std::isfinite(out_var_logf) || out_var_logf < 0.0) out_var_logf = 0.0;
-      return true;
-    };
-  
-    double m0 = 0.0, mu_logf = 0.0, var_logf = 0.0;
-  
-    // Primary: moments in trusted fp-centered band
-    bool ok = compute_band_moments(f_lo, f_hi, m0, mu_logf, var_logf);
-  
-    // Fallback: moments over full allowed band (still bounded by min_mode_hz/max_mode_hz)
-    if (!ok) {
-      ok = compute_band_moments(minf, maxf, m0, mu_logf, var_logf);
-      if (!ok) return;
     }
   
-    double fc_est = std::exp(mu_logf);
-    double sig_logf = std::sqrt(std::max(0.0, var_logf));
-  
-    // Guardrail: center frequency should not collapse far below fp if fp exists.
-    // (fc is a moment; fp is a maximizer; this clamp is only to stop pathologies.)
-    if (have_fp && std::isfinite(fc_est) && fc_est > 0.0) {
-      fc_est = std::clamp(fc_est, fp / 1.45, fp * 1.15);
-    }
-    fc_est = std::clamp(fc_est, minf, maxf);
-  
-    // Adaptive spacing / width on log-frequency axis
+    // Adaptive spacing / width on log-frequency axis (same spirit as your original)
     const double dlog = std::clamp(0.85 * sig_logf, 0.18, 0.55);
     const double sigma_band = std::max(0.22, 0.70 * dlog);
   
-    const double x_center = std::log(std::clamp(fc_est, minf, maxf));
+    const double x_center = std::log(std::clamp(center_f, minf, maxf));
     const double mid = 0.5 * double(K - 1);
   
     // Mode centers on log axis
@@ -518,7 +494,7 @@ public:
       const double x_min = std::log(minf);
       const double x_max = std::log(maxf);
   
-      // Minimum spacing in log-f; shrink if band is too narrow
+      // Minimum spacing; shrink if band is too narrow
       double min_sep = std::max(0.08, 0.35 * dlog);
       const double avail_span = std::max(1e-6, x_max - x_min);
       const double req_span = min_sep * double(K - 1);
@@ -548,11 +524,11 @@ public:
       mode_f_hz[k] = float(std::exp(xmode[k]));
     }
   
-    // Split displacement variance into modes (ONLY inside trusted band)
+    // --- Full-band energy split (conserves m0) ---
     for (int i = 0; i < Nfreq; ++i) {
       const double fi = freqs_[i];
       if (!(fi > 0.0)) continue;
-      if (!(fi >= f_lo && fi <= f_hi)) continue; // key: ignore low-f residue outside trusted band
+      if (!(fi >= minf && fi <= maxf)) continue;
   
       const double Ei = std::max(0.0, last_psd_eta_[i]) * std::max(0.0, df_[i]); // [m^2]
       if (!(Ei > 0.0) || !std::isfinite(Ei)) continue;
@@ -565,7 +541,7 @@ public:
       for (int k = 0; k < K; ++k) {
         const double fk = std::max(1e-6, double(mode_f_hz[k]));
         const double xk = std::log(fk);
-        const double u = (xi - xk) / sigma_band;
+        const double u  = (xi - xk) / sigma_band;
         const double wk = std::exp(-0.5 * u * u);
         w[k] = wk;
         wsum += wk;
@@ -577,6 +553,14 @@ public:
       for (int k = 0; k < K; ++k) {
         mode_var_m2[k] += Ei * (w[k] * inv);
       }
+    }
+  
+    // Optional: renormalize to exact m0 (numerical safety)
+    double sumv = 0.0;
+    for (int k = 0; k < K; ++k) sumv += std::max(0.0, mode_var_m2[k]);
+    if (sumv > 1e-18 && std::isfinite(sumv)) {
+      const double s = m0 / sumv;
+      for (int k = 0; k < K; ++k) mode_var_m2[k] *= s;
     }
   }
 
