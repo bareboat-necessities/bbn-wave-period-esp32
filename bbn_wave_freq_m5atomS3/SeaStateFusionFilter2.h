@@ -496,7 +496,7 @@ public:
     // Optional guardrail: keep within a reasonable factor of fp if both are valid.
     // (Only to prevent harmonic flips; your acceptance gate already handles most of this.)
     if (have_fp && have_fc) {
-      f_spec = std::clamp(f_spec, 0.75f * fp, 1.25f * fp);
+      f_spec = std::clamp(f_spec, 0.70f * fp, 1.15f * fp);
     }
     
     f_spec = std::clamp(f_spec, min_freq_hz_, max_freq_hz_);
@@ -911,7 +911,7 @@ private:
     
     // Guardrail only
     if (have_fp && have_fc) {
-      f_spec = std::clamp(f_spec, 0.75f * fp_disp, 1.25f * fp_disp);
+      f_spec = std::clamp(f_spec, 0.70f * fp_disp, 1.15f * fp_disp);
     }
     if (have_fc) {
       const float f_floor = 0.8f * fc_disp;
