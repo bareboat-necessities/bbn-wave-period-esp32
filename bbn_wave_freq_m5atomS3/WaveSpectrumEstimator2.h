@@ -366,8 +366,9 @@ public:
     var_logf /= m0;
 
     const double sig_logf = std::sqrt(std::max(0.0, var_logf));
+    const double fc_est = std::exp(mu_logf);    
     const double fp_est = estimatePeakFrequencyHz();
-    const double center_f = (std::isfinite(fp_est) && fp_est > 0.0) ? fp_est : std::exp(mu_logf);
+    double center_f = fc_est;
 
     const double minf = std::max(1e-3, double(min_mode_hz));
     const double maxf = std::max(minf + 1e-3, double(max_mode_hz));
