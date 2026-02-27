@@ -181,7 +181,7 @@ public:
                       float b0,
                       float gravity_magnitude)
   {
-    mekf_ = std::make_unique<Kalman3D_Wave_2<float>>(sigma_a, sigma_g, sigma_m,
+    mekf_ = std::make_unique<Kalman3D_Wave_3<float>>(sigma_a, sigma_g, sigma_m,
                                                     Pq0, Pb0, b0, gravity_magnitude);
     init_spectrum_adapter_();
     tune_for_wave_RMS_();
