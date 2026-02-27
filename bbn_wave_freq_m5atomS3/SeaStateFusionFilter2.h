@@ -850,8 +850,12 @@ private:
     float Hs_m = NAN;
 
     if (spectral_mode_matching_enable_ && spectrum_.ready()) {
-      // m0 = ∫ S_eta(f) df  [m^2]
-      const auto st = spectrum_.estimateLogFreqStats();
+      const float fmin = std::max(0.02f, spectral_mode_fmin_hz_);
+      const float fmax = std::max(fmin + 1e-3f, spectral_mode_fmax_hz_);
+      
+      const float fp0 = (float)spectrum_.estimatePeakFrequencyHz();
+      const auto st = spectrum_.estimateLogFreqStatsRobustFromPeak(fp0, fmin, fmax);
+      
       if (std::isfinite(st.m0) && st.m0 > 1e-12) {
         Hs_m = 4.0f * std::sqrt((float)st.m0);
       }
