@@ -908,6 +908,7 @@ private:
     f_spec = std::clamp(f_spec, min_freq_hz_, max_freq_hz_);
 
     // When spectrum is valid, DO NOT mix in accel-tracker frequency.
+    float b = std::clamp(spectral_f0_blend_, 0.0f, 1.0f);
     if (have_fp && have_fc) b = 1.0f;
     float f0_cmd_hz = std::clamp((1.0f - b) * f0_base_hz + b * f_spec, min_freq_hz_, max_freq_hz_);
   
