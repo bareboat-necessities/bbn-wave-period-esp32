@@ -1291,8 +1291,8 @@ private:
 
   bool spectral_applied_initialized_ = false;
   bool spectral_mode_freq_initialized_ = false;
-  std::array<float, Kalman3D_Wave_2<float>::kWaveModes> spectral_f_applied_hz_{};
-  std::array<float, Kalman3D_Wave_2<float>::kWaveModes> spectral_qz_applied_{};
+  std::array<float, Kalman3D_Wave_3<float>::kWaveModes> spectral_f_applied_hz_{};
+  std::array<float, Kalman3D_Wave_3<float>::kWaveModes> spectral_qz_applied_{};
 
   // Total-q budget (anchored to tuner displacement scale)
   bool  spectral_q_budget_initialized_   = false;
