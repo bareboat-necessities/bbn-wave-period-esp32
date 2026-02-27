@@ -1531,7 +1531,7 @@ private:
     if (!spectrum_.ready()) return;
     if (!enable_linear_block_) return;
   
-    constexpr int K = Kalman3D_Wave_2<float>::kWaveModes;
+    constexpr int K = Kalman3D_Wave_3<float>::kWaveModes;
   
     // Current mode centers + damping from the filter
     std::array<float, K> f_cur_hz{};
