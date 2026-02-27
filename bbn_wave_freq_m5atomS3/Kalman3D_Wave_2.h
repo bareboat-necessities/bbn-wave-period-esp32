@@ -721,6 +721,19 @@ public:
     }
   }
 
+  void set_wave_mode_zetas(const std::array<float, KMODES>& zetas) {
+    std::array<T,KMODES> omega_old{}, zeta_old{};
+    for (int k=0;k<KMODES;++k) { omega_old[k]=omega_[k]; zeta_old[k]=zeta_[k]; }
+    for (int k=0;k<KMODES;++k) {
+      T z = T(zetas[k]);
+      if (!std::isfinite(z)) z = zeta_[k];
+      zeta_[k] = std::clamp(z, T(0.005), T(0.20));
+    }
+    // preserve -2 ζ ω v contribution continuity via your existing rescaler
+    rescale_wave_for_mode_param_change_(omega_old, zeta_old);
+    on_wave_mode_params_changed_();
+  }
+      
   void get_wave_mode_qz(std::array<float, KMODES>& out_qz) const {
     for (int k = 0; k < KMODES; ++k) {
       const T qk = q_axis_[k].z();
