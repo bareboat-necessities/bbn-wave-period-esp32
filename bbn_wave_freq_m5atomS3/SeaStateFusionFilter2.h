@@ -490,18 +490,21 @@ public:
     const float fp = have_fp ? std::clamp(spectral_fp_hz_smth_, min_freq_hz_, max_freq_hz_) : f_base;
     const float fc = have_fc ? std::clamp(spectral_fc_hz_smth_, min_freq_hz_, max_freq_hz_) : fp;
 
-    // Robust wave-frequency drive: avoid hard-lock to fp when spectrum center collapses low.
     // Keep a floor tied to fc and retain some tracker influence via spectral_f0_blend_.
-    float f_spec = have_fp ? (0.72f * fp + 0.28f * fc) : f_base;
-    if (have_fc) {
-      const float f_floor = 0.8f * fc;
-      f_spec = std::max(f_spec, f_floor);
+    float f_spec = have_fc ? fc : (have_fp ? fp : f_base);
+    
+    // Optional guardrail: keep within a reasonable factor of fp if both are valid.
+    // (Only to prevent harmonic flips; your acceptance gate already handles most of this.)
+    if (have_fp && have_fc) {
+      f_spec = std::clamp(f_spec, 0.75f * fp, 1.25f * fp);
     }
+    
     f_spec = std::clamp(f_spec, min_freq_hz_, max_freq_hz_);
-
-    // When spectrum is valid, DO NOT mix in accel-tracker frequency.
+    
+    // When spectrum is valid, don’t mix in accel-tracker frequency.
     float b = std::clamp(spectral_f0_blend_, 0.0f, 1.0f);
     if (have_fp && have_fc) b = 1.0f;
+    
     wave_freq_hz_ = std::clamp((1.0f - b) * f_base + b * f_spec, min_freq_hz_, max_freq_hz_);
 
     // NEW SPECTRUM BLOCK: retune oscillator bank once (≈2 s cadence).
@@ -903,8 +906,13 @@ private:
         ? std::clamp(spectral_fc_hz_smth_, min_freq_hz_, max_freq_hz_)
         : fp_disp;
 
-    // Command f0 from robust spectral estimate + base frequency blend.
-    float f_spec = have_fp ? (0.72f * fp_disp + 0.28f * fc_disp) : f0_base_hz;
+    // Command f0 from robust spectral estimate
+    float f_spec = have_fc ? fc_disp : (have_fp ? fp_disp : f0_base_hz);
+    
+    // Guardrail only
+    if (have_fp && have_fc) {
+      f_spec = std::clamp(f_spec, 0.75f * fp_disp, 1.25f * fp_disp);
+    }
     if (have_fc) {
       const float f_floor = 0.8f * fc_disp;
       f_spec = std::max(f_spec, f_floor);
