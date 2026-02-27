@@ -1254,7 +1254,7 @@ private:
   float spectral_q_gain_         = 1.0f;    // main knob
   float spectral_q_floor_        = 1e-6f;
   float spectral_q_cap_          = 60.0f;   // per-mode cap (pre/post normalize clamp)
-  float spectral_horiz_q_ratio_  = 0.25f;   // XY q = ratio * Z q
+  float spectral_horiz_q_ratio_  = 0.22f;   // XY q = ratio * Z q
 
   // Allowed analysis range for spectral fitting (not applied as mode centers anymore)
   float spectral_mode_fmin_hz_   = 0.06f;
