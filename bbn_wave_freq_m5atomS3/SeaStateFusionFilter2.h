@@ -496,8 +496,7 @@ public:
     }
     f_spec = std::clamp(f_spec, min_freq_hz_, max_freq_hz_);
 
-    const float b = std::clamp(spectral_f0_blend_, 0.0f, 1.0f);
-    wave_freq_hz_ = std::clamp((1.0f - b) * f_base + b * f_spec, min_freq_hz_, max_freq_hz_);
+    wave_freq_hz_ = (have_fp && have_fc) ? f_spec : f_base;
 
     // NEW SPECTRUM BLOCK: retune oscillator bank once (≈2 s cadence).
     // If spectrum-mode matching is active and ready, this does NOT call
@@ -906,9 +905,7 @@ private:
     }
     f_spec = std::clamp(f_spec, min_freq_hz_, max_freq_hz_);
 
-    const float b = std::clamp(spectral_f0_blend_, 0.0f, 1.0f);
-    float f0_cmd_hz = std::clamp((1.0f - b) * f0_base_hz + b * f_spec,
-                                 min_freq_hz_, max_freq_hz_);
+    float f0_cmd_hz = (have_fp && have_fc) ? f_spec : f_base;
   
     // Smooth applied f0 using SPECTRUM cadence when ready (prevents fast thrash).
     float dt_blend = adapt_every_secs_;
