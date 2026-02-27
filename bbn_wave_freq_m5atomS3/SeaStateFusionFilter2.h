@@ -387,6 +387,14 @@ public:
       // Width gate: if spectrum is extremely wide, peak is unstable; still allow center but more strict consistency
       const double siglog = st.sig_logf;
       if (!(std::isfinite(siglog) && siglog > 0.0 && siglog < 1.20)) accept = false;
+      else {
+        // map width -> damping (tune this once; keep it simple)
+        float zeta_mid = std::clamp(0.03f + 0.06f * siglog, 0.03f, 0.10f);
+        
+        std::array<float, Kalman3D_Wave_2<float>::kWaveModes> zetas{};
+        zetas.fill(zeta_mid);
+        mekf_->set_wave_mode_zetas(zetas);
+      }
     
       // Require both estimates
       if (!std::isfinite(fp_raw) || !std::isfinite(fc_raw)) accept = false;
