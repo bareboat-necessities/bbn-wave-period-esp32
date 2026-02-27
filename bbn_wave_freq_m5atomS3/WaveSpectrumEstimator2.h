@@ -477,9 +477,9 @@ public:
       }
     }
   
-    // Adaptive spacing / width on log-frequency axis (same spirit as your original)
-    const double dlog = std::clamp(0.85 * sig_logf, 0.18, 0.55);
-    const double sigma_band = std::max(0.22, 0.70 * dlog);
+    // Adaptive spacing / width on log-frequency axis 
+    const double dlog = std::clamp(0.85 * sig_logf, 0.06, 0.45);
+    const double sigma_band = std::max(0.10, 0.70 * dlog);
   
     const double x_center = std::log(std::clamp(center_f, minf, maxf));
     const double mid = 0.5 * double(K - 1);
@@ -919,8 +919,8 @@ private:
     const double f_min = std::max(1e-6, cfg_.f_min_hz);
     const double f_max = std::max(f_min + 1e-6, cfg_.f_max_hz);
   
-    // Also suppress below knee-ish (this is the killer for the “Hs is insane” failure mode)
-    const double f_lo_cut = std::max(f_min, 0.90 * f_knee);
+    // Do NOT hard-cut below the knee. Knee is already handled by (w^4+wr^4) regularization.
+    const double f_lo_cut = f_min;
   
     std::array<double, Nfreq> Saa_meas{};
     std::array<double, Nfreq> H2_eff_arr{};
@@ -968,9 +968,12 @@ private:
       var_spec += Saa_meas[i] * std::max(0.0, df_[i]);
     }
   
-    const double scale_psd = (var_spec > 1e-18 && std::isfinite(var_ref))
-                           ? (var_ref / var_spec)
-                           : 1.0;
+    double scale_psd = 1.0;
+    if (var_spec > 1e-18 && std::isfinite(var_ref)) {
+      scale_psd = var_ref / var_spec;
+      // Sparse-bin Goertzel can underestimate var_spec; this prevents Hs/Q from exploding.
+      scale_psd = std::clamp(scale_psd, 0.25, 4.0);
+    }
   
     // Second pass: deconv + accel->disp inversion -> S_eta
     for (int i = 0; i < Nfreq; ++i) {
