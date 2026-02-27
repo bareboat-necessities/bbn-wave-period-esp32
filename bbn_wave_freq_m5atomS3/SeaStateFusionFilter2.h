@@ -1440,7 +1440,7 @@ private:
     }
 
     float ratio = disp_now / std::max(1e-5f, disp_ref);
-    ratio = std::clamp(ratio, 0.35f, 3.0f); // allow sea-state changes, avoid runaway
+    ratio = std::clamp(ratio, 0.1f, 15.0f); // allow sea-state changes, avoid runaway
 
     const float tgt = spectral_q_budget_base_sum_ * ratio;
     const float min_budget = float(Kalman3D_Wave_2<float>::kWaveModes) * spectral_q_floor_;
@@ -1568,7 +1568,7 @@ private:
       float s = spectral_q_budget_sum_ / sum_now;
       // Allow stronger upward correction in rough seas; downward side
       // remains tighter to avoid sudden stiffening -> sloshy estimates.
-      s = std::clamp(s, 0.55f, 2.20f);
+      s = std::clamp(s, 0.25f, 7.50f);
   
       for (int k = 0; k < K; ++k) {
         spectral_qz_applied_[k] = std::clamp(spectral_qz_applied_[k] * s, spectral_q_floor_, spectral_q_cap_);
