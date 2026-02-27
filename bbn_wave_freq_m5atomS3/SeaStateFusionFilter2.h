@@ -261,7 +261,7 @@ public:
       const float infl_xy_base = std::clamp(1.20f + 0.85f * std::min(sea, 3.0f), 1.20f, 3.80f);
       const float infl_xy = std::clamp(infl_xy_base * (1.0f + 2.5f * dyn), 1.0f, 10.0f);
       
-      const float infl_z = std::clamp(1.0f + 0.60f * dyn, 1.0f, 2.5f);
+      const float infl_z = 1.0f; // std::clamp(1.0f + 0.60f * dyn, 1.0f, 2.5f);
       Eigen::Vector3f sig_live(sig_nom.x() * infl_xy,
                                sig_nom.y() * infl_xy,
                                sig_nom.z() * infl_z);
@@ -390,7 +390,7 @@ public:
       if (!(std::isfinite(siglog) && siglog > 0.0 && siglog < 1.20)) {
         accept = false;
       } else {
-        zeta_mid_candidate = std::clamp(0.015f + 0.02f * float(siglog), 0.015f, 0.03f);
+        zeta_mid_candidate = std::clamp(0.03f + 0.06f * (float)siglog, 0.03f, 0.10f);
       }
     
       // Require both estimates
