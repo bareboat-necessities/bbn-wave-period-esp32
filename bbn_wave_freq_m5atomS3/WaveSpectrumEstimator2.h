@@ -924,7 +924,7 @@ private:
   
     // Displacement inversion regularization knee
     const double Tblk  = double(N) / fs_;
-    const double f_blk = 1.0 / std::max(1e-6, 6.0 * Tblk);            // conservative block-based knee
+    const double f_blk = 2.0 / std::max(1e-6, Tblk);   // ≈ 0.0625 for 32s blocks
     const double f_knee = std::max(cfg_.reg_f0_hz, f_blk);
   
     const double wr  = 2.0 * kPi * f_knee;
