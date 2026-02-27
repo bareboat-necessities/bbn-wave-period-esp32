@@ -905,7 +905,7 @@ private:
     }
     f_spec = std::clamp(f_spec, min_freq_hz_, max_freq_hz_);
 
-    float f0_cmd_hz = (have_fp && have_fc) ? f_spec : f_base;
+    float f0_cmd_hz = (have_fp && have_fc) ? f_spec : f0_base_hz;
   
     // Smooth applied f0 using SPECTRUM cadence when ready (prevents fast thrash).
     float dt_blend = adapt_every_secs_;
