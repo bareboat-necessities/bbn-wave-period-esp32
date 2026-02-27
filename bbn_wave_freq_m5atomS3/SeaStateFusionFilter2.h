@@ -362,7 +362,7 @@ public:
       const float fmin = std::max(0.02f, spectral_mode_fmin_hz_);
       const float fmax = std::max(fmin + 1e-3f, spectral_mode_fmax_hz_);
     
-      // --- Raw estimates ---
+      // Raw estimates
       float fp_raw = (float)spectrum_.estimatePeakFrequencyHz();     // peak of S_eta
       const auto st = spectrum_.estimateLogFreqStats();              // moments of S_eta
       float fc_raw = (float)st.f_center_hz;                          // exp(mu_logf)
@@ -373,7 +373,7 @@ public:
       if (std::isfinite(fc_raw) && fc_raw > 0.0f) fc_raw = std::clamp(fc_raw, fmin, fmax);
       else fc_raw = NAN;
     
-      // --- Confidence gate (reject flat / noisy / inconsistent spectra) ---
+      // Confidence gate (reject flat / noisy / inconsistent spectra)
       bool accept = true;
     
       // Need meaningful variance
