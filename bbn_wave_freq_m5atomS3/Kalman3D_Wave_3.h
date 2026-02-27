@@ -1785,13 +1785,10 @@ private:
 // Depends on: Mat3, MatX3, NX, P_
 // =======================
 
-void symmetrize_P_() {
-  for (int i=0;i<NX;++i) {
-    for (int j=i+1;j<NX;++j) {
-      const T v = T(0.5)*(P_(i,j) + P_(j,i));
-      P_(i,j) = v;
-      P_(j,i) = v;
-    }
+template<typename Derived>
+EIGEN_STRONG_INLINE void freeze_wave_rows_(Eigen::MatrixBase<Derived>& M) const {
+  if constexpr (WAVE_N > 0) {
+    M.template block<WAVE_N,3>(OFF_WAVE,0).setZero();
   }
 }
 
