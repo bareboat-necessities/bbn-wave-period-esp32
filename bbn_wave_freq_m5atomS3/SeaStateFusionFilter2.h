@@ -24,7 +24,7 @@
 #include "FirstOrderIIRSmoother.h"
 #include "SeaStateAutoTuner.h"
 #include "MagAutoTuner.h"
-#include "Kalman3D_Wave_2.h"
+#include "Kalman3D_Wave_3.h"
 #include "FrameConversions.h"
 #include "KalmanWaveDirection.h"
 #include "WaveDirectionDetector.h"
@@ -1230,7 +1230,7 @@ private:
   float tau_coeff_   = 1.4f;
   float sigma_coeff_ = 0.9f;
 
-  std::unique_ptr<Kalman3D_Wave_2<float>> mekf_;
+  std::unique_ptr<Kalman3D_Wave_3<float>> mekf_;
 
   KalmanWaveDirection dir_filter_{2.0f * static_cast<float>(M_PI) * FREQ_GUESS};
 
