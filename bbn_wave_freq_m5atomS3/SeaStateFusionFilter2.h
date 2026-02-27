@@ -491,7 +491,7 @@ public:
     // Keep a floor tied to fc and retain some tracker influence via spectral_f0_blend_.
     float f_spec = have_fp ? (0.72f * fp + 0.28f * fc) : f_base;
     if (have_fc) {
-      const float f_floor = 1.10f * fc;
+      const float f_floor = 1.01f * fc;
       f_spec = std::max(f_spec, f_floor);
     }
     f_spec = std::clamp(f_spec, min_freq_hz_, max_freq_hz_);
