@@ -29,6 +29,7 @@
 #include "KalmanWaveDirection.h"
 #include "WaveDirectionDetector.h"
 #include "WaveSpectrumEstimator2.h"
+#include "Mahony_AHRS.h"
 
 // Shared constants
 
@@ -321,7 +322,10 @@ public:
     }
   
     // vertical (up positive) = -a_inertial_down
-    a_vert_up_ = -a_z_inertial_down;
+    //a_vert_up_ = -a_z_inertial_down;
+
+    // World-vertical inertial accel using independent Mahony tilt (NO Kalman quaternion)
+    a_vert_up_ = compute_a_vert_up_from_mahony_(dt, gyro_body_ned, acc_body_ned);
 
     bool spectrum_new_block = false;
     if (spectral_mode_matching_enable_) {
@@ -1075,6 +1079,7 @@ private:
     dir_sign_state_ = UNCERTAIN;
 
     reset_spectrum_adapter_();
+    reset_mahony_();
     
     last_adapt_time_sec_ = time_;
   }
@@ -1103,6 +1108,7 @@ private:
     }
 
     reset_spectrum_adapter_();
+    reset_mahony_();
   }
 
   void enterLive_() {
@@ -1262,6 +1268,85 @@ private:
   float spectral_q_budget_base_sum_      = NAN;  // captured baseline total q when spectral starts
   float spectral_q_budget_sum_           = NAN;  // smoothed current budget
   float spectral_q_budget_ref_disp_scale_m_ = NAN;
+
+  // Mahony tilt (independent of Kalman; used ONLY for vertical inertial accel)
+  Mahony_AHRS_Vars mahony_{};
+  bool mahony_inited_ = false;
+
+  // Tune these (Mahony uses twoKp = 2*Kp)
+  float mahony_twoKp_ = 2.0f * 0.25f;  // Kp=0.25 (gentle)
+  float mahony_twoKi_ = 0.0f;          // no integral (avoid windup)
+
+  // Gate accel feedback when motion is high (prevents wave accel contaminating tilt)
+  float mahony_accel_dev_gate_g_ = 0.18f; // disable accel correction if | |a|-g | / g > this
+  float mahony_gyro_gate_dps_    = 80.0f; // disable accel correction if gyro norm > this
+
+  // Keep last Mahony quaternion (Earth->Body)
+  Eigen::Quaternionf q_m_eb_{1,0,0,0};
+
+  void reset_mahony_() {
+    mahony_ = Mahony_AHRS_Vars{};
+    mahony_AHRS_init(&mahony_, mahony_twoKp_, mahony_twoKi_);
+    mahony_inited_ = true;
+    q_m_eb_ = Eigen::Quaternionf(1,0,0,0);
+  }
+
+  // Returns world-frame inertial accel Z (UP positive) computed using Mahony tilt.
+  // Assumes:
+  //   acc_body_ned is SPECIFIC FORCE in body frame (a - g), so at rest ~ (0,0,-g) in NED body.
+  //   world frame is NED (+Z down).
+  float compute_a_vert_up_from_mahony_(float dt,
+                                      const Eigen::Vector3f& gyro_body_ned,
+                                      const Eigen::Vector3f& acc_body_ned)
+  {
+    if (!mahony_inited_) reset_mahony_();
+    if (!(dt > 0.0f) || !std::isfinite(dt)) return 0.0f;
+
+    // Motion gating (disable accel feedback when accel is far from gravity or gyro is high)
+    const float an = acc_body_ned.norm();
+    const float accel_dev_g = (std::isfinite(an) ? std::fabs(an - g_std) / g_std : 1.0f);
+    const float gyro_dps = gyro_body_ned.norm() * 57.295779513f;
+    const bool use_acc_correction =
+        (accel_dev_g <= mahony_accel_dev_gate_g_) && (gyro_dps <= mahony_gyro_gate_dps_);
+
+    // Mahony expects accel ~ +gravity direction when stationary.
+    // Your pipeline uses specific force with rest ~ (0,0,-g), so feed NEGATED accel.
+    float ax = 0, ay = 0, az = 0;
+    if (use_acc_correction) {
+      ax = -acc_body_ned.x();
+      ay = -acc_body_ned.y();
+      az = -acc_body_ned.z();
+    } else {
+      // Disable accel correction: Mahony will integrate gyro only this step.
+      ax = ay = az = 0.0f;
+    }
+
+    // Update Mahony (gyro assumed rad/s)
+    float pitch_deg=0, roll_deg=0, yaw_deg=0;
+    mahony_AHRS_update(&mahony_,
+                       gyro_body_ned.x(), gyro_body_ned.y(), gyro_body_ned.z(),
+                       ax, ay, az,
+                       &pitch_deg, &roll_deg, &yaw_deg,
+                       dt);
+
+    // Mahony quaternion is "sensor frame relative to auxiliary frame" and in this implementation
+    // matches the standard Mahony form where it maps Earth->Body.
+    q_m_eb_ = Eigen::Quaternionf(mahony_.q0, mahony_.q1, mahony_.q2, mahony_.q3);
+    q_m_eb_.normalize();
+
+    // Specific force in body (a - g)
+    const Eigen::Vector3f f_b = acc_body_ned;
+
+    // Body->Earth rotation:
+    const Eigen::Matrix3f R_be = q_m_eb_.toRotationMatrix().transpose();
+
+    // Inertial acceleration in Earth/NED: a_e = R_be * f_b + g_e
+    const Eigen::Vector3f g_e(0.0f, 0.0f, g_std);
+    const Eigen::Vector3f a_e = R_be * f_b + g_e;
+
+    // Vertical UP positive = -down component
+    return -a_e.z();
+  }
 
   static float omegaFromHz_(float f_hz) {
     return 2.0f * float(M_PI) * f_hz;
