@@ -940,7 +940,7 @@ private:
     // Before spectrum warm-up, keep broadband fallback behavior.
     Hs_applied_m_ = Hs_m;
     if (!use_spectral_modes) {
-      mekf_->set_broadband_params(broadband_f0_applied_hz_, Hs_applied_m_ / 2.0f, zeta_mid, horiz_scale);
+      mekf_->set_broadband_params(broadband_f0_applied_hz_, Hs_applied_m_, zeta_mid, horiz_scale);
     }
   }
 
