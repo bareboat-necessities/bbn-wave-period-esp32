@@ -383,17 +383,14 @@ public:
       // Need meaningful variance
       const double m0 = st.m0;
       if (!(std::isfinite(m0) && m0 > 1e-8)) accept = false;
-    
-      // Width gate: if spectrum is extremely wide, peak is unstable; still allow center but more strict consistency
+
+      float zeta_mid_candidate = NAN;
+      // Width gate
       const double siglog = st.sig_logf;
-      if (!(std::isfinite(siglog) && siglog > 0.0 && siglog < 1.20)) accept = false;
-      else {
-        // map width -> damping (tune this once; keep it simple)
-        float zeta_mid = std::clamp(0.03f + 0.06f * (float) siglog, 0.03f, 0.10f);
-        
-        std::array<float, Kalman3D_Wave_2<float>::kWaveModes> zetas{};
-        zetas.fill(zeta_mid);
-        mekf_->set_wave_mode_zetas(zetas);
+      if (!(std::isfinite(siglog) && siglog > 0.0 && siglog < 1.20)) {
+        accept = false;
+      } else {
+        zeta_mid_candidate = std::clamp(0.03f + 0.06f * (float)siglog, 0.03f, 0.10f);
       }
     
       // Require both estimates
@@ -420,6 +417,12 @@ public:
         }
     
         accept = (nb >= 5 && pk > 0.0);
+
+        if (accept && std::isfinite(zeta_mid_candidate)) {
+          std::array<float, Kalman3D_Wave_2<float>::kWaveModes> zetas{};
+          zetas.fill(zeta_mid_candidate);
+          mekf_->set_wave_mode_zetas(zetas);
+        }
     
         if (accept) {
           auto tmp = band_vals;
@@ -491,7 +494,7 @@ public:
     // Keep a floor tied to fc and retain some tracker influence via spectral_f0_blend_.
     float f_spec = have_fp ? (0.72f * fp + 0.28f * fc) : f_base;
     if (have_fc) {
-      const float f_floor = 1.0f * fc;
+      const float f_floor = 0.8f * fc;
       f_spec = std::max(f_spec, f_floor);
     }
     f_spec = std::clamp(f_spec, min_freq_hz_, max_freq_hz_);
@@ -903,7 +906,7 @@ private:
     // Command f0 from robust spectral estimate + base frequency blend.
     float f_spec = have_fp ? (0.72f * fp_disp + 0.28f * fc_disp) : f0_base_hz;
     if (have_fc) {
-      const float f_floor = 1.0f * fc_disp;
+      const float f_floor = 0.8f * fc_disp;
       f_spec = std::max(f_spec, f_floor);
     }
     f_spec = std::clamp(f_spec, min_freq_hz_, max_freq_hz_);
