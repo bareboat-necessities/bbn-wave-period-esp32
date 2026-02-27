@@ -368,8 +368,8 @@ public:
     
       // Raw estimates
       float fp_raw = (float)spectrum_.estimatePeakFrequencyHz();     // peak of S_eta
-      const auto st = spectrum_.estimateLogFreqStats();              // moments of S_eta
-      float fc_raw = (float)st.f_center_hz;                          // exp(mu_logf)
+      const auto st = spectrum_.estimateLogFreqStatsRobustFromPeak(fp_raw, fmin, fmax);
+      float fc_raw = (float)st.f_center_hz;
     
       if (std::isfinite(fp_raw) && fp_raw > 0.0f) fp_raw = std::clamp(fp_raw, fmin, fmax);
       else fp_raw = NAN;
