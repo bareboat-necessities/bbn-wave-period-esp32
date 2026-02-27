@@ -1315,66 +1315,117 @@ private:
   // Keep last Mahony quaternion (Earth->Body)
   Eigen::Quaternionf q_m_eb_{1,0,0,0};
 
+  // Mahony "gravity direction" conditioning
+  Eigen::Vector3f mahony_g_meas_lp_{0.0f, 0.0f, 1.0f};
+  bool  mahony_g_meas_lp_init_ = false;
+  
+  // LPF time constant for accel gravity direction (seconds)
+  float mahony_g_lpf_tau_sec_ = 0.60f;
+  
+  // Never fully disable accel influence (prevents gyro-only drift)
+  float mahony_min_acc_weight_ = 0.08f;
+
   void reset_mahony_() {
     mahony_ = Mahony_AHRS_Vars{};
     mahony_AHRS_init(&mahony_, mahony_twoKp_, mahony_twoKi_);
     mahony_inited_ = true;
     q_m_eb_ = Eigen::Quaternionf(1,0,0,0);
+  
+    mahony_g_meas_lp_ = Eigen::Vector3f(0.0f, 0.0f, 1.0f);
+    mahony_g_meas_lp_init_ = false;
   }
 
-  // Returns world-frame inertial accel Z (UP positive) computed using Mahony tilt.
-  // Assumes:
-  //   acc_body_ned is SPECIFIC FORCE in body frame (a - g), so at rest ~ (0,0,-g) in NED body.
-  //   world frame is NED (+Z down).
   float compute_a_vert_up_from_mahony_(float dt,
                                       const Eigen::Vector3f& gyro_body_ned,
                                       const Eigen::Vector3f& acc_body_ned)
   {
     if (!mahony_inited_) reset_mahony_();
     if (!(dt > 0.0f) || !std::isfinite(dt)) return 0.0f;
-
-    // Motion gating (disable accel feedback when accel is far from gravity or gyro is high)
+  
+    // Dynamic indicators
     const float an = acc_body_ned.norm();
     const float accel_dev_g = (std::isfinite(an) ? std::fabs(an - g_std) / g_std : 1.0f);
     const float gyro_dps = gyro_body_ned.norm() * 57.295779513f;
-    const bool use_acc_correction =
-        (accel_dev_g <= mahony_accel_dev_gate_g_) && (gyro_dps <= mahony_gyro_gate_dps_);
-
-    // Mahony expects accel ~ +gravity direction when stationary.
-    // Your pipeline uses specific force with rest ~ (0,0,-g), so feed NEGATED accel.
-    float ax = 0, ay = 0, az = 0;
-    if (use_acc_correction) {
-      ax = -acc_body_ned.x();
-      ay = -acc_body_ned.y();
-      az = -acc_body_ned.z();
-    } else {
-      // Disable accel correction: Mahony will integrate gyro only this step.
-      ax = ay = az = 0.0f;
+  
+    // Predicted gravity direction in BODY (Mahony q maps Earth->Body)
+    Eigen::Vector3f g_pred_b = q_m_eb_ * Eigen::Vector3f(0.0f, 0.0f, 1.0f); // world_down -> body
+    if (!g_pred_b.allFinite() || g_pred_b.norm() < 1e-6f) g_pred_b = Eigen::Vector3f(0,0,1);
+    g_pred_b.normalize();
+  
+    // Measured gravity direction in BODY:
+    // your specific force at rest is (0,0,-g), so -acc points along +down (gravity dir)
+    Eigen::Vector3f g_meas_b = g_pred_b;
+    bool have_meas = (acc_body_ned.allFinite() && an > 1e-6f);
+    if (have_meas) {
+      g_meas_b = (-acc_body_ned / an); // unit "down" direction in body
+      if (!g_meas_b.allFinite() || g_meas_b.norm() < 1e-6f) {
+        g_meas_b = g_pred_b;
+        have_meas = false;
+      }
     }
-
-    // Update Mahony (gyro assumed rad/s)
+  
+    // LPF the measured gravity direction (vector EMA then renormalize)
+    if (!mahony_g_meas_lp_init_) {
+      mahony_g_meas_lp_ = g_meas_b;
+      mahony_g_meas_lp_init_ = true;
+    } else {
+      const float tau = std::max(1e-3f, mahony_g_lpf_tau_sec_);
+      const float a = 1.0f - std::exp(-dt / tau);
+      mahony_g_meas_lp_ = (1.0f - a) * mahony_g_meas_lp_ + a * g_meas_b;
+      if (!mahony_g_meas_lp_.allFinite() || mahony_g_meas_lp_.norm() < 1e-6f) {
+        mahony_g_meas_lp_ = g_pred_b;
+      }
+      mahony_g_meas_lp_.normalize();
+    }
+  
+    // Smooth trust weight (1=trust accel a lot, 0=trust accel little)
+    // Use your existing gates as "full trust -> no trust" ramps, but NEVER hit 0.
+    float w_acc = 1.0f - std::clamp(accel_dev_g / std::max(1e-6f, mahony_accel_dev_gate_g_), 0.0f, 1.0f);
+    float w_gyr = 1.0f - std::clamp(gyro_dps    / std::max(1e-6f, mahony_gyro_gate_dps_),    0.0f, 1.0f);
+    float w = std::min(w_acc, w_gyr); // conservative (if either looks bad, reduce trust)
+  
+    // Never fully disable accel correction (prevents gyro-only drift)
+    w = mahony_min_acc_weight_ + (1.0f - mahony_min_acc_weight_) * w;
+  
+    if (!have_meas) {
+      // If accel is invalid, fall back to predicted (no correction possible this step)
+      w = 0.0f;
+    }
+  
+    // Blend measured gravity direction toward predicted during high dynamics
+    Eigen::Vector3f g_in_b = (1.0f - w) * g_pred_b + w * mahony_g_meas_lp_;
+    if (!g_in_b.allFinite() || g_in_b.norm() < 1e-6f) g_in_b = g_pred_b;
+    g_in_b.normalize();
+  
+    // Feed Mahony accel as a gravity-aligned vector (magnitude doesn't matter in most impls)
+    const float ax = g_in_b.x() * g_std;
+    const float ay = g_in_b.y() * g_std;
+    const float az = g_in_b.z() * g_std;
+  
+    // (Optional but recommended if you have it): subtract Kalman gyro bias before Mahony
+    // Eigen::Vector3f gyro_use = gyro_body_ned - mekf_->get_gyro_bias();
+    const Eigen::Vector3f gyro_use = gyro_body_ned;
+  
     float pitch_deg=0, roll_deg=0, yaw_deg=0;
     mahony_AHRS_update(&mahony_,
-                       gyro_body_ned.x(), gyro_body_ned.y(), gyro_body_ned.z(),
+                       gyro_use.x(), gyro_use.y(), gyro_use.z(),
                        ax, ay, az,
                        &pitch_deg, &roll_deg, &yaw_deg,
                        dt);
-
-    // Mahony quaternion is "sensor frame relative to auxiliary frame" and in this implementation
-    // matches the standard Mahony form where it maps Earth->Body.
+  
     q_m_eb_ = Eigen::Quaternionf(mahony_.q0, mahony_.q1, mahony_.q2, mahony_.q3);
     q_m_eb_.normalize();
-
+  
     // Specific force in body (a - g)
     const Eigen::Vector3f f_b = acc_body_ned;
-
+  
     // Body->Earth rotation:
     const Eigen::Matrix3f R_be = q_m_eb_.toRotationMatrix().transpose();
-
+  
     // Inertial acceleration in Earth/NED: a_e = R_be * f_b + g_e
     const Eigen::Vector3f g_e(0.0f, 0.0f, g_std);
     const Eigen::Vector3f a_e = R_be * f_b + g_e;
-
+  
     // Vertical UP positive = -down component
     return -a_e.z();
   }
