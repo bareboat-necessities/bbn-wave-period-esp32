@@ -35,7 +35,7 @@
 
 constexpr float ACC_NOISE_FLOOR_SIGMA_DEFAULT = 0.12f;
 
-constexpr float MIN_FREQ_HZ = 0.05f;
+constexpr float MIN_FREQ_HZ = 0.02f;
 constexpr float MAX_FREQ_HZ = 5.0f;
 
 constexpr float MIN_TAU_S   = 0.02f;
@@ -1277,8 +1277,8 @@ private:
   float spectral_horiz_q_ratio_  = 0.22f;   // XY q = ratio * Z q
 
   // Allowed analysis range for spectral fitting (not applied as mode centers anymore)
-  float spectral_mode_fmin_hz_   = 0.06f;
-  float spectral_mode_fmax_hz_   = 1.00f;
+  float spectral_mode_fmin_hz_   = 0.02f;
+  float spectral_mode_fmax_hz_   = 0.90f;
 
   float base_logvar_ema_   = 0.25f * 0.25f; // initial guess in (log Hz)^2
   float base_logvar_alpha_ = 0.01f;         // slow EMA
