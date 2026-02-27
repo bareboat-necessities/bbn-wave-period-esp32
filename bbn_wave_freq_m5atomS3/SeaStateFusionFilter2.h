@@ -491,7 +491,7 @@ public:
     // Keep a floor tied to fc and retain some tracker influence via spectral_f0_blend_.
     float f_spec = have_fp ? (0.72f * fp + 0.28f * fc) : f_base;
     if (have_fc) {
-      const float f_floor = 1.01f * fc;
+      const float f_floor = 1.10f * fc;
       f_spec = std::max(f_spec, f_floor);
     }
     f_spec = std::clamp(f_spec, min_freq_hz_, max_freq_hz_);
@@ -1248,7 +1248,7 @@ private:
   float spectral_q_gain_         = 1.0f;    // main knob
   float spectral_q_floor_        = 1e-6f;
   float spectral_q_cap_          = 60.0f;   // per-mode cap (pre/post normalize clamp)
-  float spectral_horiz_q_ratio_  = 0.7f;    // XY q = ratio * Z q
+  float spectral_horiz_q_ratio_  = 0.25f;   // XY q = ratio * Z q
 
   // Allowed analysis range for spectral fitting (not applied as mode centers anymore)
   float spectral_mode_fmin_hz_   = 0.06f;
