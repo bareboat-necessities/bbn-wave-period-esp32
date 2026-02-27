@@ -369,7 +369,20 @@ public:
     const double fc_est = std::exp(mu_logf);    
     const double fp_est = estimatePeakFrequencyHz();
     double center_f = fc_est;
-
+    // Optional: in very narrowband seas, allow a SMALL pull toward fp.
+    // (Do NOT let fp dominate; it is NOT a “mean” frequency.)
+    if (std::isfinite(fp_est) && fp_est > 0.0) {
+      // Narrowness measure on log-axis (smaller => narrower).
+      const double s = std::clamp(sig_logf, 0.0, 2.0);
+    
+      // Blend up to 25% only when very narrow; 0% when broad.
+      const double b = std::clamp((0.30 - s) / 0.30, 0.0, 1.0) * 0.25;
+    
+      // Blend in log-domain (consistent with your log spacing)
+      const double x = (1.0 - b) * std::log(std::max(1e-6, fc_est)) +
+                       (b)       * std::log(std::max(1e-6, fp_est));
+      center_f = std::exp(x);
+    }
     const double minf = std::max(1e-3, double(min_mode_hz));
     const double maxf = std::max(minf + 1e-3, double(max_mode_hz));
 
