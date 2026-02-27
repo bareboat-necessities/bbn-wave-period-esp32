@@ -390,7 +390,7 @@ public:
       if (!(std::isfinite(siglog) && siglog > 0.0 && siglog < 1.20)) {
         accept = false;
       } else {
-        zeta_mid_candidate = std::clamp(0.03f + 0.06f * (float)siglog, 0.03f, 0.10f);
+        zeta_mid_candidate = std::clamp(0.03f + 0.09f * (float)siglog, 0.03f, 0.20f);
       }
     
       // Require both estimates
