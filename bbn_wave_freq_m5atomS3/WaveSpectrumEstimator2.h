@@ -383,6 +383,11 @@ public:
                        (b)       * std::log(std::max(1e-6, fp_est));
       center_f = std::exp(x);
     }
+    if (std::isfinite(fp_est) && fp_est > 0.0) {
+      // Prevent low-f garbage from dragging the bank center far below the true peak band.
+      center_f = std::clamp(center_f, fp_est / 1.45, fp_est * 1.15);
+    }
+    
     const double minf = std::max(1e-3, double(min_mode_hz));
     const double maxf = std::max(minf + 1e-3, double(max_mode_hz));
 
