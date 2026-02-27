@@ -152,6 +152,88 @@ public:
     return false;
   }
 
+  // Compute log-moment stats of S_eta over a specific band [f_lo, f_hi].
+  // This is still "full spectrum" integration, just over a trusted band.
+  LogFreqStats estimateLogFreqStatsBand(double f_lo_hz, double f_hi_hz) const {
+    LogFreqStats s{};
+    if (!warm_) return s;
+  
+    const double f_lo = std::max(1e-6, f_lo_hz);
+    const double f_hi = std::max(f_lo + 1e-6, f_hi_hz);
+  
+    double m0 = 0.0;
+    double mu = 0.0;
+  
+    for (int i = 0; i < Nfreq; ++i) {
+      const double f  = freqs_[i];
+      if (!(f >= f_lo && f <= f_hi)) continue;
+  
+      const double Ei = std::max(0.0, last_psd_eta_[i]) * std::max(0.0, df_[i]); // [m^2]
+      if (!(Ei > 0.0) || !std::isfinite(Ei)) continue;
+  
+      m0 += Ei;
+      mu += Ei * std::log(std::max(1e-12, f));
+    }
+  
+    if (!(m0 > 1e-18) || !std::isfinite(m0)) return s;
+    mu /= m0;
+  
+    double var = 0.0;
+    for (int i = 0; i < Nfreq; ++i) {
+      const double f  = freqs_[i];
+      if (!(f >= f_lo && f <= f_hi)) continue;
+  
+      const double Ei = std::max(0.0, last_psd_eta_[i]) * std::max(0.0, df_[i]);
+      if (!(Ei > 0.0) || !std::isfinite(Ei)) continue;
+  
+      const double d = std::log(std::max(1e-12, f)) - mu;
+      var += Ei * d * d;
+    }
+    var /= m0;
+  
+    s.m0 = m0;
+    s.f_center_hz = std::exp(mu);
+    s.sig_logf    = std::sqrt(std::max(0.0, var));
+    return s;
+  }
+  
+  // Robust moments: compute moments in a peak-centered band so low-f inversion residue
+  // can't drag fc down or inflate m0/Hs.
+  LogFreqStats estimateLogFreqStatsRobustFromPeak(double fp_hz,
+                                                  double f_min_hz,
+                                                  double f_max_hz) const
+  {
+    LogFreqStats s{};
+    if (!warm_) return s;
+  
+    const double fmin = std::max(1e-6, f_min_hz);
+    const double fmax = std::max(fmin + 1e-6, f_max_hz);
+  
+    double fp = fp_hz;
+    if (!(std::isfinite(fp) && fp > 0.0)) fp = estimatePeakFrequencyHz();
+    if (!(std::isfinite(fp) && fp > 0.0)) return s;
+    fp = std::clamp(fp, fmin, fmax);
+  
+    // Same band as your peak-search stage2 spirit: wide enough for peak/center shift,
+    // narrow enough to exclude low-f 1/w^4 garbage.
+    const double f_lo = std::max(fmin, fp / 1.9);
+    const double f_hi = std::min(fmax, fp * 1.35);
+  
+    s = estimateLogFreqStatsBand(f_lo, f_hi);
+  
+    // Fallback if band is empty (should be rare)
+    if (!(s.m0 > 1e-18) || !std::isfinite(s.f_center_hz) || !(s.f_center_hz > 0.0)) {
+      s = estimateLogFreqStats();
+    }
+  
+    // Hard guard: don't allow the "center" to collapse far below fp even after banding.
+    // This prevents rare pathologies when fp is valid but band energy is still skewed.
+    if (std::isfinite(s.f_center_hz) && s.f_center_hz > 0.0) {
+      s.f_center_hz = std::clamp(s.f_center_hz, fp / 1.45, fp * 1.15);
+    }
+    return s;
+  }
+
   LogFreqStats estimateLogFreqStats() const {
     LogFreqStats s{};
     if (!warm_) return s;
