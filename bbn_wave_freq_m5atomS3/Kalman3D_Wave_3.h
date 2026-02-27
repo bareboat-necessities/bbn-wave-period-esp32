@@ -1778,6 +1778,57 @@ private:
   T vert_q_scale_  = T(1.0);
 
 private:
+
+// =======================
+// REQUIRED HELPERS for the 5 extracted measurement methods
+// Paste inside Kalman3D_Wave_3 (private:)
+// Depends on: Mat3, MatX3, NX, P_
+// =======================
+
+void symmetrize_P_() {
+  for (int i=0;i<NX;++i) {
+    for (int j=i+1;j<NX;++j) {
+      const T v = T(0.5)*(P_(i,j) + P_(j,i));
+      P_(i,j) = v;
+      P_(j,i) = v;
+    }
+  }
+}
+
+// Joseph covariance update specialized for 3D residuals (3x1)
+// Inputs:
+//   K   : (NX x 3)
+//   S   : (3 x 3) innovation covariance used in K computation
+//   PCt : (NX x 3) = P * H^T used to compute K (so we don't recompute H)
+EIGEN_STRONG_INLINE void joseph_update3_(const MatX3& K, const Mat3& S, const MatX3& PCt) {
+  for (int i=0;i<NX;++i) {
+    for (int j=i;j<NX;++j) {
+      T KHP_ij = T(0), KHP_ji = T(0);
+      for (int l=0;l<3;++l) {
+        const T Ki_l = K(i,l);
+        const T Kj_l = K(j,l);
+        const T Pj_l = PCt(j,l);
+        const T Pi_l = PCt(i,l);
+        KHP_ij += Ki_l * Pj_l;
+        if (j != i) KHP_ji += Kj_l * Pi_l;
+      }
+      if (j==i) KHP_ji = KHP_ij;
+
+      T KSK_ij = T(0);
+      for (int a=0;a<3;++a) {
+        const T Kia = K(i,a);
+        for (int b=0;b<3;++b) {
+          KSK_ij += Kia * S(a,b) * K(j,b);
+        }
+      }
+      const T delta = -(KHP_ij + KHP_ji) + KSK_ij;
+      P_(i,j) += delta;
+      if (j!=i) P_(j,i) = P_(i,j);
+    }
+  }
+  symmetrize_P_();
+}      
+      
   // Frame helpers
   Mat3 R_wb() const { return qref_.toRotationMatrix(); }
   Mat3 R_bw() const { return qref_.toRotationMatrix().transpose(); }
