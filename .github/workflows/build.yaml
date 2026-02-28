@@ -111,6 +111,7 @@ jobs:
     - name: Run downstream processing with simulation data
       run: |
         cd "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/data-sim
+        make -j 4
         chmod +x freq_track.sh sea_reg.sh qmekf_sim.sh w3d_sim_adapt_2.sh w3d_sim_adapt_3.sh
         ./freq_track.sh
         ./sea_reg.sh
