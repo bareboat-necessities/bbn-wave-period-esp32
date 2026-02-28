@@ -64,22 +64,31 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y make g++ libeigen3-dev texlive-xetex texlive-latex-recommended texlive-fonts-recommended texlive-latex-extra
-    - name: Build code
+    - name: Generate wave simulation data
       run: |
         cp  "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/WaveSpectrumEstimator_Wavelets.h "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/WaveSpectrumEstimator.h
         cd  "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/data-sim
-        chmod +x *.sh
+        chmod +x gen_sim_data.sh
         ./gen_sim_data.sh
-        ./freq_track.sh
-        ./sea_reg.sh
-        ./qmekf_sim.sh
-        ./w3d_sim_adapt_2.sh
-        ./w3d_sim_adapt_3.sh
+
+    - name: Package simulation data
+      run: |
+        cd "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/data-sim
+        zip sim-data-files.zip ./*.csv
+
+    - name: Upload simulation data to vTest release
+      uses: svenstaro/upload-release-action@v2
+      with:
+        repo_token: ${{ secrets.GITHUB_TOKEN }}
+        file: bbn_wave_freq_m5atomS3/data-sim/sim-data-files.zip
+        tag: vTest
+        overwrite: true
+
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: sim-data-files
-        path: "**/*.csv"
+        path: bbn_wave_freq_m5atomS3/data-sim/sim-data-files.zip
 
   gen-plots:
     needs: gen-sim-data
@@ -91,10 +100,23 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y make g++ libeigen3-dev texlive-xetex texlive-latex-recommended texlive-fonts-recommended texlive-latex-extra texlive-fonts-extra dvipng
-    - name: Download sim data
-      uses: actions/download-artifact@v4
-      with: 
-        name: sim-data-files
+    - name: Download sim data from vTest release
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        gh release download vTest --repo "${{ github.repository }}" --pattern "sim-data-files.zip" --clobber
+    - name: Unpack simulation data
+      run: |
+        unzip -o sim-data-files.zip -d "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/data-sim
+    - name: Run downstream processing with simulation data
+      run: |
+        cd "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/data-sim
+        chmod +x freq_track.sh sea_reg.sh qmekf_sim.sh w3d_sim_adapt_2.sh w3d_sim_adapt_3.sh
+        ./freq_track.sh
+        ./sea_reg.sh
+        ./qmekf_sim.sh
+        ./w3d_sim_adapt_2.sh
+        ./w3d_sim_adapt_3.sh
     - name: Move data files
       run: |
         mv "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/data-sim/*.csv "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/plots/
