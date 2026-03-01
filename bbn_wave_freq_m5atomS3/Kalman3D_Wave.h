@@ -390,7 +390,10 @@ class Kalman3D_Wave {
     [[nodiscard]] Vector3 get_world_accel() const { return xext.template segment<3>(OFF_AW); }
 
     // Tuning setters
-    void set_aw_time_constant(T tau_seconds) { tau_aw = std::max(T(1e-3), tau_seconds); }
+	void set_aw_time_constant(T tau_seconds) {
+	    if (param_rw_enabled_) { param_rw_update_tau_cmd_(tau_seconds); return; }
+	    tau_aw = std::max(T(1e-3), tau_seconds);
+	}
 
     // OU stationary std [m/s²] for a_w (per axis)
     void set_aw_stationary_std(const Vector3& std_aw) {
@@ -453,21 +456,32 @@ class Kalman3D_Wave {
     }
 
     // Covariances for ∫p dt pseudo-measurement
-    void set_RS_noise(const Vector3& sigma_S) {
-        R_S = sigma_S.array().square().matrix().asDiagonal();
-        R_S = T(0.5) * (R_S + R_S.transpose());
-    }
+	void set_RS_noise(const Vector3& sigma_S) {
+		if (param_rw_enabled_) { param_rw_update_sigma_S_cmd_(sigma_S); return; }
+		R_S = sigma_S.array().square().matrix().asDiagonal();
+		R_S = T(0.5) * (R_S + R_S.transpose());
+	}
 
-    void set_RS_noise_matrix(const Matrix3& R) {
-        Matrix3 S = T(0.5) * (R + R.transpose());         // symmetrize
-        project_psd<T,3>(S, T(1e-8));
-        R_S = S;
-    }
+	void set_RS_noise_matrix(const Matrix3& R) {
+	    Matrix3 S = T(0.5) * (R + R.transpose());
+	    project_psd<T,3>(S, T(1e-8));
+	
+	    if (param_rw_enabled_) {
+	        Vector3 sig;
+	        sig.x() = std::sqrt(std::max(T(0), S(0,0)));
+	        sig.y() = std::sqrt(std::max(T(0), S(1,1)));
+	        sig.z() = std::sqrt(std::max(T(0), S(2,2)));
+	        param_rw_update_sigma_S_cmd_(sig);
+	        return;
+	    }
+	    R_S = S;
+	}
 
     // Accelerometer measurement noise (std in m/s² per axis)
-    void set_Racc(const Vector3& sigma_acc) {
-        Racc = sigma_acc.array().square().matrix().asDiagonal();
-    }
+	void set_Racc(const Vector3& sigma_acc) {
+	    if (param_rw_enabled_) { param_rw_update_sigma_acc_cmd_(sigma_acc); return; }
+	    Racc = sigma_acc.array().square().matrix().asDiagonal();
+	}
 
     // Magnetometer measurement noise (std per axis, μT or unitless)
     void set_Rmag(const Vector3& sigma_mag) {
