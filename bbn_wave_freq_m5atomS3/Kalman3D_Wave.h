@@ -1124,6 +1124,46 @@ Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::Kalman3D_Wave(
     const T sigma_p0 = T(20.0);   // m
     const T sigma_S0 = T(50.0);   // m·s
     set_initial_linear_uncertainty(sigma_v0, sigma_p0, sigma_S0);
+
+	// Init commanded-parameter filter means from current settings
+	{
+	    // Racc was built from sigma_a input
+	    Vector3 sigma_acc0;
+	    sigma_acc0.x() = std::sqrt(std::max(T(0), Racc(0,0)));
+	    sigma_acc0.y() = std::sqrt(std::max(T(0), Racc(1,1)));
+	    sigma_acc0.z() = std::sqrt(std::max(T(0), Racc(2,2)));
+	
+	    // R_S in your ctor is "variance" scalar; convert to std
+	    const T sigma_S0 = std::sqrt(std::max(T(1e-12), R_S_noise_var));
+	    Vector3 sigma_S0v = Vector3::Constant(sigma_S0);
+	
+	    log_sigma_acc_f_.x = clamp_pos_vec_(sigma_acc0, sigma_acc_min_, sigma_acc_max_).array().log().matrix();
+	    log_sigma_S_f_.x   = clamp_pos_vec_(sigma_S0v,  sigma_S_min_,   sigma_S_max_  ).array().log().matrix();
+	    log_tau_aw_f_.x    = std::log(clamp_pos_(tau_aw, tau_min_, tau_max_));
+	
+	    // Reasonable default uncertainties (in log-domain)
+	    log_sigma_acc_f_.P = Vector3::Constant(T(0.10) * T(0.10)); // ~10% 1σ
+	    log_sigma_S_f_.P   = Vector3::Constant(T(0.15) * T(0.15)); // ~15% 1σ
+	    log_tau_aw_f_.P    = T(0.20) * T(0.20);                    // ~20% 1σ
+	
+	    // Default RW diffusion (log units per sqrt(s)) -> variance per second
+	    const T rw_sig_acc = T(0.02); // ~2%/sqrt(s)
+	    const T rw_sig_S   = T(0.02);
+	    const T rw_tau     = T(0.01);
+	
+	    log_sigma_acc_f_.q = Vector3::Constant(rw_sig_acc * rw_sig_acc);
+	    log_sigma_S_f_.q   = Vector3::Constant(rw_sig_S   * rw_sig_S);
+	    log_tau_aw_f_.q    = rw_tau * rw_tau;
+	
+	    // Default command noise (how noisy the external adapter is), log-domain
+	    const T cmd_sig_acc = T(0.10); // ~10%
+	    const T cmd_sig_S   = T(0.15); // ~15%
+	    const T cmd_tau     = T(0.20); // ~20%
+	
+	    log_sigma_acc_f_.r = Vector3::Constant(cmd_sig_acc * cmd_sig_acc);
+	    log_sigma_S_f_.r   = Vector3::Constant(cmd_sig_S   * cmd_sig_S);
+	    log_tau_aw_f_.r    = cmd_tau * cmd_tau;
+	}			
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
