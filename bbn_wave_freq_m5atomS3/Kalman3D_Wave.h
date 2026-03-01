@@ -1051,7 +1051,7 @@ class Kalman3D_Wave {
 	}
 	
 	// Enable/disable commanded-parameter filtering
-	bool param_rw_enabled_ = false;
+	bool param_rw_enabled_ = true;
 	
 	// Log-parameters we filter:
 	//  - log(sigma_acc)  -> used to build Racc
