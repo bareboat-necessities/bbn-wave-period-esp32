@@ -507,7 +507,40 @@ class Kalman3D_Wave {
     // Initialize full extended state from "truth"
     void initialize_from_truth(const Vector3 &p_ned, const Vector3 &v_ned,
                                const Eigen::Quaternion<T> &q_bw, const Vector3 &a_w_ned);
-
+	
+	void set_param_rw_enabled(bool on) {
+	    param_rw_enabled_ = on;
+	    if (param_rw_enabled_) {
+	        // Ensure matrices reflect filtered state immediately
+	        refresh_model_params_from_filtered_();
+	    }
+	}
+	
+	// Optional tuning (log-domain stds)
+	void set_param_rw_process_std_log(Vector3 sigma_acc_rw_log, Vector3 sigma_S_rw_log, T tau_rw_log) {
+	    log_sigma_acc_f_.q = sigma_acc_rw_log.array().square().matrix();
+	    log_sigma_S_f_.q   = sigma_S_rw_log.array().square().matrix();
+	    log_tau_aw_f_.q    = tau_rw_log * tau_rw_log;
+	}
+	
+	void set_param_cmd_std_log(Vector3 sigma_acc_cmd_log, Vector3 sigma_S_cmd_log, T tau_cmd_log) {
+	    log_sigma_acc_f_.r = sigma_acc_cmd_log.array().square().matrix();
+	    log_sigma_S_f_.r   = sigma_S_cmd_log.array().square().matrix();
+	    log_tau_aw_f_.r    = tau_cmd_log * tau_cmd_log;
+	}
+	
+	// Feed “commands” from your external adaptation
+	void command_sigma_acc(const Vector3& sigma_acc_cmd) { param_rw_update_sigma_acc_cmd_(sigma_acc_cmd); }
+	void command_sigma_S  (const Vector3& sigma_S_cmd)   { param_rw_update_sigma_S_cmd_(sigma_S_cmd); }
+	void command_tau_aw   (T tau_cmd)                    { param_rw_update_tau_cmd_(tau_cmd); }
+	
+	// Convenience
+	void apply_adaptive_params(const Vector3& sigma_acc_cmd, T tau_cmd, const Vector3& sigma_S_cmd) {
+	    command_sigma_acc(sigma_acc_cmd);
+	    command_tau_aw(tau_cmd);
+	    command_sigma_S(sigma_S_cmd);
+	}
+				
     // IMU lever-arm API
     // r_b: IMU position w.r.t. CoG in the *physical* BODY frame B [m].
     // Internally we de-heel this into B' each step when applying lever-arm kinematics.
@@ -1334,6 +1367,9 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     Vector3 const& gyr_body, T Ts)
 {
     last_dt_ = Ts;   // Remember last dt
+
+	// Commanded parameters random-walk prediction (updates Racc, R_S, tau_aw smoothly)
+	param_rw_predict_(Ts);		
 
     // De-heel gyro into virtual frame B' using current wind_heel_rad_
     const Vector3 gyr = deheel_vector_(gyr_body);   // ω^{B'}
