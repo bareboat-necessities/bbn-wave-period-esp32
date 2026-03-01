@@ -944,6 +944,139 @@ class Kalman3D_Wave {
 	    // Optional: α cache is now in new B' but it was computed using old dt history.
 	    // have_prev_omega_ = false; alpha_b_.setZero();
 	}
+
+	// Commanded-parameter RW filter (log-domain)
+	struct RWScalar {
+	    T x = T(0);    // mean
+	    T P = T(1e-6); // variance
+	    T q = T(0);    // process var per second (RW)
+	    T r = T(0);    // measurement var (command)
+	
+	    void predict(T dt) {
+	        if (dt > T(0)) P += q * dt;
+	        if (!(P > T(0)) || !std::isfinite(P)) P = T(1e-6);
+	    }
+	    void update(T z) {
+	        const T S = P + r;
+	        if (!(S > T(0)) || !std::isfinite(S)) return;
+	        const T K = P / S;
+	        x = x + K * (z - x);
+	        P = (T(1) - K) * P;
+	        if (!(P > T(0)) || !std::isfinite(P)) P = T(1e-9);
+	    }
+	};
+	
+	struct RWVec3Diag {
+	    Vector3 x = Vector3::Zero();          // mean (per axis)
+	    Vector3 P = Vector3::Constant(T(1e-6));
+	    Vector3 q = Vector3::Zero();          // process var per second
+	    Vector3 r = Vector3::Zero();          // meas var
+	
+	    void predict(T dt) {
+	        if (dt > T(0)) P.array() += q.array() * dt;
+	        for (int i = 0; i < 3; ++i) {
+	            if (!(P(i) > T(0)) || !std::isfinite(P(i))) P(i) = T(1e-6);
+	        }
+	    }
+	    void update(const Vector3& z) {
+	        for (int i = 0; i < 3; ++i) {
+	            const T S = P(i) + r(i);
+	            if (!(S > T(0)) || !std::isfinite(S)) continue;
+	            const T K = P(i) / S;
+	            x(i) = x(i) + K * (z(i) - x(i));
+	            P(i) = (T(1) - K) * P(i);
+	            if (!(P(i) > T(0)) || !std::isfinite(P(i))) P(i) = T(1e-9);
+	        }
+	    }
+	};
+	
+	static inline T clamp_pos_(T v, T lo, T hi) {
+	    if (!std::isfinite(v)) return lo;
+	    return std::max(lo, std::min(v, hi));
+	}
+	
+	static inline Vector3 clamp_pos_vec_(const Vector3& v, T lo, T hi) {
+	    Vector3 out = v;
+	    out.x() = clamp_pos_(out.x(), lo, hi);
+	    out.y() = clamp_pos_(out.y(), lo, hi);
+	    out.z() = clamp_pos_(out.z(), lo, hi);
+	    return out;
+	}
+	
+	// Enable/disable commanded-parameter filtering
+	bool param_rw_enabled_ = false;
+	
+	// Log-parameters we filter:
+	//  - log(sigma_acc)  -> used to build Racc
+	//  - log(sigma_S)    -> used to build R_S (diag)
+	//  - log(tau_aw)     -> used for OU time constant
+	RWVec3Diag log_sigma_acc_f_;
+	RWVec3Diag log_sigma_S_f_;
+	RWScalar   log_tau_aw_f_;
+	
+	// Safety clamps (physical units)
+	T sigma_acc_min_ = T(1e-4), sigma_acc_max_ = T(50);   // m/s^2
+	T sigma_S_min_   = T(1e-6), sigma_S_max_   = T(1e6);  // m*s (depends on your S meaning)
+	T tau_min_       = T(1e-3), tau_max_       = T(60);   // s
+	
+	EIGEN_STRONG_INLINE void refresh_model_params_from_filtered_() {
+	    // sigma_acc
+	    Vector3 sigma_acc = log_sigma_acc_f_.x.array().exp().matrix();
+	    sigma_acc = clamp_pos_vec_(sigma_acc, sigma_acc_min_, sigma_acc_max_);
+	    Racc = sigma_acc.array().square().matrix().asDiagonal();
+	
+	    // sigma_S -> R_S (diag)
+	    Vector3 sigma_S = log_sigma_S_f_.x.array().exp().matrix();
+	    sigma_S = clamp_pos_vec_(sigma_S, sigma_S_min_, sigma_S_max_);
+	    R_S = sigma_S.array().square().matrix().asDiagonal();
+	    R_S = T(0.5) * (R_S + R_S.transpose());
+	
+	    // tau_aw
+	    T tau = std::exp(log_tau_aw_f_.x);
+	    tau = clamp_pos_(tau, tau_min_, tau_max_);
+	    tau_aw = tau;
+	}
+	
+	EIGEN_STRONG_INLINE void param_rw_predict_(T dt) {
+	    if (!param_rw_enabled_) return;
+	    log_sigma_acc_f_.predict(dt);
+	    log_sigma_S_f_.predict(dt);
+	    log_tau_aw_f_.predict(dt);
+	    refresh_model_params_from_filtered_();
+	}
+	
+	EIGEN_STRONG_INLINE void param_rw_update_sigma_acc_cmd_(const Vector3& sigma_acc_cmd) {
+	    if (!param_rw_enabled_) {
+	        set_Racc(sigma_acc_cmd);
+	        return;
+	    }
+	    Vector3 s = clamp_pos_vec_(sigma_acc_cmd, sigma_acc_min_, sigma_acc_max_);
+	    Vector3 z = s.array().log().matrix();
+	    log_sigma_acc_f_.update(z);
+	    refresh_model_params_from_filtered_();
+	}
+	
+	EIGEN_STRONG_INLINE void param_rw_update_sigma_S_cmd_(const Vector3& sigma_S_cmd) {
+	    if (!param_rw_enabled_) {
+	        set_RS_noise(sigma_S_cmd);
+	        return;
+	    }
+	    Vector3 s = clamp_pos_vec_(sigma_S_cmd, sigma_S_min_, sigma_S_max_);
+	    Vector3 z = s.array().log().matrix();
+	    log_sigma_S_f_.update(z);
+	    refresh_model_params_from_filtered_();
+	}
+	
+	EIGEN_STRONG_INLINE void param_rw_update_tau_cmd_(T tau_cmd) {
+	    if (!param_rw_enabled_) {
+	        set_aw_time_constant(tau_cmd);
+	        return;
+	    }
+	    const T t = clamp_pos_(tau_cmd, tau_min_, tau_max_);
+	    const T z = std::log(t);
+	    log_tau_aw_f_.update(z);
+	    refresh_model_params_from_filtered_();
+	}
 };
 
 // Implementation
