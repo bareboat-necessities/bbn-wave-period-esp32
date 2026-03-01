@@ -55,43 +55,7 @@ jobs:
         overwrite: true
         file_glob: true
 
-  gen-sim-data:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Generate Data Checkout
-      uses: actions/checkout@v4
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y make g++ libeigen3-dev texlive-xetex texlive-latex-recommended texlive-fonts-recommended texlive-latex-extra
-    - name: Generate wave simulation data
-      run: |
-        cp  "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/WaveSpectrumEstimator_Wavelets.h "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/WaveSpectrumEstimator.h
-        cd  "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/data-sim
-        chmod +x gen_sim_data.sh
-        ./gen_sim_data.sh
-
-    - name: Package simulation data
-      run: |
-        cd "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/data-sim
-        zip sim-data-files.zip ./*.csv
-
-    - name: Upload simulation data to vTest release
-      uses: svenstaro/upload-release-action@v2
-      with:
-        repo_token: ${{ secrets.GITHUB_TOKEN }}
-        file: bbn_wave_freq_m5atomS3/data-sim/sim-data-files.zip
-        tag: vTest
-        overwrite: true
-
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: sim-data-files
-        path: bbn_wave_freq_m5atomS3/data-sim/sim-data-files.zip
-
   gen-plots:
-    needs: gen-sim-data
     runs-on: ubuntu-latest
     steps:
     - name: Generate Plots Checkout
@@ -104,7 +68,7 @@ jobs:
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        gh release download vTest --repo "${{ github.repository }}" --pattern "sim-data-files.zip" --clobber
+        gh release download v1.0.0 --repo bareboat-necessities/oceanography-waves-lib --pattern "sim-data-files.zip" --clobber
     - name: Unpack simulation data
       run: |
         unzip -o sim-data-files.zip -d "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/data-sim
