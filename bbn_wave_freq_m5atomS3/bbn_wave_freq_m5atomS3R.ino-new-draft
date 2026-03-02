@@ -684,9 +684,9 @@ private:
                   (double)mag_norm_uT_,
                   (int)fusion_.isLive());
     */
-    Serial.printf("Hm:%+.3f\twaveEnvelopeM:%+.3f\timuStale:%u\n",
-                  (double)heave_m_,
-                  (double)wave_envelope_m_,
+    Serial.printf("Hcm:%+.3f\twaveEnvelopeCM:%+.3f\timuStale:%u\n",
+                  (double)(heave_m_ * 100),
+                  (double)(wave_envelope_m_ * 100),
                   (unsigned)stale_frame_count_);
 #endif
   }
