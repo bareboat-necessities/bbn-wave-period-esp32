@@ -107,7 +107,10 @@ struct ImuCalWizardCfg {
   // Also require centered direction range per axis (0..2). 1.2 means roughly reaching ±0.6.
   static constexpr float MAG_URANGE_TARGET        = 1.05f;
 
-  static constexpr uint32_t FIT_STACK_WORDS     = 16384;
+  // ESP-IDF's xTaskCreatePinnedToCore() expects stack size in *bytes*.
+  // The Eigen-heavy calibration fits can exceed 16 KiB in worst-case builds,
+  // which can silently corrupt neighboring task stacks and panic later.
+  static constexpr uint32_t FIT_STACK_BYTES     = 32768;
   static constexpr uint32_t FIT_TIMEOUT_MS      = 30000;
 };
 
@@ -332,6 +335,8 @@ private:
                   (int)ok, (int)self->acc_out_.ok, imu_cal::fitFailStr(ctx->reason));
 
     ctx->ok = ok && self->acc_out_.ok;
+    const uint32_t hw_words = uxTaskGetStackHighWaterMark(nullptr);
+    Serial.printf("[ACC] stack_hwm=%luB\n", (unsigned long)(hw_words * sizeof(StackType_t)));
     ctx->done = true;
     vTaskDelete(nullptr);
   }
@@ -347,6 +352,8 @@ private:
                   (int)ok, (int)self->gyr_out_.ok, imu_cal::fitFailStr(ctx->reason));
 
     ctx->ok = ok && self->gyr_out_.ok;
+    const uint32_t hw_words = uxTaskGetStackHighWaterMark(nullptr);
+    Serial.printf("[GYR] stack_hwm=%luB\n", (unsigned long)(hw_words * sizeof(StackType_t)));
     ctx->done = true;
     vTaskDelete(nullptr);
   }
@@ -382,6 +389,8 @@ private:
 
     ctx->reason = last_reason;
     ctx->ok = any_ok;
+    const uint32_t hw_words = uxTaskGetStackHighWaterMark(nullptr);
+    Serial.printf("[MAG] stack_hwm=%luB\n", (unsigned long)(hw_words * sizeof(StackType_t)));
     ctx->done = true;
     vTaskDelete(nullptr);
   }
@@ -411,7 +420,7 @@ private:
     BaseType_t rc = xTaskCreatePinnedToCore(
       fn,
       what,
-      (uint32_t)ImuCalWizardCfg::FIT_STACK_WORDS,
+      (uint32_t)ImuCalWizardCfg::FIT_STACK_BYTES,
       &fit_,
       1,
       &fit_.task,
