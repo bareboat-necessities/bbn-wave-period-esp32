@@ -391,7 +391,7 @@ private:
     ctx->ok = any_ok;
     const uint32_t hw_bytes = uxTaskGetStackHighWaterMark(nullptr);
     Serial.printf("[MAG] stack_hwm=%luB\n", (unsigned long)hw_bytes);
-    if (hw < 4096) {
+    if (hw_bytes < 4096) {
       Serial.printf("[MAG] WARNING: low stack headroom: %luB\n", (unsigned long)hw_bytes);
     }    
     ctx->done = true;
