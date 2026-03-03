@@ -458,26 +458,6 @@ public:
         initHarmonicDespikeFilters_();
     }
 
-    // State restoring-force pseudo-measurement parameter.
-    // "gain" is kept for backward compatibility and intentionally ignored.
-    void setEnvelopeStateCorrectionParams(float sigma0_m, float /*gain*/) {
-        if (std::isfinite(sigma0_m) && sigma0_m > 0.0f) {
-            env_sigma0_m_ = sigma0_m;
-        }
-    }
-
-    void setEnvelopeStateCorrectionUpdatePeriod(float every_sec) {
-        if (std::isfinite(every_sec) && every_sec > 0.02f) {
-            env_state_every_sec_ = every_sec;
-        }
-    }
-
-    void setEnvelopeStateCorrectionMinErrRatio(float r) {
-        if (std::isfinite(r) && r >= 0.0f) {
-            env_state_min_err_ratio_ = std::min(std::max(r, 0.0f), 1.0f);
-        }
-    }
-
     // Enable/disable use of the extended linear block [v,p,S,a_w] in Kalman3D_Wave.
     //
     // When flag == false:
@@ -983,9 +963,6 @@ private:
         // Optional: avoid immediate adapt burst after reset
         last_adapt_time_sec_ = time_;
 
-        // Reset envelope correction dwell/scheduler state.
-        env_outside_time_sec_ = 0.0f;
-        last_env_state_update_sec_ = static_cast<float>(time_);
         resetDriftCorrections_();
     }
     
@@ -1030,9 +1007,7 @@ private:
         }
         apply_ou_tune_();
         if (enable_linear_block_) apply_RS_tune_();
-
-        env_outside_time_sec_ = 0.0f;
-        last_env_state_update_sec_ = static_cast<float>(time_);
+      
         resetDriftCorrections_();
     }
 
@@ -1074,15 +1049,6 @@ private:
     std::unique_ptr<TimeAwareSpikeFilter> despike_ax_;
     std::unique_ptr<TimeAwareSpikeFilter> despike_ay_;
     std::unique_ptr<TimeAwareSpikeFilter> despike_az_;
-
-    float env_sigma0_m_ = 0.5f;
-
-    float env_state_dwell_sec_ = 0.8f;
-    float env_outside_time_sec_ = 0.0f;
-    float env_state_every_sec_ = 0.15f;
-    float env_state_min_err_ratio_ = 0.08f;
-    float last_env_state_update_sec_ = -1e9f;
-    float env_outward_eps_m_ = 1e-4f;
 
     // drift pseudo-measurement configs
     DriftPseudoCfg pm_vz_zero_on_pos_breach_ {
