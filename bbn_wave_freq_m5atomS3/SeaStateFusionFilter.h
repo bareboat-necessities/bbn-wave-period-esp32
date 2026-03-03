@@ -450,10 +450,6 @@ public:
         enable_tuner_ = flag;
     }
 
-    void setEnvelopeStateCorrectionEnabled(bool en) {
-        enable_env_state_correction_ = en;
-    }
-
     void setHarmonicPositionDespikeConfig(int window_size, float threshold) {
         if (window_size < 3) return;
         if (!std::isfinite(threshold) || threshold <= 0.0f) return;
@@ -470,15 +466,6 @@ public:
         }
     }
 
-    // Absolute cap for how quickly envelope state correction can move z [m/s].
-    // This keeps the correction from "clipping" the heave waveform when the
-    // envelope is briefly underestimated.
-    void setEnvelopeStateCorrectionMaxSpeed(float max_speed_mps) {
-        if (std::isfinite(max_speed_mps) && max_speed_mps > 0.0f) {
-            env_state_max_speed_mps_ = max_speed_mps;
-        }
-    }
-
     void setEnvelopeStateCorrectionUpdatePeriod(float every_sec) {
         if (std::isfinite(every_sec) && every_sec > 0.02f) {
             env_state_every_sec_ = every_sec;
@@ -489,19 +476,6 @@ public:
         if (std::isfinite(r) && r >= 0.0f) {
             env_state_min_err_ratio_ = std::min(std::max(r, 0.0f), 1.0f);
         }
-    }
-
-    // Scale factor for the envelope gate used by state correction.
-    // 1.0 means correction starts at |z| > envelope, 1.3 means |z| must exceed
-    // 130% of the envelope before correction kicks in.
-    void setEnvelopeGateThresholdScale(float scale) {
-        if (std::isfinite(scale) && scale > 0.0f) {
-            env_gate_threshold_scale_ = scale;
-        }
-    }
-
-    float getEnvelopeGateThresholdScale() const noexcept {
-        return env_gate_threshold_scale_;
     }
 
     // Enable/disable use of the extended linear block [v,p,S,a_w] in Kalman3D_Wave.
@@ -1095,8 +1069,6 @@ private:
     bool enable_clamp_ = true;
     bool enable_tuner_ = true;
 
-    bool enable_env_state_correction_ = false;
-
     float harmonic_despike_threshold_ = 4.0f;
     int harmonic_despike_window_ = 5;
     std::unique_ptr<TimeAwareSpikeFilter> despike_ax_;
@@ -1104,14 +1076,13 @@ private:
     std::unique_ptr<TimeAwareSpikeFilter> despike_az_;
 
     float env_sigma0_m_ = 0.5f;
-    float env_state_max_speed_mps_ = 0.35f;
+
     float env_state_dwell_sec_ = 0.8f;
     float env_outside_time_sec_ = 0.0f;
     float env_state_every_sec_ = 0.15f;
     float env_state_min_err_ratio_ = 0.08f;
     float last_env_state_update_sec_ = -1e9f;
     float env_outward_eps_m_ = 1e-4f;
-    float env_gate_threshold_scale_ = 1.2f;
 
     // drift pseudo-measurement configs
     DriftPseudoCfg pm_vz_zero_on_pos_breach_ {
