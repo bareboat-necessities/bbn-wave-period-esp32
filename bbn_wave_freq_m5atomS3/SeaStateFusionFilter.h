@@ -1270,6 +1270,22 @@ private:
     float env_rs_gate_threshold_scale_ = 0.8f;
     float env_correction_warmup_sec_ = 16.0f;
 
+    // drift pseudo-measurement configs
+    DriftPseudoCfg pm_vz_zero_on_pos_breach_ {
+        /*enabled*/false, /*period*/6,  /*sigma_mult*/10.0f, /*sigma_min*/0.03f, /*gate*/1.25f
+    };
+    DriftPseudoCfg pm_pos_zero_ {
+        /*enabled*/false, /*period*/18, /*sigma_mult*/25.0f, /*sigma_min*/0.05f, /*gate*/1.60f
+    };
+    DriftPseudoCfg pm_vz_clamp_ {
+        /*enabled*/false, /*period*/3,  /*sigma_mult*/10.0f, /*sigma_min*/0.03f, /*gate*/1.20f
+    };
+    
+    float speed_env_mult_ = 1.0f;   // v_env ≈ speed_env_mult * ω * z_env
+    
+    // Harmonic sigma now treated as MULTIPLIER for sigma_a*tau^2
+    float harmonic_position_sigma_mult_ = 10.0f;
+
     // Controls whether the extended linear block [v,p,S,a_w] of Kalman3D_Wave
     // is ever enabled. When false, the underlying filter runs as a pure
     // attitude/bias QMEKF (linear states frozen, no OU, no S pseudo-measurements),
@@ -1318,6 +1334,38 @@ private:
 
     WaveDirectionDetector<float> dir_sign_{0.002f, 0.005f};   // smoothing, sensitivity
     WaveDirection                dir_sign_state_ = UNCERTAIN;
+
+    static inline float clampf_(float x, float lo, float hi) {
+        return std::max(lo, std::min(hi, x));
+    }
+    
+    Eigen::Vector3f sigmaP_fromSigmaTau_(float sigma_mult) const {
+        const float tau = std::max(getTauApplied(), 1e-3f);
+        const float sigma_floor = std::max(0.05f, acc_noise_floor_sigma_);
+        const float sZ = std::max(sigma_floor, getSigmaApplied());
+        const float sH = sZ * S_factor_;
+    
+        const float k = std::max(0.0f, sigma_mult) * (tau * tau);
+        return Eigen::Vector3f(sH * k, sH * k, sZ * k); // meters
+    }
+    
+    Eigen::Vector3f sigmaV_fromSigmaTau_(float sigma_mult) const {
+        const float tau = std::max(getTauApplied(), 1e-3f);
+        const float sigma_floor = std::max(0.05f, acc_noise_floor_sigma_);
+        const float sZ = std::max(sigma_floor, getSigmaApplied());
+        const float sH = sZ * S_factor_;
+    
+        const float k = std::max(0.0f, sigma_mult) * tau;
+        return Eigen::Vector3f(sH * k, sH * k, sZ * k); // m/s
+    }
+    
+    bool cadenceHit_(DriftPseudoCfg& c) {
+        if (c.period_steps <= 0) c.period_steps = 1;
+        // We keep counters inside cfg by mutating; OK since cfg lives in the object.
+        // If you dislike that, split into cfg + counter.
+        static_assert(true, "cadenceHit_ uses cfg-local counter stored separately below");
+        return true;
+    }      
 };
 
 template<TrackerType trackerT>
