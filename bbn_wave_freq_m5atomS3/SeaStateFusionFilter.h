@@ -1418,14 +1418,6 @@ private:
         const float k = std::max(0.0f, sigma_mult) * tau;
         return Eigen::Vector3f(sH * k, sH * k, sZ * k); // m/s
     }
-    
-    bool cadenceHit_(DriftPseudoCfg& c) {
-        if (c.period_steps <= 0) c.period_steps = 1;
-        // We keep counters inside cfg by mutating; OK since cfg lives in the object.
-        // If you dislike that, split into cfg + counter.
-        static_assert(true, "cadenceHit_ uses cfg-local counter stored separately below");
-        return true;
-    }      
 };
 
 template<TrackerType trackerT>
