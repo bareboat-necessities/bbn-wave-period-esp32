@@ -935,6 +935,13 @@ private:
         initHarmonicDespikeFilters_();
     }
 
+    void resetDriftCorrections_() {
+        resetHarmonicPositionCorrection_();
+        pm_ctr_vz_zero_  = 0;
+        pm_ctr_pos_zero_ = 0;
+        pm_ctr_vz_clamp_ = 0;
+    }
+
     void applyHarmonicPositionCorrection_(float dt, const Eigen::Vector3f& acc_body_ned,
                                           float a_vert_up_osc) {
         if (!mekf_ || !enable_harmonic_position_correction_) return;
@@ -1150,7 +1157,7 @@ private:
         env_rs_latched_ = false;
         env_rs_scale_state_ = 1.0f;
         last_env_state_update_sec_ = static_cast<float>(time_);
-        resetHarmonicPositionCorrection_();
+        resetDriftCorrections_();
     }
     
     void enterCold_() {
@@ -1172,7 +1179,7 @@ private:
         }
 
         env_rs_latched_ = false;
-        resetHarmonicPositionCorrection_();
+        resetDriftCorrections_();
     }
 
     void enterLive_() {
@@ -1200,7 +1207,7 @@ private:
         env_rs_latched_ = false;
         env_rs_scale_state_ = 1.0f;
         last_env_state_update_sec_ = static_cast<float>(time_);
-        resetHarmonicPositionCorrection_();
+        resetDriftCorrections_();
     }
 
     StartupStage startup_stage_    = StartupStage::Cold;
