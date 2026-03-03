@@ -380,18 +380,11 @@ private:
     ff.setRSXYFactor(0.17f);
     ff.setAccNoiseFloorSigma(ACC_NOISE_FLOOR_SIGMA_DEFAULT);
     ff.setEnvelopeStateCorrectionEnabled(false); // envelope state gate 
-    ff.setEnvelopeRSCorrectionEnabled(false);    // envelope-driven R_S modulation
     ff.setEnvelopeStateCorrectionParams(0.5f, 0.0f);
     ff.setEnvelopeStateCorrectionMaxSpeed(0.35f);
     ff.setEnvelopeStateCorrectionUpdatePeriod(0.15f);
     ff.setEnvelopeStateCorrectionMinErrRatio(0.08f);
     ff.setEnvelopeGateThresholdScale(1.2f);
-    ff.setEnvelopeRSMinScale(5e-4f);
-    ff.setEnvelopeRSSmoothingTauSec(0.0f);
-    ff.setEnvelopeRSGateThresholdScale(0.8f);
-    ff.setEnvelopeRSGateHysteresisScales(1.20f, 0.95f);
-    ff.setEnvelopeRSOutwardEps(1e-4f);
-    ff.setEnvelopeCorrectionWarmupSec(16.0f);
     ff.setHarmonicPositionDespikeConfig(5, 4.0f);
     ff.enableClamp(true);
     ff.setFreqInputCutoffHz(6.0f);

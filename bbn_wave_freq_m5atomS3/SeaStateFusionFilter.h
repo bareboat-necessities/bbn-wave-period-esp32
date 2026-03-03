@@ -304,7 +304,7 @@ public:
         // Keep linear-block R_S tuning responsive in Live mode instead of
         // waiting for slow adaptation cadence.
         if (startup_stage_ == StartupStage::Live && enable_linear_block_) {
-            applyEnvelopeDriftCorrection_(dt);
+            apply_RS_tune_();
             applyDriftPseudoMeasurements_(dt, acc, a_vert_up); 
         }
     
@@ -454,10 +454,6 @@ public:
         enable_env_state_correction_ = en;
     }
 
-    void setEnvelopeRSCorrectionEnabled(bool en) {
-        enable_env_rs_correction_ = en;
-    }
-
     void setHarmonicPositionDespikeConfig(int window_size, float threshold) {
         if (window_size < 3) return;
         if (!std::isfinite(threshold) || threshold <= 0.0f) return;
@@ -495,21 +491,6 @@ public:
         }
     }
 
-    // Minimum clamp for outward-only RS tightening scale.
-    void setEnvelopeRSMinScale(float min_scale) {
-        if (std::isfinite(min_scale)) {
-            env_rs_min_scale_ = std::min(std::max(min_scale, 1e-4f), 1.0f);
-        }
-    }
-
-    // Time constant for smoothing RS scale switching (seconds).
-    // Set to 0 for immediate switching.
-    void setEnvelopeRSSmoothingTauSec(float tau_sec) {
-        if (std::isfinite(tau_sec) && tau_sec >= 0.0f) {
-            env_rs_smooth_tau_sec_ = tau_sec;
-        }
-    }
-
     // Scale factor for the envelope gate used by state correction.
     // 1.0 means correction starts at |z| > envelope, 1.3 means |z| must exceed
     // 130% of the envelope before correction kicks in.
@@ -521,41 +502,6 @@ public:
 
     float getEnvelopeGateThresholdScale() const noexcept {
         return env_gate_threshold_scale_;
-    }
-
-    // Separate gate scale for envelope-driven R_S modulation.
-    // This allows RS tightening to engage earlier/later independently from
-    // envelope state-correction gating.
-    void setEnvelopeRSGateThresholdScale(float scale) {
-        if (std::isfinite(scale) && scale > 0.0f) {
-            env_rs_gate_threshold_scale_ = scale;
-        }
-    }
-
-    float getEnvelopeRSGateThresholdScale() const noexcept {
-        return env_rs_gate_threshold_scale_;
-    }
-
-    // Hysteresis scales for envelope-driven RS modulation.
-    void setEnvelopeRSGateHysteresisScales(float on_scale, float off_scale) {
-        if (!std::isfinite(on_scale) || !std::isfinite(off_scale)) return;
-        if (on_scale < 0.5f || off_scale < 0.1f || off_scale >= on_scale) return;
-        env_rs_gate_on_scale_  = on_scale;
-        env_rs_gate_off_scale_ = off_scale;
-    }
-
-    void setEnvelopeRSOutwardEps(float eps_m) {
-        if (std::isfinite(eps_m) && eps_m >= 0.0f) {
-            env_outward_eps_m_ = eps_m;
-        }
-    }
-
-    // Delay envelope-driven corrections after entering Live so the envelope
-    // scale has time to converge and does not start too low.
-    void setEnvelopeCorrectionWarmupSec(float warmup_sec) {
-        if (std::isfinite(warmup_sec) && warmup_sec >= 0.0f) {
-            env_correction_warmup_sec_ = warmup_sec;
-        }
     }
 
     // Enable/disable use of the extended linear block [v,p,S,a_w] in Kalman3D_Wave.
@@ -848,58 +794,6 @@ private:
         ));
     }
 
-    void applyEnvelopeDriftCorrection_(float dt) {
-        if (!mekf_) return;
-
-        const float scale = std::max(getDisplacementScale(), 0.3f);
-        const float pz = mekf_->get_position().z();
-        if (!std::isfinite(scale) || !std::isfinite(pz) || scale <= 0.0f) {
-            apply_RS_tune_();
-            return;
-        }
-
-        // Early in Live stage, displacement scale can be underestimated while
-        // tuner outputs settle; skip envelope correction during this warmup.
-        if (startup_stage_t_ < env_correction_warmup_sec_) {
-            apply_RS_tune_();
-            return;
-        }
-
-        const float absz = std::fabs(pz);
-
-        const float rs_gate_scale = std::max(env_rs_gate_threshold_scale_, 0.05f);
-        const float rs_on_scale = std::max(env_rs_gate_on_scale_, 0.1f);
-        const float rs_off_scale = std::max(env_rs_gate_off_scale_, 0.1f);
-        const float rs_gate_on = scale * rs_gate_scale * rs_on_scale;
-        const float rs_gate_off = scale * rs_gate_scale * std::min(rs_off_scale, rs_on_scale - 1e-3f);
-
-        if (!env_rs_latched_) {
-            if (enable_env_rs_correction_ && absz > rs_gate_on) {
-                env_rs_latched_ = true;
-            }
-        } else if (absz < rs_gate_off) {
-            env_rs_latched_ = false;
-        }
-
-        float rs_scale_cmd = 1.0f;
-        if (enable_env_rs_correction_ && env_rs_latched_) {
-            const float r = absz / std::max(rs_gate_on, 1e-3f);
-            if (r > 1.0f) {
-                constexpr float RS_TIGHTEN_POWER = 8.0f;
-                rs_scale_cmd = std::clamp(std::pow(r, -RS_TIGHTEN_POWER), env_rs_min_scale_, 1.0f);
-            }
-        }
-
-        if (std::isfinite(dt) && dt > 0.0f && env_rs_smooth_tau_sec_ > 0.0f) {
-            const float alpha = dt / (env_rs_smooth_tau_sec_ + dt);
-            env_rs_scale_state_ += alpha * (rs_scale_cmd - env_rs_scale_state_);
-        } else {
-            env_rs_scale_state_ = rs_scale_cmd;
-        }
-        env_rs_scale_state_ = std::clamp(env_rs_scale_state_, env_rs_min_scale_, 1.0f);
-        apply_RS_tune_(env_rs_scale_state_);
-    }
-
     void initHarmonicDespikeFilters_() {
         despike_ax_ = std::make_unique<TimeAwareSpikeFilter>(harmonic_despike_window_, harmonic_despike_threshold_);
         despike_ay_ = std::make_unique<TimeAwareSpikeFilter>(harmonic_despike_window_, harmonic_despike_threshold_);
@@ -1117,8 +1011,6 @@ private:
 
         // Reset envelope correction dwell/scheduler state.
         env_outside_time_sec_ = 0.0f;
-        env_rs_latched_ = false;
-        env_rs_scale_state_ = 1.0f;
         last_env_state_update_sec_ = static_cast<float>(time_);
         resetDriftCorrections_();
     }
@@ -1141,7 +1033,6 @@ private:
             warmup_Racc_active_ = true;
         }
 
-        env_rs_latched_ = false;
         resetDriftCorrections_();
     }
 
@@ -1167,8 +1058,6 @@ private:
         if (enable_linear_block_) apply_RS_tune_();
 
         env_outside_time_sec_ = 0.0f;
-        env_rs_latched_ = false;
-        env_rs_scale_state_ = 1.0f;
         last_env_state_update_sec_ = static_cast<float>(time_);
         resetDriftCorrections_();
     }
@@ -1207,7 +1096,6 @@ private:
     bool enable_tuner_ = true;
 
     bool enable_env_state_correction_ = false;
-    bool enable_env_rs_correction_ = false;
 
     float harmonic_despike_threshold_ = 4.0f;
     int harmonic_despike_window_ = 5;
@@ -1222,16 +1110,8 @@ private:
     float env_state_every_sec_ = 0.15f;
     float env_state_min_err_ratio_ = 0.08f;
     float last_env_state_update_sec_ = -1e9f;
-    float env_rs_min_scale_ = 5e-4f;
-    float env_rs_smooth_tau_sec_ = 0.0f;
-    float env_rs_scale_state_ = 1.0f;
-    bool env_rs_latched_ = false;
-    float env_rs_gate_on_scale_ = 1.20f;
-    float env_rs_gate_off_scale_ = 0.95f;
     float env_outward_eps_m_ = 1e-4f;
     float env_gate_threshold_scale_ = 1.2f;
-    float env_rs_gate_threshold_scale_ = 0.8f;
-    float env_correction_warmup_sec_ = 16.0f;
 
     // drift pseudo-measurement configs
     DriftPseudoCfg pm_vz_zero_on_pos_breach_ {
