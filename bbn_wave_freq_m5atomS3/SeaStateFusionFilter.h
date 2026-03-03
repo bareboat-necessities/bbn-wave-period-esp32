@@ -906,80 +906,75 @@ private:
         despike_az_ = std::make_unique<TimeAwareSpikeFilter>(harmonic_despike_window_, harmonic_despike_threshold_);
     }
 
-    void resetHarmonicPositionCorrection_() {
-        harmonic_position_counter_ = 0;
-        initHarmonicDespikeFilters_();
-    }
-
     void resetDriftCorrections_() {
-        resetHarmonicPositionCorrection_();
         pm_ctr_vz_zero_  = 0;
         pm_ctr_pos_zero_ = 0;
         pm_ctr_vz_clamp_ = 0;
+        pm_ctr_harmonic_pos_ = 0;
+        initHarmonicDespikeFilters_();
     }
 
-    void applyHarmonicPositionCorrection_(float dt, const Eigen::Vector3f& acc_body_ned,
-                                          float a_vert_up_osc) {
+    void applyHarmonicPositionCorrection_(float dt,
+                                          const Eigen::Vector3f& acc_body_ned,
+                                          float a_vert_up_osc)
+    {
         if (!mekf_) return;
         if (!pm_harmonic_pos_.enabled) return;
         if (!(dt > 0.0f) || !std::isfinite(dt)) return;
-        
+    
+        // Envelope gate (drift-risk only)
         float env_scale = getDisplacementScale(true);
         if (!std::isfinite(env_scale) || env_scale <= 0.0f) env_scale = 1.0f;
-        
+    
         const float absz = std::fabs(mekf_->get_position().z());
-        
-        // Engage only when drift risk exists: |z| above a fraction of envelope
         const float gate = std::max(0.0f, pm_harmonic_pos_.gate_scale) * env_scale;
         if (!(absz > gate)) return;
-        
-        // Cadence
-        if (++harmonic_position_counter_ < std::max(1, pm_harmonic_pos_.period_steps)) return;
-        harmonic_position_counter_ = 0;
-
-        const float harmonic_freq_hz = (std::isfinite(freq_hz_) && freq_hz_ > 0.0f) ? freq_hz_ : freq_hz_slow_;
-        const float omega = 2.0f * static_cast<float>(M_PI) * std::max(harmonic_freq_hz, min_freq_hz_);
+    
+        // Cadence (same pattern as other pm_* corrections)
+        if (++pm_ctr_harmonic_pos_ < std::max(1, pm_harmonic_pos_.period_steps)) return;
+        pm_ctr_harmonic_pos_ = 0;
+    
+        // Frequency for harmonic proxy
+        const float harmonic_freq_hz =
+            (std::isfinite(freq_hz_) && freq_hz_ > 0.0f) ? freq_hz_ : freq_hz_slow_;
+    
+        const float omega = 2.0f * static_cast<float>(M_PI) *
+                            std::max(harmonic_freq_hz, min_freq_hz_);
         const float omega_sq = omega * omega;
         if (!(omega_sq > 1e-4f) || !std::isfinite(omega_sq)) return;
-
+    
         if (!acc_body_ned.allFinite()) return;
-
-        // Use raw IMU acceleration directly (no attitude rotation) to avoid
-        // feeding back latent a_w from the filter into harmonic updates.
-        // For small angles and high pseudo-measurement uncertainty, this
-        // approximation is sufficient.
+    
+        // “no backfeed”: use raw IMU accel (no attitude rotation), but use oscillatory vertical for z.
         const Eigen::Vector3f a_world_ned = acc_body_ned;
-
+    
         if (!despike_ax_ || !despike_ay_ || !despike_az_) {
             initHarmonicDespikeFilters_();
         }
-
-        // Use oscillatory gravity-removed vertical acceleration for z (NED-down).
+    
+        // NED-down oscillatory vertical accel
         const float a_z_ned_osc = -a_vert_up_osc;
-
+    
         const Eigen::Vector3f a_despiked(
             despike_ax_->filterWithDelta(a_world_ned.x(), dt),
             despike_ay_->filterWithDelta(a_world_ned.y(), dt),
             despike_az_->filterWithDelta(a_z_ned_osc, dt)
         );
-
         if (!a_despiked.allFinite()) return;
-
-        // Harmonic displacement proxy from x¨ = -ω²x per component in NED:
-        //   p_x = -a_x/ω²
-        //   p_y = -a_y/ω²
-        //   p_z = -a_z_ned/ω² = +a_up/ω²  (because z_ned = -z_up)
-        const Eigen::Vector3f p_meas = harmonicPseudoPositionFromAccel_(a_despiked, omega_sq);
+    
+        // p ≈ -a / ω² (componentwise, in NED)
+        const Eigen::Vector3f p_meas = -a_despiked / omega_sq;
         if (!p_meas.allFinite()) return;
-
-        // Dimensionally-consistent uncertainty scaling:
-        //   sigma(env) = sigma_ref * (env / env_ref)
-        // with a baseline assumption sigma_ref m at env_ref m.
-        const float sigma = std::max(
-            harmonic_position_sigma_m_at_ref_env_ * (env_scale / harmonic_position_ref_envelope_m_),
-            harmonic_position_sigma_min_m_
-        );
-        mekf_->measurement_update_position_pseudo(p_meas, Eigen::Vector3f::Constant(sigma));
+    
+        // position std ≈ (sigma_a * tau^2) * sigma_mult, with anisotropy via S_factor_.
+        Eigen::Vector3f sig = sigmaP_fromSigmaTau_(pm_harmonic_pos_.sigma_mult);
+    
+        const float smin = std::max(1e-6f, pm_harmonic_pos_.sigma_min);
+        sig.x() = std::max(sig.x(), smin);
+        sig.y() = std::max(sig.y(), smin);
+        sig.z() = std::max(sig.z(), smin);
+    
+        mekf_->measurement_update_position_pseudo(p_meas, sig);
     }
 
     static Eigen::Vector3f harmonicPseudoPositionFromAccel_(const Eigen::Vector3f& a_ned, float omega_sq) {
@@ -1257,6 +1252,7 @@ private:
     int pm_ctr_vz_zero_ = 0;
     int pm_ctr_pos_zero_ = 0;
     int pm_ctr_vz_clamp_ = 0;
+    int pm_ctr_harmonic_pos_ = 0;
 
     // Controls whether the extended linear block [v,p,S,a_w] of Kalman3D_Wave
     // is ever enabled. When false, the underlying filter runs as a pure
