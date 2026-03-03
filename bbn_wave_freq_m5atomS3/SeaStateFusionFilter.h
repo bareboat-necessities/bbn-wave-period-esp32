@@ -1278,13 +1278,13 @@ private:
 
     // drift pseudo-measurement configs
     DriftPseudoCfg pm_vz_zero_on_pos_breach_ {
-        /*enabled*/true, /*period*/6,  /*sigma_mult*/10.0f, /*sigma_min*/0.03f, /*gate*/1.25f
+        /*enabled*/true, /*period*/6,  /*sigma_mult*/10.0f, /*sigma_min*/0.03f, /*gate*/1.0f
     };
     DriftPseudoCfg pm_pos_zero_ {
-        /*enabled*/true, /*period*/10, /*sigma_mult*/25.0f, /*sigma_min*/0.05f, /*gate*/1.60f
+        /*enabled*/true, /*period*/10, /*sigma_mult*/25.0f, /*sigma_min*/0.05f, /*gate*/1.10f
     };
     DriftPseudoCfg pm_vz_clamp_ {
-        /*enabled*/true, /*period*/3,  /*sigma_mult*/10.0f, /*sigma_min*/0.03f, /*gate*/1.20f
+        /*enabled*/true, /*period*/3,  /*sigma_mult*/10.0f, /*sigma_min*/0.03f, /*gate*/1.05f
     };
     
     float speed_env_mult_ = 1.0f;   // v_env ≈ speed_env_mult * ω * z_env
@@ -1361,14 +1361,14 @@ private:
         const float pz = mekf_->get_position().z();     // NED down
         const float absz = std::fabs(pz);
     
-        // --- (1) Harmonic position pseudo-measurement (existing), cadence controlled there ---
+        // Harmonic position pseudo-measurement (existing), cadence controlled there
         // Keep your existing gating + despike logic in applyHarmonicPositionCorrection_(),
         // but its sigma is now sigma_a*tau^2 based (see section 2).
         if (enable_harmonic_position_correction_) {
             applyHarmonicPositionCorrection_(dt, acc_body_ned, a_vert_up_osc);
         }
     
-        // --- (2) On displacement envelope breach: pseudo-measure v_z -> 0 ---
+        // On displacement envelope breach: pseudo-measure v_z -> 0
         if (pm_vz_zero_on_pos_breach_.enabled) {
             if (++pm_ctr_vz_zero_ >= std::max(1, pm_vz_zero_on_pos_breach_.period_steps)) {
                 pm_ctr_vz_zero_ = 0;
@@ -1384,7 +1384,7 @@ private:
             }
         }
     
-        // --- (3) Direct displacement zero (z only), gentle, high sigma by default ---
+        // Direct displacement zero (z only), gentle, high sigma by default
         if (pm_pos_zero_.enabled) {
             if (++pm_ctr_pos_zero_ >= std::max(1, pm_pos_zero_.period_steps)) {
                 pm_ctr_pos_zero_ = 0;
@@ -1400,14 +1400,14 @@ private:
                     Eigen::Vector3f p_meas = mekf_->get_position();
                     p_meas.z() = 0.0f;
     
-                    const float BIG = 1e6f;
+                    const float BIG = 1e5f;
                     Eigen::Vector3f sig(BIG, BIG, sigma_z);
                     mekf_->measurement_update_position_pseudo(p_meas, sig);
                 }
             }
         }
     
-        // --- (4) Speed envelope estimate + clamp v_z when breached ---
+        // Speed envelope estimate + clamp v_z when breached
         if (pm_vz_clamp_.enabled) {
             if (++pm_ctr_vz_clamp_ >= std::max(1, pm_vz_clamp_.period_steps)) {
                 pm_ctr_vz_clamp_ = 0;
