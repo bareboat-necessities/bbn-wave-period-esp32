@@ -1374,11 +1374,16 @@ private:
                 pm_ctr_vz_zero_ = 0;
                 const float gate = std::max(0.05f, pm_vz_zero_on_pos_breach_.gate_scale) * z_env;
                 if (absz > gate) {
-                    const float sigma_vz = std::max(
-                        sigmaV_fromSigmaTau_(pm_vz_zero_on_pos_breach_.sigma_mult).z(),
-                        pm_vz_zero_on_pos_breach_.sigma_min
-                    );
-                    mekf_->measurement_update_vert_velocity_pseudo(0.0f, sigma_vz);
+                    const float vz = mekf_->get_velocity().z(); // NED down
+                    // Apply only if moving AWAY from sea level (z=0): pz and vz same sign => |pz| increasing
+                    // (If pz>0 and vz>0 => going down further; pz<0 and vz<0 => going up further.)
+                    if (std::isfinite(vz) && (pz * vz > 0.0f)) {
+                        const float sigma_vz = std::max(
+                            sigmaV_fromSigmaTau_(pm_vz_zero_on_pos_breach_.sigma_mult).z(),
+                            pm_vz_zero_on_pos_breach_.sigma_min
+                        );
+                        mekf_->measurement_update_vert_velocity_pseudo(0.0f, sigma_vz);
+                    }
                 }
             }
         }
