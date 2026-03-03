@@ -374,7 +374,8 @@ public:
     void setPseudoVzZeroOnPosBreachCfg(const DriftPseudoCfg& c) { pm_vz_zero_on_pos_breach_ = c; }
     void setPseudoPosZeroCfg(const DriftPseudoCfg& c)           { pm_pos_zero_              = c; }
     void setPseudoVzClampCfg(const DriftPseudoCfg& c)           { pm_vz_clamp_              = c; }
-    
+    void setPseudoHarmonicPosCfg(const DriftPseudoCfg& c)       { pm_harmonic_pos_          = c; }
+
     // Speed envelope model for clamp pseudo-meas:
     // v_env ≈ speed_env_mult * (2π f_env) * z_env
     void setSpeedEnvelopeMult(float m) {
@@ -944,29 +945,21 @@ private:
 
     void applyHarmonicPositionCorrection_(float dt, const Eigen::Vector3f& acc_body_ned,
                                           float a_vert_up_osc) {
-        if (!mekf_ || !enable_harmonic_position_correction_) return;
+        if (!mekf_) return;
+        if (!pm_harmonic_pos_.enabled) return;
         if (!(dt > 0.0f) || !std::isfinite(dt)) return;
-
-        // Use the model-based displacement envelope only (no instantaneous
-        // acceleration low-bound term) for drift-risk gating. The low-bound can
-        // spike independently of position and unintentionally hold the gate shut.
+        
         float env_scale = getDisplacementScale(true);
-        if (!std::isfinite(env_scale) || env_scale <= 0.0f) {
-            env_scale = 1.0f;
-        }
-
+        if (!std::isfinite(env_scale) || env_scale <= 0.0f) env_scale = 1.0f;
+        
         const float absz = std::fabs(mekf_->get_position().z());
-        // Harmonic pseudo-position correction should only run when there is
-        // clear drift risk. If position is still inside 80% of the estimated
-        // wave-height envelope, keep the correction disabled.
-        constexpr float HARMONIC_DRIFT_RISK_ENVELOPE_RATIO = 0.1f;
-        if (!(absz > env_scale * HARMONIC_DRIFT_RISK_ENVELOPE_RATIO)) {
-            return;
-        }
-
-        if (++harmonic_position_counter_ < harmonic_position_update_period_steps_) {
-            return;
-        }
+        
+        // Engage only when drift risk exists: |z| above a fraction of envelope
+        const float gate = std::max(0.0f, pm_harmonic_pos_.gate_scale) * env_scale;
+        if (!(absz > gate)) return;
+        
+        // Cadence
+        if (++harmonic_position_counter_ < std::max(1, pm_harmonic_pos_.period_steps)) return;
         harmonic_position_counter_ = 0;
 
         const float harmonic_freq_hz = (std::isfinite(freq_hz_) && freq_hz_ > 0.0f) ? freq_hz_ : freq_hz_slow_;
@@ -1278,15 +1271,18 @@ private:
 
     // drift pseudo-measurement configs
     DriftPseudoCfg pm_vz_zero_on_pos_breach_ {
-        /*enabled*/true, /*period*/6,  /*sigma_mult*/10.0f, /*sigma_min*/0.03f, /*gate*/1.0f
+        /*enabled*/ true, /*period*/ 6, /*sigma_mult*/ 10.0f, /*sigma_min*/ 0.03f, /*gate*/ 1.0f
     };
     DriftPseudoCfg pm_pos_zero_ {
-        /*enabled*/true, /*period*/10, /*sigma_mult*/25.0f, /*sigma_min*/0.05f, /*gate*/1.10f
+        /*enabled*/ true, /*period*/ 6, /*sigma_mult*/ 15.0f, /*sigma_min*/ 0.05f, /*gate*/ 1.10f
     };
     DriftPseudoCfg pm_vz_clamp_ {
-        /*enabled*/true, /*period*/3,  /*sigma_mult*/10.0f, /*sigma_min*/0.03f, /*gate*/1.05f
+        /*enabled*/ true, /*period*/ 3, /*sigma_mult*/ 10.0f, /*sigma_min*/ 0.03f, /*gate*/ 1.05f
     };
-    
+    DriftPseudoCfg pm_harmonic_pos_ {
+        /*enabled*/ true, /*period*/ 3, /*sigma_mult*/ 10.0f, /*sigma_min*/ 0.05f, /*gate*/ 0.10f
+    };
+      
     float speed_env_mult_ = 1.0f;   // v_env ≈ speed_env_mult * ω * z_env
     
     // Harmonic sigma now treated as MULTIPLIER for sigma_a*tau^2
@@ -1360,11 +1356,9 @@ private:
     
         const float pz = mekf_->get_position().z();     // NED down
         const float absz = std::fabs(pz);
-    
-        // Harmonic position pseudo-measurement (existing), cadence controlled there
-        // Keep your existing gating + despike logic in applyHarmonicPositionCorrection_(),
-        // but its sigma is now sigma_a*tau^2 based (see section 2).
-        if (enable_harmonic_position_correction_) {
+
+        // Harmonic approximation
+        if (pm_harmonic_pos_.enabled) {
             applyHarmonicPositionCorrection_(dt, acc_body_ned, a_vert_up_osc);
         }
     
