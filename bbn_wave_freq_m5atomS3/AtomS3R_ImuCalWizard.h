@@ -108,9 +108,7 @@ struct ImuCalWizardCfg {
   static constexpr float MAG_URANGE_TARGET        = 1.05f;
 
   // ESP-IDF's xTaskCreatePinnedToCore() expects stack size in *bytes*.
-  // The Eigen-heavy calibration fits can exceed 16 KiB in worst-case builds,
-  // which can silently corrupt neighboring task stacks and panic later.
-  static constexpr uint32_t FIT_STACK_BYTES     = 81920;
+  static constexpr uint32_t FIT_STACK_BYTES     = 32768;
   static constexpr uint32_t FIT_TIMEOUT_MS      = 30000;
 };
 
