@@ -1278,13 +1278,13 @@ private:
 
     // drift pseudo-measurement configs
     DriftPseudoCfg pm_vz_zero_on_pos_breach_ {
-        /*enabled*/false, /*period*/6,  /*sigma_mult*/10.0f, /*sigma_min*/0.03f, /*gate*/1.25f
+        /*enabled*/true, /*period*/6,  /*sigma_mult*/10.0f, /*sigma_min*/0.03f, /*gate*/1.25f
     };
     DriftPseudoCfg pm_pos_zero_ {
-        /*enabled*/false, /*period*/18, /*sigma_mult*/25.0f, /*sigma_min*/0.05f, /*gate*/1.60f
+        /*enabled*/true, /*period*/10, /*sigma_mult*/25.0f, /*sigma_min*/0.05f, /*gate*/1.60f
     };
     DriftPseudoCfg pm_vz_clamp_ {
-        /*enabled*/false, /*period*/3,  /*sigma_mult*/10.0f, /*sigma_min*/0.03f, /*gate*/1.20f
+        /*enabled*/true, /*period*/3,  /*sigma_mult*/10.0f, /*sigma_min*/0.03f, /*gate*/1.20f
     };
     
     float speed_env_mult_ = 1.0f;   // v_env ≈ speed_env_mult * ω * z_env
