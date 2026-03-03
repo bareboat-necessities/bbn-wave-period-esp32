@@ -355,6 +355,48 @@ public:
         }
     }
 
+    // Drift pseudo-measurements bundle
+    //
+    // All std dev are derived from current (sigma_a, tau) coming from the tuner:
+    //   pos std  ~  (sigma_a * tau^2) * sigma_mult
+    //   vel std  ~  (sigma_a * tau)   * sigma_mult
+    //
+    // Each pseudo-meas has:
+    //   enabled, period_steps, sigma_mult, gate_scale (threshold vs envelope).
+    //
+    struct DriftPseudoCfg {
+        bool  enabled      = false;
+        int   period_steps = 6;      // cadence in IMU cycles
+        float sigma_mult   = 10.0f;  // dimensionless multiplier (default HIGH = light touch)
+        float sigma_min    = 0.02f;  // absolute floor (units depend on measurement)
+        float gate_scale   = 1.2f;   // envelope gate (e.g. 1.2 => breach at 120% envelope)
+    };
+    
+    void setPseudoVzZeroOnPosBreachCfg(const DriftPseudoCfg& c) { pm_vz_zero_on_pos_breach_ = c; }
+    void setPseudoPosZeroCfg(const DriftPseudoCfg& c)           { pm_pos_zero_              = c; }
+    void setPseudoVzClampCfg(const DriftPseudoCfg& c)           { pm_vz_clamp_              = c; }
+    
+    // Speed envelope model for clamp pseudo-meas:
+    // v_env ≈ speed_env_mult * (2π f_env) * z_env
+    void setSpeedEnvelopeMult(float m) {
+        if (std::isfinite(m) && m > 0.0f) speed_env_mult_ = m;
+    }
+    float getSpeedEnvelopeMult() const noexcept { return speed_env_mult_; }
+    
+    // For debugging/telemetry
+    float getVerticalSpeedEnvelopeMps(bool smoothed = true) const noexcept {
+        float z_env = getDisplacementScale(smoothed);
+        if (!std::isfinite(z_env) || z_env <= 0.0f) z_env = 0.3f;
+    
+        const float f = smoothed ? freq_hz_slow_ : freq_hz_;
+        const float f_use = std::max(min_freq_hz_, std::min(max_freq_hz_, std::isfinite(f) ? f : min_freq_hz_));
+        const float omega = 2.0f * float(M_PI) * f_use;
+    
+        // Guard very small envelopes
+        const float v_env = speed_env_mult_ * omega * z_env;
+        return (std::isfinite(v_env) ? std::max(v_env, 0.05f) : NAN);
+    }
+
     void setWithMag(bool with_mag) {
         with_mag_ = with_mag;
     }
