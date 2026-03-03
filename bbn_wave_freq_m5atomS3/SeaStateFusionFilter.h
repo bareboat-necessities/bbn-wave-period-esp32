@@ -1372,7 +1372,6 @@ private:
         if (pm_vz_zero_on_pos_breach_.enabled) {
             if (++pm_ctr_vz_zero_ >= std::max(1, pm_vz_zero_on_pos_breach_.period_steps)) {
                 pm_ctr_vz_zero_ = 0;
-    
                 const float gate = std::max(0.05f, pm_vz_zero_on_pos_breach_.gate_scale) * z_env;
                 if (absz > gate) {
                     const float sigma_vz = std::max(
@@ -1387,19 +1386,16 @@ private:
         // Direct displacement zero (z only), gentle, high sigma by default
         if (pm_pos_zero_.enabled) {
             if (++pm_ctr_pos_zero_ >= std::max(1, pm_pos_zero_.period_steps)) {
-                pm_ctr_pos_zero_ = 0;
-    
+                pm_ctr_pos_zero_ = 0;  
                 const float gate = std::max(0.05f, pm_pos_zero_.gate_scale) * z_env;
                 if (absz > gate) {
                     const float sigma_z = std::max(
                         sigmaP_fromSigmaTau_(pm_pos_zero_.sigma_mult).z(),
                         pm_pos_zero_.sigma_min
                     );
-    
                     // Only affect z: keep x/y "measured" at their current predicted values
                     Eigen::Vector3f p_meas = mekf_->get_position();
                     p_meas.z() = 0.0f;
-    
                     const float BIG = 1e5f;
                     Eigen::Vector3f sig(BIG, BIG, sigma_z);
                     mekf_->measurement_update_position_pseudo(p_meas, sig);
@@ -1411,25 +1407,20 @@ private:
         if (pm_vz_clamp_.enabled) {
             if (++pm_ctr_vz_clamp_ >= std::max(1, pm_vz_clamp_.period_steps)) {
                 pm_ctr_vz_clamp_ = 0;
-    
                 const float v_env = getVerticalSpeedEnvelopeMps(true);
                 if (std::isfinite(v_env) && v_env > 0.0f) {
                     const float vz = mekf_->get_velocity().z();  // NED down
                     const float abs_vz = std::fabs(vz);
-    
                     const float gate_v = std::max(0.05f, pm_vz_clamp_.gate_scale) * v_env;
                     if (abs_vz > gate_v) {
                         const float vz_clamped = (vz >= 0.0f) ? std::min(vz, v_env) : std::max(vz, -v_env);
-    
                         const float sigma_vz = std::max(
                             sigmaV_fromSigmaTau_(pm_vz_clamp_.sigma_mult).z(),
                             pm_vz_clamp_.sigma_min
                         );
-    
                         // Only affect z velocity (keep x/y at predicted)
                         Eigen::Vector3f v_meas = mekf_->get_velocity();
                         v_meas.z() = vz_clamped;
-    
                         const float BIG = 1e6f;
                         Eigen::Vector3f sig(BIG, BIG, sigma_vz);
                         mekf_->measurement_update_velocity_pseudo(v_meas, sig);
