@@ -358,10 +358,6 @@ private:
     fcfg.freeze_acc_bias_until_live = true;
     fcfg.Racc_warmup = 0.16f;
 
-    fcfg.enable_harmonic_position_correction = true;
-    fcfg.harmonic_position_update_period_steps = 3;
-    fcfg.harmonic_position_sigma_m = HARMONIC_POS_SIGMA_AT_REF;
-
     fcfg.sigma_a  = sigma_a;
     fcfg.sigma_g  = sigma_g;
     fcfg.sigma_m  = sigma_m;
@@ -396,9 +392,6 @@ private:
     ff.setEnvelopeRSGateHysteresisScales(1.20f, 0.95f);
     ff.setEnvelopeRSOutwardEps(1e-4f);
     ff.setEnvelopeCorrectionWarmupSec(16.0f);
-    ff.setHarmonicPositionCorrectionEnabled(true);
-    ff.setHarmonicPositionCorrectionPeriodSteps(3);
-    ff.setHarmonicPositionCorrectionSigma(HARMONIC_POS_SIGMA_AT_REF);
     ff.setHarmonicPositionDespikeConfig(5, 4.0f);
     ff.enableClamp(true);
     ff.setFreqInputCutoffHz(6.0f);
