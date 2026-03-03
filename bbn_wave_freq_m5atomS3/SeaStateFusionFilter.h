@@ -1115,16 +1115,16 @@ private:
 
     // drift pseudo-measurement configs
     DriftPseudoCfg pm_vz_zero_on_pos_breach_ {
-        /*enabled*/ true, /*period*/ 6, /*sigma_mult*/ 10.0f, /*sigma_min*/ 0.03f, /*gate*/ 1.0f
+        /*enabled*/ true, /*period*/ 3, /*sigma_mult*/ 2.0f, /*sigma_min*/ 0.03f, /*gate*/ 0.8f
     };
     DriftPseudoCfg pm_pos_zero_ {
-        /*enabled*/ true, /*period*/ 6, /*sigma_mult*/ 15.0f, /*sigma_min*/ 0.05f, /*gate*/ 1.10f
+        /*enabled*/ true, /*period*/ 5, /*sigma_mult*/ 8.0f, /*sigma_min*/ 0.05f, /*gate*/ 0.3f
     };
     DriftPseudoCfg pm_vz_clamp_ {
-        /*enabled*/ true, /*period*/ 3, /*sigma_mult*/ 10.0f, /*sigma_min*/ 0.03f, /*gate*/ 1.05f
+        /*enabled*/ true, /*period*/ 3, /*sigma_mult*/ 2.0f, /*sigma_min*/ 0.03f, /*gate*/ 0.9f
     };
     DriftPseudoCfg pm_harmonic_pos_ {
-        /*enabled*/ true, /*period*/ 3, /*sigma_mult*/ 10.0f, /*sigma_min*/ 0.05f, /*gate*/ 0.10f
+        /*enabled*/ true, /*period*/ 5, /*sigma_mult*/ 6.0f, /*sigma_min*/ 0.05f, /*gate*/ 0.10f
     };
       
     float speed_env_mult_ = 1.0f;   // v_env ≈ speed_env_mult * ω * z_env
