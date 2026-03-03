@@ -307,11 +307,10 @@ public:
         // waiting for slow adaptation cadence.
         if (startup_stage_ == StartupStage::Live && enable_linear_block_) {
             applyEnvelopeDriftCorrection_(dt);
-            applyHarmonicPositionCorrection_(dt, acc, a_vert_up);
+            applyDriftPseudoMeasurements_(dt, acc, a_vert_up); 
         }
     
         const float omega = 2.0f * static_cast<float>(M_PI) * freq_hz_;
-    
       
         // Direction filters run on BODY accel, "sign" uses vertical acceleration
         dir_filter_.update(a_x_body, a_y_body, omega, dt);
