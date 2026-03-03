@@ -83,8 +83,6 @@ constexpr float ADAPT_RS_MULT              = 5.0f;   // dimensionless
 constexpr float ONLINE_TUNE_WARMUP_SEC     = 5.0f;
 constexpr float MAG_DELAY_SEC              = 8.0f;
 
-constexpr float HARMONIC_POS_SIGMA_AT_REF  = 1.0f;  // Sigma m for harmonic position correction uncertainty (at 8 m ref wave)
-
 // Frequency smoother dt (SeaStateFusionFilter is designed for 240 Hz)
 constexpr float FREQ_SMOOTHER_DT = 1.0f / 240.0f;
 
@@ -458,29 +456,6 @@ public:
 
     void setEnvelopeRSCorrectionEnabled(bool en) {
         enable_env_rs_correction_ = en;
-    }
-
-    // Harmonic pseudo-position correction from acceleration:
-    //    p ~= -a / omega^2
-    // where omega uses fast-smoothed frequency.
-    // Enabled by default and applied sparsely (every N IMU steps) with
-    // intentionally very large uncertainty.
-    void setHarmonicPositionCorrectionEnabled(bool en) {
-        enable_harmonic_position_correction_ = en;
-    }
-
-    void setHarmonicPositionCorrectionPeriodSteps(int steps) {
-        if (steps > 0) {
-            harmonic_position_update_period_steps_ = steps;
-        }
-    }
-
-    // Set harmonic pseudo-position uncertainty at the reference envelope
-    // height (8 m). Runtime sigma is scaled linearly from this baseline.
-    void setHarmonicPositionCorrectionSigma(float sigma_m) {
-        if (std::isfinite(sigma_m) && sigma_m > 0.0f) {
-            harmonic_position_sigma_m_at_ref_env_ = sigma_m;
-        }
     }
 
     void setHarmonicPositionDespikeConfig(int window_size, float threshold) {
@@ -1238,13 +1213,7 @@ private:
 
     bool enable_env_state_correction_ = false;
     bool enable_env_rs_correction_ = false;
-    bool enable_harmonic_position_correction_ = false;
 
-    int harmonic_position_update_period_steps_ = 3;
-    int harmonic_position_counter_ = 0;
-    float harmonic_position_ref_envelope_m_ = 8.0f;
-    float harmonic_position_sigma_m_at_ref_env_ = HARMONIC_POS_SIGMA_AT_REF;
-    float harmonic_position_sigma_min_m_ = 0.05f;
     float harmonic_despike_threshold_ = 4.0f;
     int harmonic_despike_window_ = 5;
     std::unique_ptr<TimeAwareSpikeFilter> despike_ax_;
@@ -1284,9 +1253,6 @@ private:
     };
       
     float speed_env_mult_ = 1.0f;   // v_env ≈ speed_env_mult * ω * z_env
-    
-    // Harmonic sigma now treated as MULTIPLIER for sigma_a*tau^2
-    float harmonic_position_sigma_mult_ = 10.0f;
 
     int pm_ctr_vz_zero_ = 0;
     int pm_ctr_pos_zero_ = 0;
@@ -1482,13 +1448,6 @@ public:
         bool  freeze_acc_bias_until_live = true;
         float Racc_warmup = 0.5f;
 
-        // Harmonic pseudo-position drift correction (enabled by default)
-        bool  enable_harmonic_position_correction = true;
-        int   harmonic_position_update_period_steps = 3;
-        // Baseline harmonic pseudo-position uncertainty [m] at a wave
-        // envelope of 8 m. Runtime sigma scales linearly with envelope.
-        float harmonic_position_sigma_m = HARMONIC_POS_SIGMA_AT_REF;
-
         // Sensor noise
         Eigen::Vector3f sigma_a = Eigen::Vector3f(0.2f,0.2f,0.2f);
         Eigen::Vector3f sigma_g = Eigen::Vector3f(0.01f,0.01f,0.01f);
@@ -1546,9 +1505,6 @@ public:
         impl_.setWarmupRacc(cfg.Racc_warmup);
         impl_.setMagDelaySec(cfg.mag_delay_sec);
         impl_.setOnlineTuneWarmupSec(cfg.online_tune_warmup_sec);
-        impl_.setHarmonicPositionCorrectionEnabled(cfg.enable_harmonic_position_correction);
-        impl_.setHarmonicPositionCorrectionPeriodSteps(cfg.harmonic_position_update_period_steps);
-        impl_.setHarmonicPositionCorrectionSigma(cfg.harmonic_position_sigma_m);
 
         impl_.initialize(cfg.sigma_a, cfg.sigma_g, cfg.sigma_m);
         last_impl_startup_stage_ = impl_.getStartupStage();
