@@ -73,9 +73,9 @@ enum class TrackerType { ARANOVSKIY = 0, KALMANF = 1, ZEROCROSS = 2 };
 static constexpr float    LOOP_HZ        = 240.0f;
 static constexpr uint32_t LOOP_PERIOD_US = (uint32_t)(1000000.0f / LOOP_HZ);
 
-// Mag pacing only (wrapper gates internally); 12ms ~ 83 Hz
-static constexpr uint32_t MAG_SAMPLE_SPACING_MS = 12;
-static constexpr float    MAG_MIN_DELTA_uT      = 0.02f;
+// Mag pacing only (wrapper gates internally); 
+static constexpr uint32_t MAG_SAMPLE_SPACING_MS = 8;
+static constexpr float    MAG_MIN_DELTA_uT      = 0.002f;
 
 // Display / serial rates
 static constexpr uint32_t UI_REFRESH_MS   = 100;
