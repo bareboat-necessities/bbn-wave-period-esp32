@@ -364,7 +364,7 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
         << "mag_bias_err_x,mag_bias_err_y,mag_bias_err_z,"              // EST-TRUE (uT)       
         << "tau_applied,sigma_a_applied,R_S_applied,"
         << "freq_tracker_hz,Tp_tuner_s,accel_var_tuner,"
-        << "disp_scale_m,"
+        << "disp_scale_m,vel_scale_mps,"
         << "dir_phase,"
         << "dir_deg,dir_uncert_deg,dir_conf,dir_amp,"
         << "dir_sign,dir_sign_num,"
@@ -629,7 +629,8 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
         dir_amp_hist.push_back(dir_amp);
         dir_sign_num_hist.push_back(sign_num);
 
-        const float disp_scale_m = filter.getDisplacementScale();  // envelope / amplitude scale (m)
+        const float disp_scale_m = filter.getDisplacementScale();              // envelope / amplitude scale (m)
+        const float vel_scale_mps = filter.getVerticalSpeedEnvelopeMps(true);  // envelope speed scale (m/s)
 
         // CSV row
         ofs << rec.time << ","
@@ -655,6 +656,7 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
             << filter.getPeriodSec() << ","
             << filter.getAccelVariance() << ","
             << disp_scale_m << ","
+            << vel_scale_mps << ","
             << dir_phase << "," << d.getDirectionDegrees() << "," << dir_unc << "," << dir_conf  << "," << dir_amp << ","
             << sign_str << "," << sign_num << "," << dir_vec.x()  << "," << dir_vec.y()  << "," << dfilt.x()  << ","
             << dfilt.y() << "\n";
