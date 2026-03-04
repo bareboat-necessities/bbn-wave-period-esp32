@@ -1455,7 +1455,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
     } else {
         // Structured/closed-form path for [δθ, b_g] with constant ω over the step
         const Matrix3 Qg  = Qbase.template topLeftCorner<3,3>();
-        Matrix3 Qbg; Qbg.setZero();
+        [[maybe_unused]] Matrix3 Qbg; Qbg.setZero();
         if constexpr (with_gyro_bias) {
             Qbg = Qbase.template bottomRightCorner<3,3>();
         }
@@ -1478,13 +1478,13 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::time_update(
         const Matrix3 Qtt = I_R + I_BB;
 
         // Q_{bb} = Qbg * Ts
-        Matrix3 Qbb = Matrix3::Zero();
+        [[maybe_unused]] Matrix3 Qbb = Matrix3::Zero();
         if constexpr (with_gyro_bias) {
             Qbb = Qbg * Ts;
         }
 
         // Q_{θb} = (∫ B(s) ds) * Qbg    (closed form)
-        Matrix3 Qtb = Matrix3::Zero();
+        [[maybe_unused]] Matrix3 Qtb = Matrix3::Zero();
         if constexpr (with_gyro_bias) {
             Matrix3 IB;
             integral_B_ds_(w, Ts, IB);
@@ -1657,7 +1657,7 @@ void Kalman3D_Wave<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_o
     last_acc_diag_ = MeasDiag3{};
     last_acc_diag_.accepted = false;
 
-    const bool use_ba = (with_accel_bias && acc_bias_updates_enabled_);
+    [[maybe_unused]] const bool use_ba = (with_accel_bias && acc_bias_updates_enabled_);
 
     // De-heel measured accel into B'
     const Vector3 acc_meas = deheel_vector_(acc_meas_body);
