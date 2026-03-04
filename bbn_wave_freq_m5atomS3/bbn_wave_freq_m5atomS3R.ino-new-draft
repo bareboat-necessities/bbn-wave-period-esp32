@@ -496,7 +496,6 @@ private:
 
     float dt = (s.sample_us - last_update_us_) * 1e-6f;
     last_update_us_ = s.sample_us;
-    dt = clampf_(dt, 0.0010f, 0.0200f);
 
     const float a_err = fabsf(a_cal_.norm() - g_std);
     const bool still = (a_err < ROT_STILL_G_TOL_FRAC * g_std) && (w_cal_.norm() < ROT_STILL_GYRO_RAD_S);
