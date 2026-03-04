@@ -192,13 +192,19 @@ for fname in files:
         ax_val.plot(time, df[f"{prefix}_ref_z"], label="Ref")
         ax_val.plot(time, df[f"{prefix}_est_z"], label="Est", linestyle="--")
 
-        # --- ADD ENVELOPE ON DISPLACEMENT PANEL ONLY ---
+        # --- Envelope overlays ---
         if prefix == "disp":
             if "disp_scale_m" in df.columns:
                 plot_envelope(ax_val, time.to_numpy(), df["disp_scale_m"].to_numpy(),
                               label=r"Envelope $\pm$ disp\_scale", shade=True)
             else:
                 ax_val.text(0.01, 0.10, "Missing: disp_scale_m", transform=ax_val.transAxes)
+        elif prefix == "vel":
+            if "vel_scale_mps" in df.columns:
+                plot_envelope(ax_val, time.to_numpy(), df["vel_scale_mps"].to_numpy(),
+                              label=r"Envelope $\pm$ vel\_scale", shade=True)
+            else:
+                ax_val.text(0.01, 0.10, "Missing: vel_scale_mps", transform=ax_val.transAxes)
 
         ax_val.set_ylabel(f"{prefix.capitalize()} Z")
         ax_val.grid(True)
