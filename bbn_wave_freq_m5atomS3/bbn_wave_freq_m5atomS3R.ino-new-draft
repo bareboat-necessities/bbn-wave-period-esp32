@@ -329,7 +329,7 @@ private:
     constexpr float IMU_TUNE_REF_HZ = 240.0f;
     constexpr float MAG_TUNE_REF_HZ = 80.0f;
 
-    constexpr float acc_sigma_ref_mps2 = 0.050f;
+    constexpr float acc_sigma_ref_mps2 = 0.090f;
     constexpr float gyr_sigma_ref_rps  = 0.00135f;
     constexpr float mag_sigma_ref_uT   = 1.80f;
 
