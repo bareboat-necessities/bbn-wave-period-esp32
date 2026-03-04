@@ -379,12 +379,6 @@ private:
     ff.setRSCoeff(1.0f);
     ff.setRSXYFactor(0.17f);
     ff.setAccNoiseFloorSigma(ACC_NOISE_FLOOR_SIGMA_DEFAULT);
-    ff.setEnvelopeStateCorrectionEnabled(false); // envelope state gate 
-    ff.setEnvelopeStateCorrectionParams(0.5f, 0.0f);
-    ff.setEnvelopeStateCorrectionMaxSpeed(0.35f);
-    ff.setEnvelopeStateCorrectionUpdatePeriod(0.15f);
-    ff.setEnvelopeStateCorrectionMinErrRatio(0.08f);
-    ff.setEnvelopeGateThresholdScale(1.2f);
     ff.setHarmonicPositionDespikeConfig(5, 4.0f);
     ff.enableClamp(true);
     ff.setFreqInputCutoffHz(6.0f);
