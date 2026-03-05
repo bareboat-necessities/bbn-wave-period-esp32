@@ -193,6 +193,12 @@ public:
       if (!compass_ui_ready_) use_graphics_ = false;
     }
 
+    if (!imu_fifo_.ok()) {   // implement ok() or just rely on begin() return
+      Serial.println("[BOOT] BMI270 FIFO driver not OK");
+      ui_.fail("IMU", "FIFO init fail");
+      while (true) delay(100);
+    }
+
     reloadBlobAndRuntime_();
 
 #if SEA_STATE_ENABLE_WIZARD
