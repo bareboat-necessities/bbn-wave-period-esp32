@@ -8,6 +8,7 @@
 #include <Arduino.h>
 #include <M5Unified.h>
 
+#define NO_BOSCH_API
 #include "AtomS3R_ImuCal.h"
 #include "AtomS3R_ImuCalWizard.h"
 #include "AtomS3R_CompassUI.h"
