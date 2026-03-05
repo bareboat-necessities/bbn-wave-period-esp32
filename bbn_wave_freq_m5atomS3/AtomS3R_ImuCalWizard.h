@@ -66,13 +66,13 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
-#include "AtomS3R_ImuCal.h"   // blob/store/read/mapping/clearM5UnifiedImuCalibration()
-#include "AtomS3R_M5Ui.h"
-#include "CalibrateIMU.h"     // imu_cal::* + FitFail
-
 #ifdef NO_BOSCH_API
 #include "BoschBmi270_ImuCal.h" 
 #endif
+
+#include "AtomS3R_ImuCal.h"   // blob/store/read/mapping/clearM5UnifiedImuCalibration()
+#include "AtomS3R_M5Ui.h"
+#include "CalibrateIMU.h"     // imu_cal::* + FitFail
 
 namespace atoms3r_ical {
 
