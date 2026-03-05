@@ -5,12 +5,8 @@
 #include <cmath>
 #include <cstdint>
 
-#include <utilities/BMI270-Sensor-API/bmi2.h>     // Bosch BMI270 SensorAPI (bmi2 + bmi270)
-#include <utilities/BMI270-Sensor-API/bmi270.h>   // Optional (see notes below)
-
 // for use BMM150 vendor API:
-#include <utilities/BMM150-Sensor-API/bmm150.h>
-#include <utilities/BMM150-Sensor-API/bmm150_defs.h>
+#include <Arduino_BMI270_BMM150>
 
 // If BMI270 sensortime resolution differs, change here.
 // BMI-family sensors commonly use 39.0625 us ticks (2^(-8) ms).
