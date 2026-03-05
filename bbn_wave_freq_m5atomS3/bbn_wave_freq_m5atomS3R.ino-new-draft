@@ -175,6 +175,12 @@ public:
     cfg.internal_imu = false;   // IMPORTANT: prevent M5Unified from initializing/configuring the IMU 
     M5.begin(cfg);
 
+    if (!imu_fifo_.begin(Wire, BMI270_ADDR, LOOP_HZ)) {
+      Serial.println("[BOOT] BMI270 vendor FIFO init failed");
+      ui_.fail("IMU", "BMI270 init fail");
+      while (true) delay(100);
+    }
+
     clearM5UnifiedImuCalibration();
     delay(250);
 
@@ -221,15 +227,14 @@ public:
   }
 
   void tick() {
-    // hard loop pacing (actually waits the full remaining time)
+    // hard loop pacing (UI loop only; filter dt comes from FIFO sensor-time now)
     const uint32_t now_us = micros();
     const int32_t wait_us = (int32_t)(next_tick_us_ - now_us);
   
     if (wait_us > 0) {
       delayMicroseconds((uint32_t)wait_us);
     } else {
-      // We're behind; resync so we don't accumulate phase error forever.
-      next_tick_us_ = now_us;
+      next_tick_us_ = now_us; // resync if behind
     }
     next_tick_us_ += LOOP_PERIOD_US;
   
@@ -252,16 +257,21 @@ public:
     }
   #endif
   
-    // M5.Imu.update() returns a sensor mask; non-zero means at least one sensor updated.
-    const uint32_t update_mask = (uint32_t)M5.Imu.update();
+    // Poll magnetometer here if you later wire it in via BMM150/BMI2 AUX.
+    // For now we keep mag_raw_uT_ as last known (0) and pending_mag_update_ false.
+    // If you add mag later, set pending_mag_update_ = true when you have a new mag sample.
   
-    if (update_mask) {
-      // Timestamp AFTER update() so dt does not include variable driver/I2C time.
-      const uint32_t sample_us = micros();
+    // Drain FIFO and advance fusion with stable dt from FIFO sensor-time.
+    constexpr int MAX_STEPS_PER_TICK = 24;
+    BoschAGSample batch[MAX_STEPS_PER_TICK];
   
-      ImuSample s;
-      if (readImuMapped(M5.Imu, update_mask, sample_us, s)) {
-        updateFilter_(s, update_mask);
+    const int n = imu_fifo_.readAG(batch, MAX_STEPS_PER_TICK);
+    if (n > 0) {
+      // Use skipped-frame counter as your "stale" / overrun telemetry.
+      stale_frame_count_ = (uint16_t)std::min<uint32_t>(imu_fifo_.skippedFramesTotal(), 0xFFFFu);
+  
+      for (int i = 0; i < n; ++i) {
+        updateFilter_(batch[i]); // per-sample dt, accel, gyro
       }
     }
   
