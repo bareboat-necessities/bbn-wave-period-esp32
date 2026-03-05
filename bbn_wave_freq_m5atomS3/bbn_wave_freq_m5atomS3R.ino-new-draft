@@ -11,13 +11,14 @@
 
 #include <Arduino.h>
 
-
 #ifndef SEA_STATE_ENABLE_WIZARD
   #define SEA_STATE_ENABLE_WIZARD 1
 #endif
 
 #include <M5Unified.h>
 #include <cmath>
+#include <limits>
+#include <algorithm>
 
 #ifndef EIGEN_STACK_ALLOCATION_LIMIT
   #define EIGEN_STACK_ALLOCATION_LIMIT 0
@@ -25,6 +26,8 @@
 #include <ArduinoEigenDense.h>
 
 #include "BoschBmi270Fifo.h"
+#include "BoschBmm150Aux.h"
+#include "BoschBmi270_ImuCal.h"
 
 #include "AtomS3R_ImuCal.h"
 #include "AtomS3R_M5Ui.h"
@@ -34,14 +37,19 @@
 #include "AtomS3R_CompassUI.h"
 #include "NmeaCompass.h"
 
+// ----------------------------- HW / drivers -----------------------------
 static constexpr uint8_t BMI270_ADDR = 0x68;  // change to 0x69 if your board straps SA0 high
+
 BoschBmi270Fifo imu_fifo_{};
+BoschBmm150Aux  mag_aux_{};
 
-uint32_t last_mag_poll_ms_ = 0;
-Eigen::Vector3f mag_raw_uT_ = Eigen::Vector3f::Zero();
-bool     pending_mag_update_ = false;
+// runtime mag state (BODY uT, mapped), updated by AUX poll
+static constexpr uint32_t MAG_AUX_POLL_MS = 40; // ~25Hz
+uint32_t        last_mag_poll_ms_ = 0;
+Eigen::Vector3f mag_raw_uT_       = Eigen::Vector3f::Constant(NAN);
+bool            pending_mag_update_ = false;
 
-// UI / serial defaults
+// ----------------------------- UI / serial defaults -----------------------------
 #ifndef SEA_STATE_UI_DEFAULT_GRAPHICS
   #define SEA_STATE_UI_DEFAULT_GRAPHICS 1
 #endif
@@ -54,7 +62,7 @@ bool     pending_mag_update_ = false;
   #define SEA_STATE_NMEA_TALKER "II"
 #endif
 
-// SeaStateFusion requirements
+// ----------------------------- SeaStateFusion requirements -----------------------------
 constexpr float g_std      = atoms3r_ical::ImuCalCfg::g_std;
 constexpr float FREQ_GUESS = 0.3f;
 
@@ -74,10 +82,6 @@ enum class TrackerType { ARANOVSKIY = 0, KALMANF = 1, ZEROCROSS = 2 };
 static constexpr float    LOOP_HZ        = 100.0f;
 static constexpr uint32_t LOOP_PERIOD_US = (uint32_t)(1000000.0f / LOOP_HZ);
 
-// Mag pacing only (wrapper gates internally); 
-static constexpr uint32_t MAG_SAMPLE_SPACING_MS = 8;
-static constexpr float    MAG_MIN_DELTA_uT      = 0.002f;
-
 // Display / serial rates
 static constexpr uint32_t UI_REFRESH_MS   = 100;
 static constexpr uint32_t DEBUG_SERIAL_MS = 150;
@@ -92,8 +96,11 @@ static constexpr float ROT_STILL_GYRO_RAD_S = 0.15f;
 // independent from gyro sign/convention issues in quaternion propagation.
 static constexpr float HEADING_ACCEL_G_TOL_FRAC = 0.18f;
 
-// Guard against repeated stale IMU frames (driver occasionally repeats old sample).
-static constexpr uint16_t IMU_STALE_FRAME_LIMIT = 5;  
+// Mag gating
+static constexpr float MAG_MIN_DELTA_uT = 0.002f;
+
+// IMU stale telemetry (FIFO skip count)
+static constexpr uint16_t IMU_STALE_FRAME_LIMIT = 5;  // kept for UI semantics
 static constexpr float    IMU_STALE_EPS_ACC     = 1e-8f;
 static constexpr float    IMU_STALE_EPS_GYR     = 1e-8f;
 static constexpr float    IMU_STALE_EPS_MAG     = 1e-8f;
@@ -124,7 +131,6 @@ static inline Vector3f quatRotate_(const Eigen::Quaternionf& q, const Vector3f& 
 }
 
 // Compute heading from down vector + magnetometer in BODY frame.
-// This avoids heading collapse to a fixed yaw from the fusion quaternion.
 static inline bool magneticHeadingFromDownAndMagBody_(
     const Vector3f& down_b_unit,
     const Vector3f& mag_b_uT,
@@ -158,20 +164,33 @@ static inline bool magneticHeadingFromDownAndMagBody_(
   return true;
 }
 
-// App
+// ----------------------------- App -----------------------------
 class FusionApp {
 public:
   FusionApp() {}
-  
+
   void begin() {
     delay(50);
     Serial.begin(115200);
     delay(100);
-  
+
     auto cfg = M5.config();
     cfg.internal_imu = false;   // do NOT auto-init IMU
     M5.begin(cfg);
-  
+
+    // Ensure Wire uses the board's I2C pins (AtomS3R internal bus)
+    // This is safe even if M5Unified already configured Wire.
+    {
+      const int sda = M5.getPin(m5::pin_name_t::i2c_sda);
+      const int scl = M5.getPin(m5::pin_name_t::i2c_scl);
+      if (sda >= 0 && scl >= 0) {
+        Wire.begin(sda, scl);
+      } else {
+        Wire.begin(); // fallback
+      }
+      Wire.setClock(400000);
+    }
+
     // UI init
     ui_.begin();
     if (use_graphics_) {
@@ -180,24 +199,24 @@ public:
       compass_ui_ready_ = compass_ui_.ok();
       if (!compass_ui_ready_) use_graphics_ = false;
     }
-  
+
     // Load calibration blob/runtime first
     reloadBlobAndRuntime_();
-  
-  #if SEA_STATE_ENABLE_WIZARD
+
+#if SEA_STATE_ENABLE_WIZARD
     if (!have_blob_) {
       Serial.println("[BOOT] No saved calibration. Starting wizard...");
-  
-      // Temporarily init M5.Imu ONLY for the wizard (it knows how to reach BMM150 via BMI270 hub).
-      // This will reconfigure the sensor, so we MUST re-init FIFO after wizard completes.
-      if (!M5.Imu.isEnabled()) {
-        // Some M5Unified versions expose begin(); if yours doesn’t, remove the check and just call begin().
-        M5.Imu.begin();
-        delay(50);
+
+      // Wizard IMU source (Bosch-backed, no M5.Imu usage)
+      BoschBmi270_ImuCal wiz_imu;
+      if (!wiz_imu.begin(Wire, BMI270_ADDR, LOOP_HZ)) {
+        Serial.println("[BOOT] Wizard IMU init failed");
+        ui_.fail("IMU", "Wizard IMU init fail");
+        while (true) delay(100);
       }
-  
+
       ImuCalBlobV1 saved{};
-      if (runImuCalWizard(ui_, store_, saved)) {
+      if (runImuCalWizard(ui_, store_, wiz_imu, saved)) {
         Serial.println("[BOOT] Wizard saved calibration.");
         blob_ = saved;
         have_blob_ = true;
@@ -205,21 +224,15 @@ public:
       } else {
         Serial.println("[BOOT] Wizard did not save calibration. Running with raw values.");
       }
-  
-      // IMPORTANT: do not use M5.Imu after this point in runtime loop
     }
-  #endif
-  
-    // NOW init the Bosch FIFO driver (after wizard), so FIFO configuration wins
-    if (!imu_fifo_.begin(Wire, BMI270_ADDR, LOOP_HZ)) {
-      Serial.println("[BOOT] BMI270 vendor FIFO init failed");
-      ui_.fail("IMU", "BMI270 FIFO init fail");
-      while (true) delay(100);
-    }
-  
+#endif
+
+    // Init runtime Bosch FIFO + AUX mag (after wizard so runtime config wins)
+    reinitBoschImu_();
+
     resetFusion_();
     drawHomeStatic_();
-  
+
     delay(100);
     start_us_       = micros();
     next_tick_us_   = micros();
@@ -230,24 +243,24 @@ public:
     // hard loop pacing (UI loop only; filter dt comes from FIFO sensor-time now)
     const uint32_t now_us = micros();
     const int32_t wait_us = (int32_t)(next_tick_us_ - now_us);
-  
+
     if (wait_us > 0) {
       delayMicroseconds((uint32_t)wait_us);
     } else {
       next_tick_us_ = now_us; // resync if behind
     }
     next_tick_us_ += LOOP_PERIOD_US;
-  
-  #if SEA_STATE_ENABLE_WIZARD
+
+#if SEA_STATE_ENABLE_WIZARD
     Input::update();
-  
+
     if (Input::tapPressed()) {
       tap_count_++;
       tap_deadline_ms_ = millis() + M5UiCfg::MENU_TAP_WINDOW_MS;
       drawHomePending_();
       Serial.printf("[TAP] count=%d\n", tap_count_);
     }
-  
+
     if (tap_count_ > 0 && (int32_t)(millis() - tap_deadline_ms_) > 0) {
       if (tap_count_ >= 3) handleErase_();
       else                 handleRunWizard_();
@@ -255,26 +268,25 @@ public:
       tap_deadline_ms_ = 0;
       drawHomeStatic_();
     }
-  #endif
-  
-    // Poll magnetometer here if you later wire it in via BMM150/BMI2 AUX.
-    // For now we keep mag_raw_uT_ as last known (0) and pending_mag_update_ false.
-    // If you add mag later, set pending_mag_update_ = true when you have a new mag sample.
-  
-    // Drain FIFO and advance fusion with stable dt from FIFO sensor-time.
+#endif
+
+    // Poll BMM150 via BMI270 AUX (does not affect dt)
+    pollMagAux_();
+
+    // Drain FIFO and advance fusion with stable dt from FIFO sens_time.
     constexpr int MAX_STEPS_PER_TICK = 24;
     BoschAGSample batch[MAX_STEPS_PER_TICK];
-  
+
     const int n = imu_fifo_.readAG(batch, MAX_STEPS_PER_TICK);
     if (n > 0) {
-      // Use skipped-frame counter as your "stale" / overrun telemetry.
+      // Use skipped-frame counter as your overrun telemetry.
       stale_frame_count_ = (uint16_t)std::min<uint32_t>(imu_fifo_.skippedFramesTotal(), 0xFFFFu);
-  
+
       for (int i = 0; i < n; ++i) {
-        updateFilter_(batch[i]); // per-sample dt, accel, gyro
+        updateFilter_(batch[i]);
       }
     }
-  
+
     updateUI_();
     streamSerial_();
   }
@@ -321,17 +333,17 @@ private:
   float pitch_deg_   = 0.0f;
   float heading_deg_ = 0.0f;
   float heave_m_     = 0.0f;
-  float wave_envelope_m_     = 0.0f;
+  float wave_envelope_m_ = 0.0f;
   float wave_hz_     = FREQ_GUESS;
 
   bool     mag_ok_     = false;
   bool     mag_fresh_  = false;
   float    mag_norm_uT_= 0.0f;
-  Vector3f last_mag_uT_ = Vector3f::Zero();
-  uint32_t last_mag_ms_= 0;
 
+  // kept for legacy stale-repeat logic (not used for FIFO pipeline)
   ImuSample last_sample_{};
   bool      have_last_sample_ = false;
+
   uint16_t  stale_frame_count_ = 0;
 
 private:
@@ -341,13 +353,50 @@ private:
     runtime_.rebuildFromBlob(blob_);
   }
 
+  void reinitBoschImu_() {
+    // FIFO accel/gyro
+    if (!imu_fifo_.begin(Wire, BMI270_ADDR, LOOP_HZ)) {
+      Serial.println("[BOOT] BMI270 vendor FIFO init failed");
+      ui_.fail("IMU", "BMI270 FIFO init fail");
+      while (true) delay(100);
+    }
+
+    // AUX magnetometer (BMM150 behind BMI270)
+    if (!mag_aux_.begin(imu_fifo_.rawDev(), /*bmm_addr*/ 0x10, /*aux_odr_hz*/ 25.0f, /*pullups*/ true)) {
+      Serial.println("[BOOT] BMM150 AUX init failed (running without mag)");
+    }
+
+    last_mag_poll_ms_ = 0;
+    mag_raw_uT_.setConstant(NAN);
+    pending_mag_update_ = false;
+  }
+
+  void pollMagAux_() {
+    if (!mag_aux_.ok()) return;
+
+    const uint32_t now_ms = millis();
+    if (last_mag_poll_ms_ != 0 && (uint32_t)(now_ms - last_mag_poll_ms_) < MAG_AUX_POLL_MS) return;
+    last_mag_poll_ms_ = now_ms;
+
+    Vector3f m_s;
+    if (!mag_aux_.readMag_uT(m_s)) return;
+
+    // AtomS3R mapping (same convention as AtomS3R_ImuCal.h): mag_body = (my, mx, -mz)
+    const Vector3f m_body(m_s.y(), m_s.x(), -m_s.z());
+
+    const bool have_prev = mag_raw_uT_.allFinite();
+    const float dm = have_prev ? (m_body - mag_raw_uT_).norm() : INFINITY;
+
+    if (!have_prev || dm >= MAG_MIN_DELTA_uT) {
+      mag_raw_uT_ = m_body;
+      pending_mag_update_ = true;
+    }
+  }
+
   void resetFusion_() {
-    // Keep full SeaStateFusion startup behavior: linear block is internally staged
-    // (Cold/TunerWarm disable it; Live enables it) for in-motion initialization.
     constexpr bool WANT_LINEAR_BLOCK = true;
 
-    // AtomS3R IMU tuning for this sketch timing: 100 Hz IMU + 30 Hz magnetometer.
-    // Base 1σ noise values are characterized at the nominal rates below.
+    // Characterization refs (keep consistent with your LOOP_HZ choice)
     constexpr float IMU_TUNE_REF_HZ = 100.0f;
     constexpr float MAG_TUNE_REF_HZ = 30.0f;
 
@@ -355,10 +404,8 @@ private:
     constexpr float gyr_sigma_ref_rps  = 0.00135f;
     constexpr float mag_sigma_ref_uT   = 1.80f;
 
-    // Scale process/measurement sigma if runtime rates drift from the reference.
-    // For white-noise-like terms, sigma scales with sqrt(f_ref / f_runtime).
     const float imu_rate_scale = sqrtf(IMU_TUNE_REF_HZ / LOOP_HZ);
-    const float mag_rate_runtime_hz = 1000.0f / (float)MAG_SAMPLE_SPACING_MS;
+    const float mag_rate_runtime_hz = 1000.0f / (float)MAG_AUX_POLL_MS; // actual mag poll cap
     const float mag_rate_scale = sqrtf(MAG_TUNE_REF_HZ / mag_rate_runtime_hz);
 
     const Vector3f sigma_a(acc_sigma_ref_mps2 * imu_rate_scale,
@@ -371,7 +418,6 @@ private:
     const Vector3f sigma_m(sigma_m_uT, sigma_m_uT, sigma_m_uT);
 
     Fusion::Config fcfg;
-    // Explicitly mirror SeaStateFusion::Config defaults used by this sketch.
     fcfg.with_mag = true;
     fcfg.online_tune_warmup_sec = ONLINE_TUNE_WARMUP_SEC;
     fcfg.use_fixed_mag_world_ref = false;
@@ -384,16 +430,16 @@ private:
     fcfg.sigma_g  = sigma_g;
     fcfg.sigma_m  = sigma_m;
 
-    fcfg.mag_delay_sec           = MAG_DELAY_SEC;
+    fcfg.mag_delay_sec       = MAG_DELAY_SEC;
     fcfg.mag_ref_timeout_sec = 2.0f;
-    fcfg.mag_odr_guess_hz = MAG_TUNE_REF_HZ;
+    fcfg.mag_odr_guess_hz    = MAG_TUNE_REF_HZ;
     fcfg.use_custom_mag_tuner_cfg = false;
 
     fusion_.begin(fcfg);
 
     auto& ff = fusion_.raw();
     using FF = std::remove_reference_t<decltype(ff)>;
-    
+
     ff.enableLinearBlock(WANT_LINEAR_BLOCK);
     ff.enableTuner(true);
     ff.setWithMag(true);
@@ -407,35 +453,22 @@ private:
     ff.enableClamp(true);
     ff.setFreqInputCutoffHz(6.0f);
 
-    // drift pseudo-measurement configs
-    FF::DriftPseudoCfg pm_vz_zero_on_pos_breach_ {
-        /*enabled*/ false, /*period*/ 1, /*sigma_mult*/ 0.04f, /*sigma_min*/ 0.01f, /*gate*/ 0.9f
-    };
-    FF::DriftPseudoCfg pm_pos_zero_ {
-        /*enabled*/ false, /*period*/ 3, /*sigma_mult*/ 8.0f, /*sigma_min*/ 0.2f, /*gate*/ 0.001f
-    };
-    FF::DriftPseudoCfg pm_vz_clamp_ {
-        /*enabled*/ false, /*period*/ 1, /*sigma_mult*/ 0.04f, /*sigma_min*/ 0.02f, /*gate*/ 0.8f
-    };
-    FF::DriftPseudoCfg pm_harmonic_pos_ {
-        /*enabled*/ false, /*period*/ 1, /*sigma_mult*/ 2.0f, /*sigma_min*/ 0.1f, /*gate*/ 0.005f
-    };
+    // drift pseudo-measurement configs (disabled here)
+    FF::DriftPseudoCfg pm_vz_zero_on_pos_breach_{false, 1, 0.04f, 0.01f, 0.9f};
+    FF::DriftPseudoCfg pm_pos_zero_{false, 3, 8.0f, 0.2f, 0.001f};
+    FF::DriftPseudoCfg pm_vz_clamp_{false, 1, 0.04f, 0.02f, 0.8f};
+    FF::DriftPseudoCfg pm_harmonic_pos_{false, 1, 2.0f, 0.1f, 0.005f};
 
     ff.setPseudoVzZeroOnPosBreachCfg(pm_vz_zero_on_pos_breach_);
     ff.setPseudoPosZeroCfg(pm_pos_zero_);
     ff.setPseudoVzClampCfg(pm_vz_clamp_);
     ff.setPseudoHarmonicPosCfg(pm_harmonic_pos_);
 
-    last_mag_ms_ = 0;
-    last_mag_uT_.setZero();
-    mag_fresh_ = false;
-
     rot_inited_   = false;
     rot_dpm_filt_ = 0.0f;
     gyro_bias_ok_ = false;
     gyro_bias_ema_.setZero();
-
-    heading_deg_      = 0.0f;
+    heading_deg_  = 0.0f;
 
     have_last_sample_ = false;
     stale_frame_count_ = 0;
@@ -449,22 +482,33 @@ private:
       return;
     }
     store_.erase();
-    clearM5UnifiedImuCalibration();
     reloadBlobAndRuntime_();
     resetFusion_();
+    reinitBoschImu_();
   }
 
   void handleRunWizard_() {
     Serial.println("[HOME] RUN WIZARD");
+
+    BoschBmi270_ImuCal wiz_imu;
+    if (!wiz_imu.begin(Wire, BMI270_ADDR, LOOP_HZ)) {
+      ui_.fail("WIZ", "IMU init fail");
+      return;
+    }
+
     ImuCalBlobV1 saved{};
-    if (!runImuCalWizard(ui_, store_, saved)) {
+    if (!runImuCalWizard(ui_, store_, wiz_imu, saved)) {
       ui_.notSavedNotice();
       return;
     }
+
     blob_ = saved;
     have_blob_ = true;
     runtime_.rebuildFromBlob(blob_);
+
+    // Wizard touched sensor settings -> restore runtime FIFO + AUX config
     resetFusion_();
+    reinitBoschImu_();
   }
 
   void drawHomePending_() {
@@ -483,80 +527,63 @@ private:
   }
 #endif
 
-  bool isLikelyStaleImuFrame_(const ImuSample& s) {
-    if (!have_last_sample_) {
-      last_sample_ = s;
-      have_last_sample_ = true;
-      stale_frame_count_ = 0;
-      return false;
-    }
-
-    const bool stale_acc = (s.a - last_sample_.a).cwiseAbs().maxCoeff() <= IMU_STALE_EPS_ACC;
-    const bool stale_gyr = (s.w - last_sample_.w).cwiseAbs().maxCoeff() <= IMU_STALE_EPS_GYR;
-    const bool stale_mag = (s.m - last_sample_.m).cwiseAbs().maxCoeff() <= IMU_STALE_EPS_MAG;
-
-    const bool stale = stale_acc && stale_gyr && stale_mag;
-    if (stale) {
-      if (stale_frame_count_ < 0xFFFFu) stale_frame_count_++;
-    } else {
-      stale_frame_count_ = 0;
-      last_sample_ = s;
-    }
-
-    return stale_frame_count_ >= IMU_STALE_FRAME_LIMIT;
-  }
-
   void updateFilter_(const BoschAGSample& s) {
     // FIFO-derived dt (already clamped in the FIFO reader)
     dt = s.dt_s;
-  
-    // "raw" norms for UI
-    a_raw_norm_ = std::sqrt(s.ax*s.ax + s.ay*s.ay + s.az*s.az);
-  
+
     // No temperature in FIFO sample here; if you need temp-comp, add a BMI270 temp read path.
     constexpr float tempC = 25.0f;
-  
-    // Calibrate
-    const Vector3f a_raw(s.ax, s.ay, s.az);
-    const Vector3f w_raw(s.gx, s.gy, s.gz);
-  
+
+    // AtomS3R mapping for FIFO sensor axes -> BODY NED (same convention as AtomS3R_ImuCal.h):
+    // acc_body = ( ay, ax, -az )
+    // gyr_body = ( gy, gx, -gz )
+    const Vector3f a_s(s.ax, s.ay, s.az);
+    const Vector3f w_s(s.gx, s.gy, s.gz);
+
+    const Vector3f a_raw(a_s.y(), a_s.x(), -a_s.z());
+    const Vector3f w_raw(w_s.y(), w_s.x(), -w_s.z());
+
+    a_raw_norm_ = a_raw.norm();
+
+    // Calibrate (runtime expects BODY-frame units)
     a_cal_ = runtime_.applyAccel(a_raw, tempC);
     w_cal_ = runtime_.applyGyro (w_raw, tempC);
-  
-    // If you add real mag reads later, set mag_raw_uT_ and pending_mag_update_ in tick()
+
+    // Mag (already BODY uT, mapped)
     m_cal_ = runtime_.applyMag(mag_raw_uT_);
+
     mag_norm_uT_ = m_cal_.norm();
-    mag_ok_ = (mag_norm_uT_ > 5.0f && mag_norm_uT_ < 200.0f);
-  
+    mag_ok_ = std::isfinite(mag_norm_uT_) && (mag_norm_uT_ > 5.0f) && (mag_norm_uT_ < 200.0f);
+
     // stillness for ROT bias estimator
     const float a_err = fabsf(a_cal_.norm() - g_std);
     const bool still = (a_err < ROT_STILL_G_TOL_FRAC * g_std) && (w_cal_.norm() < ROT_STILL_GYRO_RAD_S);
-  
-    // Apply pending mag update exactly once (when you implement mag again)
+
+    // Apply pending mag update exactly once
     mag_fresh_ = false;
     if (pending_mag_update_ && mag_ok_) {
       fusion_.updateMag(m_cal_);
       mag_fresh_ = true;
       pending_mag_update_ = false;
     }
-  
+
     // Main fusion update driven by FIFO dt
     fusion_.update(dt, w_cal_, a_cal_);
-  
+
     // ATTITUDE FROM FUSION (NED)
     Eigen::Quaternionf q_bw = fusion_.raw().mekf().quaternion_boat();
     q_bw.normalize();
-  
+
     Vector3f down_b(0,0,0);
     {
       const Vector3f down_w(0.0f, 0.0f, 1.0f);
       Vector3f down_q_b = quatRotate_(q_bw.conjugate(), down_w);
       const float dnq = down_q_b.norm();
       if (dnq > 1e-6f) down_q_b /= dnq;
-  
+
       const float a_norm = a_cal_.norm();
       const bool accel_trust = fabsf(a_norm - g_std) <= (HEADING_ACCEL_G_TOL_FRAC * g_std);
-  
+
       if (accel_trust && a_norm > 1e-6f) {
         down_b = a_cal_ / a_norm;
         if (dnq > 1e-6f && down_b.dot(down_q_b) < 0.0f) down_b = -down_b;
@@ -564,8 +591,8 @@ private:
         down_b = down_q_b;
       }
     }
-  
-    // Magnetic heading (will stay last value until you re-enable real mag sampling)
+
+    // Magnetic heading (tilt-compensated) derived only from mag + gravity in BODY.
     {
       float hdg_meas = heading_deg_;
       if (mag_ok_) {
@@ -576,7 +603,7 @@ private:
       }
       heading_deg_ = wrap360_(hdg_meas);
     }
-  
+
     // roll/pitch from down_b
     {
       const float pitch = asinf(clampf_(-down_b.x(), -1.0f, 1.0f));
@@ -584,8 +611,8 @@ private:
       roll_deg_  = wrap180_(roll  * RAD_TO_DEG);
       pitch_deg_ = wrap180_(pitch * RAD_TO_DEG);
     }
-  
-    // ROT bias removal (stillness-gated gyro bias estimator)
+
+    // ROT bias removal
     if (still) {
       const float alpha_b = 1.0f - expf(-dt / ROT_BIAS_TAU_S);
       if (!gyro_bias_ok_) {
@@ -595,19 +622,19 @@ private:
         gyro_bias_ema_ += alpha_b * (w_cal_ - gyro_bias_ema_);
       }
     }
-  
+
     Vector3f w_use = w_cal_;
     if (gyro_bias_ok_) w_use -= gyro_bias_ema_;
-  
+
     Vector3f w_world = quatRotate_(q_bw, w_use);
     float rot_dpm_meas = w_world.z() * RAD_TO_DEG * 60.0f;
     rot_dpm_meas = clampf_(rot_dpm_meas, -720.0f, 720.0f);
-  
+
     const float tau_rot = 1.5f;
     const float alpha_r = 1.0f - expf(-dt / tau_rot);
     if (!rot_inited_) { rot_inited_ = true; rot_dpm_filt_ = rot_dpm_meas; }
     else              { rot_dpm_filt_ += alpha_r * (rot_dpm_meas - rot_dpm_filt_); }
-  
+
     // FULL FUSION WAVE STATE
     heave_m_         = -fusion_.raw().mekf().get_position().z();
     wave_envelope_m_ =  fusion_.raw().getDisplacementScale();
@@ -682,25 +709,10 @@ private:
     nmea_xdr_freq(SEA_STATE_NMEA_TALKER, wave_hz_);
     nmea_rot(SEA_STATE_NMEA_TALKER, rot_dpm_filt_, valid);
 #else
-    const float t = (micros() - start_us_) * 1e-6f;
-    /*
-    Serial.printf("t=%.2f HDG:%6.1f R:%6.1f P:%6.1f H:%6.3f F:%5.3f |m|=%.1f live:%d\n",
-                  (double)t,
-                  (double)heading_deg_,
-                  (double)roll_deg_,
-                  (double)pitch_deg_,
-                  (double)heave_m_,
-                  (double)wave_hz_,
-                  (double)mag_norm_uT_,
-                  (int)fusion_.isLive());
-    */
     Serial.printf("Hcm:%+.3f\twaveEnvelopeCM:%+.3f\timuStale:%u\n",
                   (double)(heave_m_ * 100),
                   (double)(wave_envelope_m_ * 100),
                   (unsigned)stale_frame_count_);
-    /*
-    Serial.printf("dt:%+.3f\n", (double)(dt * 1000));  
-    */   
 #endif
   }
 };
