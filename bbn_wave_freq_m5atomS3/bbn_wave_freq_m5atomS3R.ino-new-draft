@@ -387,13 +387,13 @@ private:
 
     // drift pseudo-measurement configs
     FF::DriftPseudoCfg pm_vz_zero_on_pos_breach_ {
-        /*enabled*/ true, /*period*/ 3, /*sigma_mult*/ 1.0f, /*sigma_min*/ 0.03f, /*gate*/ 0.8f
+        /*enabled*/ true, /*period*/ 1, /*sigma_mult*/ 0.2f, /*sigma_min*/ 0.03f, /*gate*/ 0.8f
     };
     FF::DriftPseudoCfg pm_pos_zero_ {
-        /*enabled*/ true, /*period*/ 5, /*sigma_mult*/ 8.0f, /*sigma_min*/ 0.05f, /*gate*/ 0.3f
+        /*enabled*/ true, /*period*/ 1, /*sigma_mult*/ 2.0f, /*sigma_min*/ 0.05f, /*gate*/ 0.3f
     };
     FF::DriftPseudoCfg pm_vz_clamp_ {
-        /*enabled*/ true, /*period*/ 3, /*sigma_mult*/ 1.0f, /*sigma_min*/ 0.03f, /*gate*/ 0.9f
+        /*enabled*/ true, /*period*/ 1, /*sigma_mult*/ 0.2f, /*sigma_min*/ 0.03f, /*gate*/ 0.9f
     };
     FF::DriftPseudoCfg pm_harmonic_pos_ {
         /*enabled*/ false, /*period*/ 5, /*sigma_mult*/ 6.0f, /*sigma_min*/ 0.05f, /*gate*/ 0.10f
