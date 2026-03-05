@@ -102,6 +102,14 @@ public:
     return true;
   }
 
+  bool readOneAG(BoschAGSample& out) {
+    BoschAGSample tmp[1];
+    const int n = readAG(tmp, 1);
+    if (n <= 0) return false;
+    out = tmp[0];
+    return true;
+  }
+
   // Read and extract up to max_out samples.
   // Returns number of samples written.
   int readAG(BoschAGSample* out, int max_out)
