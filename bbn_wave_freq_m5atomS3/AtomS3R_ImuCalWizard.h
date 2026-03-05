@@ -70,6 +70,10 @@
 #include "AtomS3R_M5Ui.h"
 #include "CalibrateIMU.h"     // imu_cal::* + FitFail
 
+#ifdef NO_BOSCH_API
+#include "BoschBmi270_ImuCal.h" 
+#endif
+
 namespace atoms3r_ical {
 
 // Wizard configuration
@@ -179,7 +183,12 @@ struct Pose {
 
 class ImuCalWizard {
 public:
+
+#ifdef NO_BOSCH_API
   ImuCalWizard(M5Ui& ui, ImuCalStoreNvs& store) : ui_(ui), store_(store) {}
+#else 
+  ImuCalWizard(M5Ui& ui, ImuCalStoreNvs& store, atoms3r_ical::BoschImuCalSource& imu): ui_(ui), store_(store), imu_(imu) {}
+#endif
 
   // Runs full wizard and saves to NVS. Returns true only if saved successfully.
   // If out_saved is provided, it is filled with the saved blob (readback-validated).
@@ -460,11 +469,17 @@ private:
     return true;
   }
 
+#ifdef NO_BOSCH_API
   // Capture steps
   bool readSample_(ImuSample& s) {
     // Uses the mapping/read function from AtomS3R_ImuCal.h
     return readImuMapped(M5.Imu, s);
   }
+#else
+  bool readSample_(ImuSample& s) {
+    return imu_.read(s);
+  }
+#endif
 
   void configureCalibrators_() {
     // Use the SAME g that mapping uses (AtomS3R_ImuCal.h)
@@ -809,6 +824,10 @@ private:
 private:
   M5Ui& ui_;
   ImuCalStoreNvs& store_;
+
+#ifndef NO_BOSCH_API
+  atoms3r_ical::BoschImuCalSource& imu_;
+#endif
 
   // Stored inside wizard => not on stack
 public:
