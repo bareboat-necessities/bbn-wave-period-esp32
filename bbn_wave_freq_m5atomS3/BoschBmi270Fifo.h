@@ -6,7 +6,7 @@
 #include <cstdint>
 
 // for use BMM150 vendor API:
-#include <Arduino_BMI270_BMM150>
+#include <Arduino_BMI270_BMM150.h>
 
 #include <utilities/BMI270-Sensor-API/bmi2.h>
 #include <utilities/BMI270-Sensor-API/bmi270.h>
