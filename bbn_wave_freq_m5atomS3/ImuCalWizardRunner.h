@@ -3,18 +3,38 @@
 #include "AtomS3R_ImuCal.h"
 #include "AtomS3R_M5Ui.h"
 
-#if !defined(NO_BOSCH_API)
-  #include "BoschBmi270_ImuCal.h"
+// Bosch availability detection
+// We detect the *vendor headers* directly
+// as a guard if its dependencies may not be installed on the build machine).
+#ifndef ATOMS3R_HAVE_BOSCH_API
+  #if !defined(NO_BOSCH_API) && \
+      __has_include(<utilities/BMI270-Sensor-API/bmi2.h>) && \
+      __has_include(<utilities/BMI270-Sensor-API/bmi270.h>) && \
+      __has_include(<utilities/BMM150-Sensor-API/bmm150.h>)
+    #define ATOMS3R_HAVE_BOSCH_API 1
+  #else
+    #define ATOMS3R_HAVE_BOSCH_API 0
+  #endif
 #endif
 
 namespace atoms3r_ical {
 
-// Bosch path (default build): caller must provide an initialized BoschBmi270_ImuCal source.
-#if !defined(NO_BOSCH_API)
-bool runImuCalWizard(M5Ui& ui, ImuCalStoreNvs& store, BoschBmi270_ImuCal& imu, ImuCalBlobV1& out_saved);
+// Forward declare only — NO Bosch includes here.
+#if ATOMS3R_HAVE_BOSCH_API
+class BoschBmi270_ImuCal;
 #endif
 
-// Legacy path (only when NO_BOSCH_API is defined)
-bool runImuCalWizard(M5Ui& ui, ImuCalStoreNvs& store, ImuCalBlobV1& out_saved);
+// Bosch path: only declared when the Bosch vendor headers are actually available.
+#if ATOMS3R_HAVE_BOSCH_API
+bool runImuCalWizard(M5Ui& ui,
+                     ImuCalStoreNvs& store,
+                     BoschBmi270_ImuCal& imu,
+                     ImuCalBlobV1& out_saved);
+#endif
 
-}  // namespace atoms3r_ical
+// Legacy path (always available): uses M5.Imu internally.
+bool runImuCalWizard(M5Ui& ui,
+                     ImuCalStoreNvs& store,
+                     ImuCalBlobV1& out_saved);
+
+} // namespace atoms3r_ical
