@@ -374,17 +374,6 @@ public:
     void setPseudoVzClampCfg(const DriftPseudoCfg& c)           { pm_vz_clamp_              = c; }
     void setPseudoHarmonicPosCfg(const DriftPseudoCfg& c)       { pm_harmonic_pos_          = c; }
     
-    float getVerticalSpeedEnvelopeMps(bool smoothed = true) const noexcept {
-        const float tau   = smoothed ? tune_.tau_applied   : tau_target_;
-        const float sigma = smoothed ? tune_.sigma_applied : sigma_target_;
-        if (!(tau > 1e-6f) || !std::isfinite(tau) || !std::isfinite(sigma)) return NAN;
-        // RMS of Rayleigh envelope amplitude for narrowband Gaussian v(t):
-        // v_env_rms = sqrt(2) * sigma_v,  sigma_v ≈ sigma_a / omega,  omega = pi/tau
-        constexpr float K = std::sqrt(2.0f) / M_PI;
-        const float v_env = speed_env_mult_ * K * sigma * tau;
-        return std::isfinite(v_env) ? v_env : NAN;
-    }
-
     void setWithMag(bool with_mag) {
         with_mag_ = with_mag;
     }
@@ -551,6 +540,17 @@ public:
         if (!std::isfinite(sigma) || !std::isfinite(tau)) return NAN;
         constexpr float C_HS  = 2.0f * std::sqrt(2.0f) / (M_PI * M_PI);  // Longuet–Higgins envelope for wave height
         return C_HS * sigma * tau * tau / 2.0f;
+    }
+
+    float getVerticalSpeedEnvelopeMps(bool smoothed = true) const noexcept {
+        const float tau   = smoothed ? tune_.tau_applied   : tau_target_;
+        const float sigma = smoothed ? tune_.sigma_applied : sigma_target_;
+        if (!(tau > 1e-6f) || !std::isfinite(tau) || !std::isfinite(sigma)) return NAN;
+        // RMS of Rayleigh envelope amplitude for narrowband Gaussian v(t):
+        // v_env_rms = sqrt(2) * sigma_v,  sigma_v ≈ sigma_a / omega,  omega = pi/tau
+        constexpr float K = std::sqrt(2.0f) / M_PI;
+        const float v_env = speed_env_mult_ * K * sigma * tau;
+        return std::isfinite(v_env) ? v_env : NAN;
     }
 
     inline WaveDirection getDirSignState() const noexcept { return dir_sign_state_; }
