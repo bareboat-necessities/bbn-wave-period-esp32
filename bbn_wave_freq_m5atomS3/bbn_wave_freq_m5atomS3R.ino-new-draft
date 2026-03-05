@@ -4,15 +4,6 @@
   AtomS3R SeaStateFusion (+ optional IMU Calibration Wizard)
   (SeaStateFusion version: Kalman3D_Wave + mag init + yaw correction)
 
-  IMPORTANT FIX:
-    - Magnetic heading is computed from MAG + GRAVITY (tilt compensation),
-      NOT from fusion yaw and NOT from rotating mag by full q_bw.
-    - We use down_b (world-down expressed in BODY) from fusion quaternion,
-      then construct North/East in BODY from down_b and mag_b:
-          east_b  = down_b × mag_b
-          north_b = east_b × down_b
-      Then heading is atan2(east·fwd, north·fwd).
-
   Assumptions:
     - fusion_.raw().mekf().quaternion_boat() returns BODY->WORLD quaternion (q_bw), world frame is NED (+Z down).
     - runtime_.apply* already includes temperature compensation.
@@ -387,16 +378,16 @@ private:
 
     // drift pseudo-measurement configs
     FF::DriftPseudoCfg pm_vz_zero_on_pos_breach_ {
-        /*enabled*/ true, /*period*/ 1, /*sigma_mult*/ 0.2f, /*sigma_min*/ 0.03f, /*gate*/ 0.8f
+        /*enabled*/ true, /*period*/ 1, /*sigma_mult*/ 0.04f, /*sigma_min*/ 0.01f, /*gate*/ 0.9f
     };
     FF::DriftPseudoCfg pm_pos_zero_ {
-        /*enabled*/ true, /*period*/ 1, /*sigma_mult*/ 2.0f, /*sigma_min*/ 0.05f, /*gate*/ 0.3f
+        /*enabled*/ true, /*period*/ 3, /*sigma_mult*/ 8.0f, /*sigma_min*/ 0.2f, /*gate*/ 0.001f
     };
     FF::DriftPseudoCfg pm_vz_clamp_ {
-        /*enabled*/ true, /*period*/ 1, /*sigma_mult*/ 0.2f, /*sigma_min*/ 0.03f, /*gate*/ 0.9f
+        /*enabled*/ true, /*period*/ 1, /*sigma_mult*/ 0.04f, /*sigma_min*/ 0.02f, /*gate*/ 0.8f
     };
     FF::DriftPseudoCfg pm_harmonic_pos_ {
-        /*enabled*/ false, /*period*/ 5, /*sigma_mult*/ 6.0f, /*sigma_min*/ 0.05f, /*gate*/ 0.10f
+        /*enabled*/ true, /*period*/ 1, /*sigma_mult*/ 2.0f, /*sigma_min*/ 0.1f, /*gate*/ 0.005f
     };
 
     ff.setPseudoVzZeroOnPosBreachCfg(pm_vz_zero_on_pos_breach_);
