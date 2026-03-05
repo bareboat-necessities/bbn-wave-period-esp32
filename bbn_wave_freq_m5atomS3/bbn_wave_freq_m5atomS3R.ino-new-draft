@@ -162,48 +162,40 @@ static inline bool magneticHeadingFromDownAndMagBody_(
 class FusionApp {
 public:
   FusionApp() {}
-
+  
   void begin() {
     delay(50);
     Serial.begin(115200);
     delay(100);
-    //Serial.println();
-    //Serial.printf("[BOOT] AtomS3R Compass (SeaStateFusion) wizard=%d\n", (int)SEA_STATE_ENABLE_WIZARD);
-    //Serial.printf("[BOOT] mag_delay_sec = %.2f\n", (double)MAG_DELAY_SEC);
-
+  
     auto cfg = M5.config();
-    cfg.internal_imu = false;   // IMPORTANT: prevent M5Unified from initializing/configuring the IMU 
+    cfg.internal_imu = false;   // do NOT auto-init IMU
     M5.begin(cfg);
-
-    if (!imu_fifo_.begin(Wire, BMI270_ADDR, LOOP_HZ)) {
-      Serial.println("[BOOT] BMI270 vendor FIFO init failed");
-      ui_.fail("IMU", "BMI270 init fail");
-      while (true) delay(100);
-    }
-
-    clearM5UnifiedImuCalibration();
-    delay(250);
-
+  
+    // UI init
     ui_.begin();
-
     if (use_graphics_) {
       ui_.setReadRotation();
       compass_ui_.begin();
       compass_ui_ready_ = compass_ui_.ok();
       if (!compass_ui_ready_) use_graphics_ = false;
     }
-
-    if (!imu_fifo_.ok()) {   // implement ok() or just rely on begin() return
-      Serial.println("[BOOT] BMI270 FIFO driver not OK");
-      ui_.fail("IMU", "FIFO init fail");
-      while (true) delay(100);
-    }
-
+  
+    // Load calibration blob/runtime first
     reloadBlobAndRuntime_();
-
-#if SEA_STATE_ENABLE_WIZARD
+  
+  #if SEA_STATE_ENABLE_WIZARD
     if (!have_blob_) {
       Serial.println("[BOOT] No saved calibration. Starting wizard...");
+  
+      // Temporarily init M5.Imu ONLY for the wizard (it knows how to reach BMM150 via BMI270 hub).
+      // This will reconfigure the sensor, so we MUST re-init FIFO after wizard completes.
+      if (!M5.Imu.isEnabled()) {
+        // Some M5Unified versions expose begin(); if yours doesn’t, remove the check and just call begin().
+        M5.Imu.begin();
+        delay(50);
+      }
+  
       ImuCalBlobV1 saved{};
       if (runImuCalWizard(ui_, store_, saved)) {
         Serial.println("[BOOT] Wizard saved calibration.");
@@ -213,14 +205,22 @@ public:
       } else {
         Serial.println("[BOOT] Wizard did not save calibration. Running with raw values.");
       }
+  
+      // IMPORTANT: do not use M5.Imu after this point in runtime loop
     }
-#endif
-
+  #endif
+  
+    // NOW init the Bosch FIFO driver (after wizard), so FIFO configuration wins
+    if (!imu_fifo_.begin(Wire, BMI270_ADDR, LOOP_HZ)) {
+      Serial.println("[BOOT] BMI270 vendor FIFO init failed");
+      ui_.fail("IMU", "BMI270 FIFO init fail");
+      while (true) delay(100);
+    }
+  
     resetFusion_();
     drawHomeStatic_();
-
+  
     delay(100);
-
     start_us_       = micros();
     next_tick_us_   = micros();
     last_update_us_ = 0;
