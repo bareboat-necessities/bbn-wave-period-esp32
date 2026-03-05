@@ -373,24 +373,17 @@ public:
     void setPseudoPosZeroCfg(const DriftPseudoCfg& c)           { pm_pos_zero_              = c; }
     void setPseudoVzClampCfg(const DriftPseudoCfg& c)           { pm_vz_clamp_              = c; }
     void setPseudoHarmonicPosCfg(const DriftPseudoCfg& c)       { pm_harmonic_pos_          = c; }
-
-    // Speed envelope model for clamp pseudo-meas:
-    // v_env ≈ speed_env_mult * (2π f_env) * z_env
-    void setSpeedEnvelopeMult(float m) {
-        if (std::isfinite(m) && m > 0.0f) speed_env_mult_ = m;
-    }
-    float getSpeedEnvelopeMult() const noexcept { return speed_env_mult_; }
     
     // For debugging/telemetry
     float getVerticalSpeedEnvelopeMps(bool smoothed = true) const noexcept {
         float z_env = getDisplacementScale(smoothed);
-        if (!std::isfinite(z_env) || z_env <= 0.0f) z_env = 0.3f;
+        if (!std::isfinite(z_env) || z_env <= 0.0f) z_env = 0.0005f;
     
         const float f = smoothed ? freq_hz_slow_ : freq_hz_;
         const float f_use = std::max(min_freq_hz_, std::min(max_freq_hz_, std::isfinite(f) ? f : min_freq_hz_));
         const float omega = 2.0f * float(M_PI) * f_use;
     
-        const float v_env = speed_env_mult_ * omega * z_env / 2.0f;
+        const float v_env = speed_env_mult_ * omega * z_envf;
         return (std::isfinite(v_env) ? v_env : NAN);
     }
 
