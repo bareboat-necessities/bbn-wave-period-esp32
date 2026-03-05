@@ -27,6 +27,9 @@
 
 #include <M5Unified.h>
 #include <Arduino.h>
+
+#define NO_BOSCH_API
+
 #include "AngleAveraging.h"
 #include "AranovskiyFilter.h"
 #include "SchmittTriggerFrequencyDetector.h"
