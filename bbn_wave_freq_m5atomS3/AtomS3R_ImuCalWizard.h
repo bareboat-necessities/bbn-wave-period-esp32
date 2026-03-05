@@ -477,7 +477,22 @@ private:
   }
 #else
   bool readSample_(ImuSample& s) {
-    return imu_.read(s);
+    BoschAGSample ag;
+    if (!imu_fifo_.readOneAG(ag)) {  // you add readOneAG() that blocks/polls until 1 sample available
+      return false;
+    }
+  
+    s.sample_us = micros();          // wizard doesn’t need sensor-time; ok
+    s.tempC     = 25.0f;             // or wire real temp later
+    s.a         = Vector3f(ag.ax, ag.ay, ag.az);
+    s.w         = Vector3f(ag.gx, ag.gy, ag.gz);
+  
+    // MAG:
+    //  - if we don’t have AUX mag yet, set NaNs or zeros and skip mag stage in wizard
+    //  - once AUX mag works, fill s.m here
+    s.m         = Vector3f(NAN, NAN, NAN);
+  
+    return true;
   }
 #endif
 
