@@ -13,9 +13,7 @@
   - Accel/Gyro: BMI270 FIFO via BoschBmi270Fifo (stable, low jitter)
   - Mag: BMM150 via BMI270 AUX using BoschBmm150Aux (AtomS3R-correct path)
 
-  Notes:
-  - This header intentionally reuses atoms3r_ical::ImuSample / Vector3f from AtomS3R_ImuCal.h
-    to avoid type duplication and guarantee identical conventions across the codebase.
+  sample_us is derived from FIFO timing, not read-time.
 */
 
 #include <Arduino.h>
@@ -27,12 +25,6 @@
 
 #include "BoschBmi270Fifo.h"
 #include "BoschBmm150Aux.h"
-
-// Pull in the canonical types + NED convention helpers from your existing plumbing.
-// This provides:
-//   - atoms3r_ical::Vector3f
-//   - atoms3r_ical::ImuSample (with fields a,w,m,tempC,mask,sample_us)
-//   - atoms3r_ical::kImuMaskAccelGyro (mask for accel+gyro)
 #include "AtomS3R_ImuCal.h"
 
 namespace atoms3r_ical {
@@ -45,7 +37,7 @@ public:
 
     // Mag over AUX (AtomS3R): recommended ON
     bool     enable_mag_aux = true;
-    float    mag_aux_odr_hz = 25.0f;      // 25 Hz is plenty for yaw correction and calibration
+    float    mag_aux_odr_hz = 25.0f;
     bool     mag_pullups_2k = true;
 
     // Temp: BMI270 temp read not implemented here; keep a constant for bias(T) models
@@ -70,12 +62,10 @@ public:
     cfg_ = cfg;
     wire_ = &wire;
 
-    // Accel/Gyro FIFO
     if (!fifo_.begin(*wire_, cfg_.bmi270_addr, cfg_.ag_hz, cfg_.i2c_hz)) {
       return false;
     }
 
-    // Mag over AUX (AtomS3R correct)
     if (cfg_.enable_mag_aux) {
       BoschBmm150Aux::Config mcfg;
       mcfg.bmm_addr       = BMM150_DEFAULT_I2C_ADDRESS; // 0x10
@@ -90,20 +80,27 @@ public:
     }
 
     last_mag_uT_.setConstant(std::numeric_limits<float>::quiet_NaN());
-    last_mag_ms_ = 0;
+
+    have_sample_clock_    = false;
+    sample_clock_us_      = 0;
+    sample_clock_frac_us_ = 0.0f;
+
+    last_mag_poll_us_     = 0;
+    have_mag_poll_time_   = false;
 
     ok_ = true;
     return true;
   }
 
-  // Read one mapped sample (BODY NED convention, same as AtomS3R_ImuCal.h).
-  // - Always returns accel+gyro
-  // - Mag returns latest aux mag if available, otherwise NaNs
   bool read(ImuSample& out) {
     if (!ok_) return false;
 
     BoschAGSample ag;
     if (!fifo_.readOneAG(ag)) return false;
+
+    // Advance monotonic sample clock using FIFO-derived dt.
+    // First sample is stamped at t=0 because there is no prior sample interval.
+    const uint32_t sample_us = advanceSampleClockUs_(ag.dt_s);
 
     // Bosch FIFO gives sensor-frame accel/gyro already in m/s^2 and rad/s.
     // Apply AtomS3R mapping: (y, x, -z)
@@ -112,17 +109,17 @@ public:
     Vector3f a_b(a_s.y(), a_s.x(), -a_s.z());
     Vector3f w_b(w_s.y(), w_s.x(), -w_s.z());
 
-    // Mag
+    // Mag polling paced by FIFO-time, not wall-clock.
     Vector3f m_b;
     if (mag_ok_) {
-      const uint32_t now_ms = millis();
-      // cap aux mag polling; you can lower this if you want more frequent updates
-      if (last_mag_ms_ == 0 || (uint32_t)(now_ms - last_mag_ms_) >= MAG_POLL_MS) {
+      if (!have_mag_poll_time_ || (uint32_t)(sample_us - last_mag_poll_us_) >= MAG_POLL_US) {
+        last_mag_poll_us_   = sample_us;
+        have_mag_poll_time_ = true;
+
         Vector3f m_s;
         if (mag_.readMag_uT(m_s)) {
           // Apply AtomS3R mapping: (y, x, -z)
           last_mag_uT_ = Vector3f(m_s.y(), m_s.x(), -m_s.z());
-          last_mag_ms_ = now_ms;
         }
       }
       m_b = last_mag_uT_;
@@ -134,13 +131,13 @@ public:
     out.w = w_b;
     out.m = m_b;
     out.tempC = cfg_.tempC_default;
-    out.mask = kImuMaskAccelGyro;     // accel+gyro are valid in this source
-    out.sample_us = micros();
+    out.mask = kImuMaskAccelGyro;
+    out.sample_us = sample_us;   // FIFO-time-derived, not micros()
     return true;
   }
 
 private:
-  static constexpr uint32_t MAG_POLL_MS = 40; // ~25 Hz
+  static constexpr uint32_t MAG_POLL_US = 40000u; // ~25 Hz
 
   TwoWire* wire_ = nullptr;
   Config cfg_{};
@@ -151,8 +148,48 @@ private:
   BoschBmi270Fifo fifo_{};
   BoschBmm150Aux  mag_{};
 
-  Vector3f  last_mag_uT_ = Vector3f::Zero();
-  uint32_t  last_mag_ms_ = 0;
+  Vector3f last_mag_uT_ = Vector3f::Zero();
+
+  // FIFO-derived monotonic sample clock
+  bool     have_sample_clock_    = false;
+  uint64_t sample_clock_us_      = 0;     // internal long-run clock
+  float    sample_clock_frac_us_ = 0.0f;  // carry fractional microseconds
+
+  // Mag polling paced by sample clock
+  uint32_t last_mag_poll_us_   = 0;
+  bool     have_mag_poll_time_ = false;
+
+  uint32_t nominalDtUs_() const {
+    return (cfg_.ag_hz > 150.0f) ? 5000u : 10000u;
+  }
+
+  uint32_t advanceSampleClockUs_(float dt_s) {
+    if (!have_sample_clock_) {
+      have_sample_clock_    = true;
+      sample_clock_us_      = 0;
+      sample_clock_frac_us_ = 0.0f;
+      return 0u;
+    }
+
+    float dt_us_f = dt_s * 1.0e6f;
+
+    // Defensive fallback only if upstream dt is broken.
+    if (!(dt_us_f > 0.0f)) {
+      dt_us_f = (float)nominalDtUs_();
+    }
+
+    dt_us_f += sample_clock_frac_us_;
+
+    uint32_t dt_us = (uint32_t)dt_us_f;
+    sample_clock_frac_us_ = dt_us_f - (float)dt_us;
+
+    if (dt_us == 0u) dt_us = 1u;
+
+    sample_clock_us_ += (uint64_t)dt_us;
+
+    // Public API likely uses uint32_t; wrap behavior then matches typical Arduino timebases.
+    return (uint32_t)sample_clock_us_;
+  }
 };
 
 } // namespace atoms3r_ical
