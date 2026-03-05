@@ -29,6 +29,7 @@ public:
   // Access to underlying Bosch device for AUX / extra features (e.g., BMM150 via BMI270 AUX).
   bmi2_dev* rawDev() { return &bmi_; }
   const bmi2_dev* rawDev() const { return &bmi_; }
+  uint8_t addr() const { return bmi_addr_; }
 
   bool begin(TwoWire& wire,
              uint8_t bmi270_addr = 0x68,
