@@ -38,7 +38,7 @@ static constexpr uint8_t BMI270_ADDR = 0x68;  // change to 0x69 if your board st
 BoschBmi270Fifo imu_fifo_{};
 
 uint32_t last_mag_poll_ms_ = 0;
-Vector3f mag_raw_uT_ = Vector3f::Zero();
+Eigen::Vector3f mag_raw_uT_ = Eigen::Vector3f::Zero();
 bool     pending_mag_update_ = false;
 
 // UI / serial defaults
