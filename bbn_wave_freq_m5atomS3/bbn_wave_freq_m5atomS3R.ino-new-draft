@@ -193,12 +193,6 @@ public:
       if (!compass_ui_ready_) use_graphics_ = false;
     }
 
-    if (!M5.Imu.isEnabled()) {
-      Serial.println("[BOOT] IMU not found / not enabled");
-      ui_.fail("IMU", "Not found");
-      while (true) delay(100);
-    }
-
     reloadBlobAndRuntime_();
 
 #if SEA_STATE_ENABLE_WIZARD
