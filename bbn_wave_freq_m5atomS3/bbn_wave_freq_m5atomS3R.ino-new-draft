@@ -162,6 +162,7 @@ public:
     //Serial.printf("[BOOT] mag_delay_sec = %.2f\n", (double)MAG_DELAY_SEC);
 
     auto cfg = M5.config();
+    cfg.internal_imu = false;   // IMPORTANT: prevent M5Unified from initializing/configuring the IMU 
     M5.begin(cfg);
 
     clearM5UnifiedImuCalibration();
