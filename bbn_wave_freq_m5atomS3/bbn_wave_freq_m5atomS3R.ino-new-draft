@@ -286,6 +286,7 @@ private:
   Vector3f m_cal_ = Vector3f::Zero();
   float    a_raw_norm_ = 0.0f;
 
+  float dt           = 0.0f;
   float roll_deg_    = 0.0f;
   float pitch_deg_   = 0.0f;
   float heading_deg_ = 0.0f;
@@ -485,7 +486,7 @@ private:
     w_cal_ = runtime_.applyGyro (s.w, s.tempC);
     m_cal_ = runtime_.applyMag  (s.m);
 
-    float dt = (s.sample_us - last_update_us_) * 1e-6f;
+    dt = (s.sample_us - last_update_us_) * 1e-6f;
     last_update_us_ = s.sample_us;
 
     const float a_err = fabsf(a_cal_.norm() - g_std);
@@ -679,6 +680,9 @@ private:
                   (double)(heave_m_ * 100),
                   (double)(wave_envelope_m_ * 100),
                   (unsigned)stale_frame_count_);
+    /*
+    Serial.printf("dt:%+.3f\n", (double)(dt * 1000));
+    */     
 #endif
   }
 };
