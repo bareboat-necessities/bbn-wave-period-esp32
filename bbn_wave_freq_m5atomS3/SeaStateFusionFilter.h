@@ -390,9 +390,8 @@ public:
         const float f_use = std::max(min_freq_hz_, std::min(max_freq_hz_, std::isfinite(f) ? f : min_freq_hz_));
         const float omega = 2.0f * float(M_PI) * f_use;
     
-        // Guard very small envelopes
-        const float v_env = speed_env_mult_ * omega * z_env;
-        return (std::isfinite(v_env) ? std::max(v_env, 0.05f) : NAN);
+        const float v_env = speed_env_mult_ * omega * z_env / 2.0f;
+        return (std::isfinite(v_env) ? v_env : NAN);
     }
 
     void setWithMag(bool with_mag) {
@@ -560,7 +559,7 @@ public:
         const float sigma = smoothed ? tune_.sigma_applied : sigma_target_;
         if (!std::isfinite(sigma) || !std::isfinite(tau)) return NAN;
         constexpr float C_HS  = 2.0f * std::sqrt(2.0f) / (M_PI * M_PI);  // Longuet–Higgins envelope for wave height
-        return C_HS * sigma * tau * tau;
+        return C_HS * sigma * tau * tau / 2.0f;
     }
 
     inline WaveDirection getDirSignState() const noexcept { return dir_sign_state_; }
