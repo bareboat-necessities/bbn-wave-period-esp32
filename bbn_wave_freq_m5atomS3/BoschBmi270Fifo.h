@@ -26,6 +26,9 @@ struct BoschAGSample {
 
 class BoschBmi270Fifo {
 public:
+
+  bool ok() const { return ok_; }
+
   bool begin(TwoWire& wire,
              uint8_t bmi270_addr = 0x68,
              float odr_hz = 100.0f)
@@ -100,6 +103,7 @@ public:
     last_stime_ = 0;
     have_stime_ = false;
     skipped_total_ = 0;
+    ok_ = true;
     return true;
   }
 
@@ -226,6 +230,8 @@ public:
 private:
   TwoWire* wire_ = nullptr;
   uint8_t  bmi_addr_ = 0x68;
+
+  bool ok_ = false;
 
   bmi2_dev        bmi_{};
   bmi2_fifo_frame fifo_{};
