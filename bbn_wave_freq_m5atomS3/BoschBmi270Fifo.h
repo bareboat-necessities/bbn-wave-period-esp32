@@ -33,11 +33,16 @@ public:
 
   bool begin(TwoWire& wire,
              uint8_t bmi270_addr = 0x68,
-             float odr_hz = 100.0f)
+             float odr_hz = 100.0f,
+             uint32_t i2c_hz = 400000)
   {
     ok_ = false;
     wire_ = &wire;
     bmi_addr_ = bmi270_addr;
+
+    // Ensure I2C is up (safe to call multiple times on ESP32 Arduino)
+    wire_->begin();
+    wire_->setClock(i2c_hz);
 
     // Init Bosch device struct
     std::memset(&bmi_, 0, sizeof(bmi_));
@@ -104,7 +109,7 @@ public:
     // Optional: set watermark (bytes)
     (void)bmi2_set_fifo_wm(120, &bmi_);
 
-    // Optional: flush after configuration so old frames don't pollute first dt
+    // Flush after configuration so old frames don't pollute first dt
     (void)bmi2_flush_fifo(&bmi_);
 
     odr_hz_      = use200 ? 200.0f : 100.0f;
@@ -113,6 +118,7 @@ public:
     skipped_total_   = 0;
     have_sens_time_  = false;
     last_sens_time_  = 0;
+    mismatch_ctr_    = 0;
 
     ok_ = true;
     return true;
@@ -136,6 +142,9 @@ public:
     if (bmi2_get_fifo_length(&fifo_len, &bmi_) != BMI2_OK) return 0;
     if (fifo_len == 0) return 0;
 
+    // Limit max_out to our internal extract buffers.
+    max_out = std::min<int>(max_out, MAX_EXTRACT);
+
     // Don't read the entire FIFO if caller only wants a few samples; otherwise you
     // drain a lot of data and would be forced to drop it.
     // Rough estimate: header-mode accel frame ~7 bytes, gyro frame ~7 bytes => ~14 bytes per AG pair.
@@ -144,7 +153,7 @@ public:
     constexpr uint16_t MARGIN_BYTES     = 96;
 
     const uint32_t want_bytes_u32 =
-        (uint32_t)std::min<int>(max_out, (int)MAX_EXTRACT) * (uint32_t)BYTES_PER_AG_EST +
+        (uint32_t)max_out * (uint32_t)BYTES_PER_AG_EST +
         (uint32_t)MARGIN_BYTES +
         (uint32_t)bmi_.dummy_byte;
 
@@ -156,11 +165,13 @@ public:
 
     if (bmi2_read_fifo_data(&fifo_, &bmi_) != BMI2_OK) return 0;
 
-    uint16_t a_len = (uint16_t)std::min<int>(MAX_EXTRACT, max_out);
-    uint16_t g_len = (uint16_t)std::min<int>(MAX_EXTRACT, max_out);
+    uint16_t a_len = (uint16_t)max_out;
+    uint16_t g_len = (uint16_t)max_out;
 
     (void)bmi2_extract_accel(accel_, &a_len, &fifo_, &bmi_);
     (void)bmi2_extract_gyro (gyro_,  &g_len, &fifo_, &bmi_);
+
+    if (a_len != g_len) ++mismatch_ctr_;
 
     const int n = (int)std::min<uint16_t>(a_len, g_len);
     if (n <= 0) {
@@ -202,7 +213,7 @@ public:
           if (!(dt_s > 0.0f) || dt_s < 0.0005f) dt_s = 0.0005f;
           if (dt_s > 0.0500f) dt_s = 0.0500f;
 
-          // optional snap-to-nominal if crazy (protect against a single corrupt frame)
+          // snap-to-nominal if crazy (protect against a single corrupt frame)
           const float ratio = dt_s / nominal_dt_;
           if (ratio < 0.5f || ratio > 1.5f) dt_s = nominal_dt_;
         } else {
@@ -225,6 +236,7 @@ public:
   }
 
   uint32_t skippedFramesTotal() const { return skipped_total_; }
+  uint32_t mismatchCountTotal() const { return mismatch_ctr_; }
 
 private:
   // Keep chunks conservative to avoid Wire rx/tx buffer issues on ESP32.
@@ -249,7 +261,8 @@ private:
   bool     have_sens_time_ = false;
   uint32_t last_sens_time_ = 0;
 
-  uint32_t skipped_total_ = 0;
+  uint32_t skipped_total_  = 0;
+  uint32_t mismatch_ctr_   = 0;
 
   // Bosch BMI2 I2C glue. Must support large FIFO reads even if Wire buffers are small.
   static int8_t bmi2_i2c_read_(uint8_t reg_addr, uint8_t *reg_data, uint32_t len, void *intf_ptr)
@@ -287,8 +300,11 @@ private:
     while (off < len) {
       const uint16_t n = (uint16_t)std::min<uint32_t>(I2C_CHUNK, len - off);
 
+      // Defensive: if anyone ever writes to FIFO_DATA_ADDR, keep addr fixed.
+      const uint8_t addr = (reg_addr == BMI2_FIFO_DATA_ADDR) ? reg_addr : (uint8_t)(reg_addr + off);
+
       self->wire_->beginTransmission(self->bmi_addr_);
-      self->wire_->write((uint8_t)(reg_addr + off));
+      self->wire_->write(addr);
       for (uint16_t i = 0; i < n; ++i) self->wire_->write(reg_data[off + i]);
       if (self->wire_->endTransmission(true) != 0) return (int8_t)-1;
 
