@@ -8,6 +8,11 @@
 // for use BMM150 vendor API:
 #include <Arduino_BMI270_BMM150>
 
+#include <utilities/BMI270-Sensor-API/bmi2.h>
+#include <utilities/BMI270-Sensor-API/bmi270.h>
+#include <utilities/BMM150-Sensor-API/bmm150.h>
+#include <utilities/BMM150-Sensor-API/bmm150_defs.h>
+
 // If BMI270 sensortime resolution differs, change here.
 // BMI-family sensors commonly use 39.0625 us ticks (2^(-8) ms).
 static constexpr float BMI270_SENSORTIME_TICK_S = 39.0625e-6f;  // 39.0625 µs per tick 
