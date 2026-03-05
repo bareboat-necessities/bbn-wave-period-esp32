@@ -24,6 +24,8 @@
 #endif
 #include <ArduinoEigenDense.h>
 
+#include "BoschBmi270Fifo.h"
+
 #include "AtomS3R_ImuCal.h"
 #include "AtomS3R_M5Ui.h"
 #if SEA_STATE_ENABLE_WIZARD
@@ -31,8 +33,6 @@
 #endif
 #include "AtomS3R_CompassUI.h"
 #include "NmeaCompass.h"
-
-#include "BoschBmi270Fifo.h"
 
 static constexpr uint8_t BMI270_ADDR = 0x68;  // change to 0x69 if your board straps SA0 high
 BoschBmi270Fifo imu_fifo_{};
