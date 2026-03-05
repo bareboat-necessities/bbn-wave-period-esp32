@@ -61,7 +61,7 @@ enum class TrackerType { ARANOVSKIY = 0, KALMANF = 1, ZEROCROSS = 2 };
 #endif
 
 // Loop timing
-static constexpr float    LOOP_HZ        = 240.0f;
+static constexpr float    LOOP_HZ        = 100.0f;
 static constexpr uint32_t LOOP_PERIOD_US = (uint32_t)(1000000.0f / LOOP_HZ);
 
 // Mag pacing only (wrapper gates internally); 
@@ -210,24 +210,28 @@ public:
   }
 
   void tick() {
+    // hard loop pacing (actually waits the full remaining time)
     const uint32_t now_us = micros();
-    int32_t wait_us = (int32_t)(next_tick_us_ - now_us);
+    const int32_t wait_us = (int32_t)(next_tick_us_ - now_us);
+  
     if (wait_us > 0) {
-      if (wait_us > 200) delayMicroseconds(200);
-      else delayMicroseconds((uint32_t)wait_us);
+      delayMicroseconds((uint32_t)wait_us);
+    } else {
+      // We're behind; resync so we don't accumulate phase error forever.
+      next_tick_us_ = now_us;
     }
     next_tick_us_ += LOOP_PERIOD_US;
-
-#if SEA_STATE_ENABLE_WIZARD
+  
+  #if SEA_STATE_ENABLE_WIZARD
     Input::update();
-
+  
     if (Input::tapPressed()) {
       tap_count_++;
       tap_deadline_ms_ = millis() + M5UiCfg::MENU_TAP_WINDOW_MS;
       drawHomePending_();
       Serial.printf("[TAP] count=%d\n", tap_count_);
     }
-
+  
     if (tap_count_ > 0 && (int32_t)(millis() - tap_deadline_ms_) > 0) {
       if (tap_count_ >= 3) handleErase_();
       else                 handleRunWizard_();
@@ -235,16 +239,21 @@ public:
       tap_deadline_ms_ = 0;
       drawHomeStatic_();
     }
-#endif
-
-    const uint32_t sample_us = micros();
-    const uint32_t update_mask = M5.Imu.update();
-
-    ImuSample s;
-    if (readImuMapped(M5.Imu, update_mask, sample_us, s)) {
-      updateFilter_(s);
+  #endif
+  
+    // M5.Imu.update() returns a sensor mask; non-zero means at least one sensor updated.
+    const uint32_t update_mask = (uint32_t)M5.Imu.update();
+  
+    if (update_mask) {
+      // Timestamp AFTER update() so dt does not include variable driver/I2C time.
+      const uint32_t sample_us = micros();
+  
+      ImuSample s;
+      if (readImuMapped(M5.Imu, update_mask, sample_us, s)) {
+        updateFilter_(s, update_mask);
+      }
     }
-
+  
     updateUI_();
     streamSerial_();
   }
@@ -316,10 +325,10 @@ private:
     // (Cold/TunerWarm disable it; Live enables it) for in-motion initialization.
     constexpr bool WANT_LINEAR_BLOCK = true;
 
-    // AtomS3R IMU tuning for this sketch timing: 240 Hz IMU + 80 Hz magnetometer.
+    // AtomS3R IMU tuning for this sketch timing: 100 Hz IMU + 30 Hz magnetometer.
     // Base 1σ noise values are characterized at the nominal rates below.
-    constexpr float IMU_TUNE_REF_HZ = 240.0f;
-    constexpr float MAG_TUNE_REF_HZ = 80.0f;
+    constexpr float IMU_TUNE_REF_HZ = 100.0f;
+    constexpr float MAG_TUNE_REF_HZ = 30.0f;
 
     constexpr float acc_sigma_ref_mps2 = 0.090f;
     constexpr float gyr_sigma_ref_rps  = 0.00135f;
@@ -379,16 +388,16 @@ private:
 
     // drift pseudo-measurement configs
     FF::DriftPseudoCfg pm_vz_zero_on_pos_breach_ {
-        /*enabled*/ true, /*period*/ 1, /*sigma_mult*/ 0.04f, /*sigma_min*/ 0.01f, /*gate*/ 0.9f
+        /*enabled*/ false, /*period*/ 1, /*sigma_mult*/ 0.04f, /*sigma_min*/ 0.01f, /*gate*/ 0.9f
     };
     FF::DriftPseudoCfg pm_pos_zero_ {
-        /*enabled*/ true, /*period*/ 3, /*sigma_mult*/ 8.0f, /*sigma_min*/ 0.2f, /*gate*/ 0.001f
+        /*enabled*/ false, /*period*/ 3, /*sigma_mult*/ 8.0f, /*sigma_min*/ 0.2f, /*gate*/ 0.001f
     };
     FF::DriftPseudoCfg pm_vz_clamp_ {
-        /*enabled*/ true, /*period*/ 1, /*sigma_mult*/ 0.04f, /*sigma_min*/ 0.02f, /*gate*/ 0.8f
+        /*enabled*/ false, /*period*/ 1, /*sigma_mult*/ 0.04f, /*sigma_min*/ 0.02f, /*gate*/ 0.8f
     };
     FF::DriftPseudoCfg pm_harmonic_pos_ {
-        /*enabled*/ true, /*period*/ 1, /*sigma_mult*/ 2.0f, /*sigma_min*/ 0.1f, /*gate*/ 0.005f
+        /*enabled*/ false, /*period*/ 1, /*sigma_mult*/ 2.0f, /*sigma_min*/ 0.1f, /*gate*/ 0.005f
     };
 
     ff.setPseudoVzZeroOnPosBreachCfg(pm_vz_zero_on_pos_breach_);
@@ -476,28 +485,34 @@ private:
     return stale_frame_count_ >= IMU_STALE_FRAME_LIMIT;
   }
 
-  void updateFilter_(const ImuSample& s) {
-    const bool imu_stale = isLikelyStaleImuFrame_(s);
-
+  void updateFilter_(const ImuSample& s, uint32_t update_mask) {
+    // Which sensors actually updated this frame?
+    const bool upd_acc = (update_mask & (uint32_t)m5::IMU_Class::sensor_mask_accel) != 0u;
+    const bool upd_gyr = (update_mask & (uint32_t)m5::IMU_Class::sensor_mask_gyro ) != 0u;
+    const bool upd_mag = (update_mask & (uint32_t)m5::IMU_Class::sensor_mask_mag  ) != 0u;
+  
+    // We only advance the Kalman when BOTH accel + gyro are fresh.
+    const bool upd_ag = upd_acc && upd_gyr;
+  
+    // Only run stale-frame detection on frames we actually use to advance the filter.
+    const bool imu_stale = upd_ag ? isLikelyStaleImuFrame_(s) : false;
+  
     a_raw_norm_ = s.a.norm();
-
+  
     // Calibration handled internally; do not pass temp into fusion.
     a_cal_ = runtime_.applyAccel(s.a, s.tempC);
     w_cal_ = runtime_.applyGyro (s.w, s.tempC);
     m_cal_ = runtime_.applyMag  (s.m);
-
-    dt = (s.sample_us - last_update_us_) * 1e-6f;
-    last_update_us_ = s.sample_us;
-
-    const float a_err = fabsf(a_cal_.norm() - g_std);
-    const bool still = (a_err < ROT_STILL_G_TOL_FRAC * g_std) && (w_cal_.norm() < ROT_STILL_GYRO_RAD_S);
-
+  
+    // MAG health for UI / gating (OK even if mag did not update this frame)
     mag_norm_uT_ = m_cal_.norm();
     mag_ok_ = (mag_norm_uT_ > 5.0f && mag_norm_uT_ < 200.0f);
-
+  
+    // Mag pacing: ONLY consider mag update when mag actually updated this frame
     const uint32_t now_ms = millis();
     mag_fresh_ = false;
-    if (mag_ok_ && !imu_stale) {
+  
+    if (upd_mag && mag_ok_ && !imu_stale) {
       const uint32_t dtm = now_ms - last_mag_ms_;
       const float dm = (m_cal_ - last_mag_uT_).norm();
       if (dtm >= MAG_SAMPLE_SPACING_MS && dm >= MAG_MIN_DELTA_uT) {
@@ -507,18 +522,35 @@ private:
         fusion_.updateMag(m_cal_);
       }
     }
-
-    // Kalman3D_Wave uses physical specific force magnitude in measurement_update_acc_only().
-    // Keep calibrated accel as-is (do not normalize to g) to preserve model consistency.
-    //
-    // IMU stale handling is done via frame validity checks; no extra drift-correction
-    // side-path is used here anymore.
+  
+    // If we don't have a coherent accel+gyro pair, do NOT run the main fusion update.
+    if (!upd_ag) {
+      return;
+    }
+  
+    // dt based on time between *fusion* updates (not "any sensor changed")
+    if (last_update_us_ == 0u) {
+      last_update_us_ = s.sample_us;
+      return; // avoid huge first dt
+    }
+  
+    dt = (float)((uint32_t)(s.sample_us - last_update_us_)) * 1e-6f;
+    last_update_us_ = s.sample_us;
+  
+    // Guard against stalls / weirdness.
+    dt = clampf_(dt, 0.0005f, 0.0500f);  // 0.5 ms .. 50 ms
+  
+    // ROT stillness gating
+    const float a_err = fabsf(a_cal_.norm() - g_std);
+    const bool still = (a_err < ROT_STILL_G_TOL_FRAC * g_std) && (w_cal_.norm() < ROT_STILL_GYRO_RAD_S);
+  
+    // Kalman update (now coherent dt + coherent accel/gyro)
     fusion_.update(dt, w_cal_, a_cal_);
-
+  
     // ATTITUDE FROM FUSION (NED)
     Eigen::Quaternionf q_bw = fusion_.raw().mekf().quaternion_boat();
     q_bw.normalize();
-
+  
     Vector3f down_b(0,0,0);
     {
       // Quaternion-based WORLD->BODY down reference.
@@ -526,13 +558,12 @@ private:
       Vector3f down_q_b = quatRotate_(q_bw.conjugate(), down_w);
       const float dnq = down_q_b.norm();
       if (dnq > 1e-6f) down_q_b /= dnq;
-
+  
       const float a_norm = a_cal_.norm();
       const bool accel_trust = fabsf(a_norm - g_std) <= (HEADING_ACCEL_G_TOL_FRAC * g_std);
-
+  
       if (accel_trust && a_norm > 1e-6f) {
         // At rest/steady motion, use accel for tilt but lock polarity to quaternion down.
-        // This prevents a 180/-180 roll flip if accel sign convention differs.
         down_b = a_cal_ / a_norm;
         if (dnq > 1e-6f && down_b.dot(down_q_b) < 0.0f) down_b = -down_b;
       } else {
@@ -540,7 +571,7 @@ private:
         down_b = down_q_b;
       }
     }
-
+  
     // Magnetic heading (tilt-compensated) derived only from mag + gravity in BODY.
     {
       float hdg_meas = heading_deg_;
@@ -552,21 +583,17 @@ private:
       }
       heading_deg_ = wrap360_(hdg_meas);
     }
-
+  
     // Derive roll/pitch from world-down in BODY so "flat" reads near 0/0
-    // even if quaternion Euler convention/sign differs from display convention.
     {
-      // For NED (+Z down) with BODY axes (+X fwd, +Y right, +Z down):
-      // down_b = [-sin(pitch), sin(roll)cos(pitch), cos(roll)cos(pitch)]
-      // => pitch = asin(-down_b.x), roll = atan2(down_b.y, down_b.z)
       const float pitch = asinf(clampf_(-down_b.x(), -1.0f, 1.0f));
       const float roll  = atan2f(down_b.y(), down_b.z());
-
-      roll_deg_    = wrap180_(roll * RAD_TO_DEG);
-      pitch_deg_   = wrap180_(pitch * RAD_TO_DEG);
+  
+      roll_deg_  = wrap180_(roll  * RAD_TO_DEG);
+      pitch_deg_ = wrap180_(pitch * RAD_TO_DEG);
     }
-
-    // ROT using fusion quaternion
+  
+    // ROT bias removal (stillness-gated gyro bias estimator)
     if (still) {
       const float alpha_b = 1.0f - expf(-dt / ROT_BIAS_TAU_S);
       if (!gyro_bias_ok_) {
@@ -576,24 +603,24 @@ private:
         gyro_bias_ema_ += alpha_b * (w_cal_ - gyro_bias_ema_);
       }
     }
-
+  
     Vector3f w_use = w_cal_;
     if (gyro_bias_ok_) w_use -= gyro_bias_ema_;
-
+  
     Vector3f w_world = quatRotate_(q_bw, w_use);  // BODY->WORLD
     float rot_dpm_meas = w_world.z() * RAD_TO_DEG * 60.0f;
     rot_dpm_meas = clampf_(rot_dpm_meas, -720.0f, 720.0f);
-
+  
     const float tau_rot = 1.5f;
     const float alpha_r = 1.0f - expf(-dt / tau_rot);
     if (!rot_inited_) { rot_inited_ = true; rot_dpm_filt_ = rot_dpm_meas; }
     else              { rot_dpm_filt_ += alpha_r * (rot_dpm_meas - rot_dpm_filt_); }
-
+  
     // FULL FUSION WAVE STATE
     // MEKF is in NED (+Z down). Report heave as +UP for marine consumers.
-    heave_m_ = -fusion_.raw().mekf().get_position().z();
-    wave_envelope_m_ = fusion_.raw().getDisplacementScale();
-    wave_hz_ = fusion_.raw().getFreqHz();
+    heave_m_          = -fusion_.raw().mekf().get_position().z();
+    wave_envelope_m_  =  fusion_.raw().getDisplacementScale();
+    wave_hz_          =  fusion_.raw().getFreqHz();
   }
 
   void drawHomeStatic_() {
@@ -681,8 +708,8 @@ private:
                   (double)(wave_envelope_m_ * 100),
                   (unsigned)stale_frame_count_);
     /*
-    Serial.printf("dt:%+.3f\n", (double)(dt * 1000));
-    */     
+    Serial.printf("dt:%+.3f\n", (double)(dt * 1000));  
+    */   
 #endif
   }
 };
