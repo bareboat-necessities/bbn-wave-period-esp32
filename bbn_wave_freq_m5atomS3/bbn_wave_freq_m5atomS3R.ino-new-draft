@@ -506,66 +506,41 @@ private:
     return stale_frame_count_ >= IMU_STALE_FRAME_LIMIT;
   }
 
-  void updateFilter_(const ImuSample& s, uint32_t update_mask) {
-    // Which sensors actually updated this frame?
-    const bool upd_acc = (update_mask & (uint32_t)m5::IMU_Class::sensor_mask_accel) != 0u;
-    const bool upd_gyr = (update_mask & (uint32_t)m5::IMU_Class::sensor_mask_gyro ) != 0u;
-    const bool upd_mag = (update_mask & (uint32_t)m5::IMU_Class::sensor_mask_mag  ) != 0u;
+  void updateFilter_(const BoschAGSample& s) {
+    // FIFO-derived dt (already clamped in the FIFO reader)
+    dt = s.dt_s;
   
-    // We only advance the Kalman when BOTH accel + gyro are fresh.
-    const bool upd_ag = upd_acc && upd_gyr;
+    // "raw" norms for UI
+    a_raw_norm_ = std::sqrt(s.ax*s.ax + s.ay*s.ay + s.az*s.az);
   
-    // Only run stale-frame detection on frames we actually use to advance the filter.
-    const bool imu_stale = upd_ag ? isLikelyStaleImuFrame_(s) : false;
+    // No temperature in FIFO sample here; if you need temp-comp, add a BMI270 temp read path.
+    constexpr float tempC = 25.0f;
   
-    a_raw_norm_ = s.a.norm();
+    // Calibrate
+    const Vector3f a_raw(s.ax, s.ay, s.az);
+    const Vector3f w_raw(s.gx, s.gy, s.gz);
   
-    // Calibration handled internally; do not pass temp into fusion.
-    a_cal_ = runtime_.applyAccel(s.a, s.tempC);
-    w_cal_ = runtime_.applyGyro (s.w, s.tempC);
-    m_cal_ = runtime_.applyMag  (s.m);
+    a_cal_ = runtime_.applyAccel(a_raw, tempC);
+    w_cal_ = runtime_.applyGyro (w_raw, tempC);
   
-    // MAG health for UI / gating (OK even if mag did not update this frame)
+    // If you add real mag reads later, set mag_raw_uT_ and pending_mag_update_ in tick()
+    m_cal_ = runtime_.applyMag(mag_raw_uT_);
     mag_norm_uT_ = m_cal_.norm();
     mag_ok_ = (mag_norm_uT_ > 5.0f && mag_norm_uT_ < 200.0f);
   
-    // Mag pacing: ONLY consider mag update when mag actually updated this frame
-    const uint32_t now_ms = millis();
-    mag_fresh_ = false;
-  
-    if (upd_mag && mag_ok_ && !imu_stale) {
-      const uint32_t dtm = now_ms - last_mag_ms_;
-      const float dm = (m_cal_ - last_mag_uT_).norm();
-      if (dtm >= MAG_SAMPLE_SPACING_MS && dm >= MAG_MIN_DELTA_uT) {
-        last_mag_ms_ = now_ms;
-        last_mag_uT_ = m_cal_;
-        mag_fresh_ = true;
-        fusion_.updateMag(m_cal_);
-      }
-    }
-  
-    // If we don't have a coherent accel+gyro pair, do NOT run the main fusion update.
-    if (!upd_ag) {
-      return;
-    }
-  
-    // dt based on time between *fusion* updates (not "any sensor changed")
-    if (last_update_us_ == 0u) {
-      last_update_us_ = s.sample_us;
-      return; // avoid huge first dt
-    }
-  
-    dt = (float)((uint32_t)(s.sample_us - last_update_us_)) * 1e-6f;
-    last_update_us_ = s.sample_us;
-  
-    // Guard against stalls / weirdness.
-    dt = clampf_(dt, 0.0005f, 0.0500f);  // 0.5 ms .. 50 ms
-  
-    // ROT stillness gating
+    // stillness for ROT bias estimator
     const float a_err = fabsf(a_cal_.norm() - g_std);
     const bool still = (a_err < ROT_STILL_G_TOL_FRAC * g_std) && (w_cal_.norm() < ROT_STILL_GYRO_RAD_S);
   
-    // Kalman update (now coherent dt + coherent accel/gyro)
+    // Apply pending mag update exactly once (when you implement mag again)
+    mag_fresh_ = false;
+    if (pending_mag_update_ && mag_ok_) {
+      fusion_.updateMag(m_cal_);
+      mag_fresh_ = true;
+      pending_mag_update_ = false;
+    }
+  
+    // Main fusion update driven by FIFO dt
     fusion_.update(dt, w_cal_, a_cal_);
   
     // ATTITUDE FROM FUSION (NED)
@@ -574,7 +549,6 @@ private:
   
     Vector3f down_b(0,0,0);
     {
-      // Quaternion-based WORLD->BODY down reference.
       const Vector3f down_w(0.0f, 0.0f, 1.0f);
       Vector3f down_q_b = quatRotate_(q_bw.conjugate(), down_w);
       const float dnq = down_q_b.norm();
@@ -584,16 +558,14 @@ private:
       const bool accel_trust = fabsf(a_norm - g_std) <= (HEADING_ACCEL_G_TOL_FRAC * g_std);
   
       if (accel_trust && a_norm > 1e-6f) {
-        // At rest/steady motion, use accel for tilt but lock polarity to quaternion down.
         down_b = a_cal_ / a_norm;
         if (dnq > 1e-6f && down_b.dot(down_q_b) < 0.0f) down_b = -down_b;
       } else {
-        // Fallback for dynamic maneuvers: use attitude estimate for tilt only.
         down_b = down_q_b;
       }
     }
   
-    // Magnetic heading (tilt-compensated) derived only from mag + gravity in BODY.
+    // Magnetic heading (will stay last value until you re-enable real mag sampling)
     {
       float hdg_meas = heading_deg_;
       if (mag_ok_) {
@@ -605,11 +577,10 @@ private:
       heading_deg_ = wrap360_(hdg_meas);
     }
   
-    // Derive roll/pitch from world-down in BODY so "flat" reads near 0/0
+    // roll/pitch from down_b
     {
       const float pitch = asinf(clampf_(-down_b.x(), -1.0f, 1.0f));
       const float roll  = atan2f(down_b.y(), down_b.z());
-  
       roll_deg_  = wrap180_(roll  * RAD_TO_DEG);
       pitch_deg_ = wrap180_(pitch * RAD_TO_DEG);
     }
@@ -628,7 +599,7 @@ private:
     Vector3f w_use = w_cal_;
     if (gyro_bias_ok_) w_use -= gyro_bias_ema_;
   
-    Vector3f w_world = quatRotate_(q_bw, w_use);  // BODY->WORLD
+    Vector3f w_world = quatRotate_(q_bw, w_use);
     float rot_dpm_meas = w_world.z() * RAD_TO_DEG * 60.0f;
     rot_dpm_meas = clampf_(rot_dpm_meas, -720.0f, 720.0f);
   
@@ -638,10 +609,9 @@ private:
     else              { rot_dpm_filt_ += alpha_r * (rot_dpm_meas - rot_dpm_filt_); }
   
     // FULL FUSION WAVE STATE
-    // MEKF is in NED (+Z down). Report heave as +UP for marine consumers.
-    heave_m_          = -fusion_.raw().mekf().get_position().z();
-    wave_envelope_m_  =  fusion_.raw().getDisplacementScale();
-    wave_hz_          =  fusion_.raw().getFreqHz();
+    heave_m_         = -fusion_.raw().mekf().get_position().z();
+    wave_envelope_m_ =  fusion_.raw().getDisplacementScale();
+    wave_hz_         =  fusion_.raw().getFreqHz();
   }
 
   void drawHomeStatic_() {
