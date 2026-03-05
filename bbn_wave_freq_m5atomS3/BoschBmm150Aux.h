@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 
 #ifndef BMM150_USE_FLOATING_POINT
   #define BMM150_USE_FLOATING_POINT 1
@@ -11,8 +12,8 @@
 
 // Bosch SensorAPI headers (vendored inside Arduino_BMI270_BMM150)
 #include <utilities/BMI270-Sensor-API/bmi2.h>
-#include <utilities/BMI270-Sensor-API/bmi270.h>
 #include <utilities/BMI270-Sensor-API/bmi2_defs.h>
+#include <utilities/BMI270-Sensor-API/bmi270.h>
 
 #include <utilities/BMM150-Sensor-API/bmm150.h>
 #include <utilities/BMM150-Sensor-API/bmm150_defs.h>
@@ -25,38 +26,37 @@ using Vector3f = Eigen::Vector3f;
 
 class BoschBmm150Aux {
 public:
+  struct Config {
+    uint8_t bmm_addr = BMM150_DEFAULT_I2C_ADDRESS; // usually 0x10
+    float   aux_odr_hz = 25.0f;                    // 25Hz is plenty for heading/yaw correction
+    bool    set_pullups_2k = true;                 // harmless if board already has pullups
+    uint8_t preset_mode = BMM150_PRESETMODE_REGULAR;
+    bool    normal_mode = true;                    // true => normal/continuous; false => forced (not recommended here)
+  };
+
   BoschBmm150Aux() = default;
 
   bool ok() const { return ok_; }
 
   // Initialize BMM150 via BMI270 AUX, using the *existing* BMI270 SensorAPI device.
-  //
   // bmi_dev must remain valid for the lifetime of this object.
-  // bmm_addr: almost always BMM150_DEFAULT_I2C_ADDRESS (0x10)
-  // aux_odr_hz: AUX ODR setting inside BMI270 (not the IMU FIFO ODR).
-  bool begin(struct bmi2_dev* bmi_dev,
-             uint8_t bmm_addr = BMM150_DEFAULT_I2C_ADDRESS,
-             float aux_odr_hz = 100.0f,
-             bool set_pullups_2k = true)
-  {
+  bool begin(struct bmi2_dev* bmi_dev, const Config& cfg = Config()) {
     ok_ = false;
     bmi_dev_ = bmi_dev;
-    bmm_addr_ = bmm_addr;
+    cfg_ = cfg;
 
     if (!bmi_dev_) return false;
 
-    // AUX works more reliably with APS disabled (FIFO setups often do this already).
+    // AUX is more reliable with advanced power save disabled.
     (void)bmi2_set_adv_power_save(BMI2_DISABLE, bmi_dev_);
 
-    // Optional: configure AUX pullups (seen in vendor examples for BMI270+BMM150).
-    // If your board already has pullups, this is usually harmless.
+    // Optional: configure AUX pullups.
+    // (Some Bosch/M5 examples tweak AUX_IF_TRIM; guard because not all builds expose these.)
 #if defined(BMI2_AUX_IF_TRIM) && defined(BMI2_ASDA_PUPSEL_2K)
-    if (set_pullups_2k) {
+    if (cfg_.set_pullups_2k) {
       uint8_t regdata = BMI2_ASDA_PUPSEL_2K;
       (void)bmi2_set_regs(BMI2_AUX_IF_TRIM, &regdata, 1, bmi_dev_);
     }
-#else
-    (void)set_pullups_2k;
 #endif
 
     // Enable AUX sensor block (doesn't touch accel/gyro enables).
@@ -65,93 +65,111 @@ public:
       (void)bmi2_sensor_enable(&sens, 1, bmi_dev_);
     }
 
-    // Configure AUX in MANUAL mode so bmm150_* can talk via bmi2_read_aux_man_mode().
-    struct bmi2_sens_config cfg{};
-    cfg.type = BMI2_AUX;
+    // Configure AUX in MANUAL mode so BMM150 SensorAPI can talk via bmi2_read_aux_man_mode().
+    bmi2_sens_config sc{};
+    sc.type = BMI2_AUX;
 
-    int8_t rslt = bmi270_get_sensor_config(&cfg, 1, bmi_dev_);
+    int8_t rslt = bmi270_get_sensor_config(&sc, 1, bmi_dev_);
     if (rslt != BMI2_OK) return false;
 
-    cfg.cfg.aux.aux_en = BMI2_ENABLE;
-    cfg.cfg.aux.manual_en = BMI2_ENABLE;
-    cfg.cfg.aux.i2c_device_addr = bmm_addr_;
+    // These fields exist in the Bosch BMI270 SensorAPI used by Arduino_BMI270_BMM150.
+    sc.cfg.aux.aux_en          = BMI2_ENABLE;
+    sc.cfg.aux.manual_en       = BMI2_ENABLE;
+    sc.cfg.aux.i2c_device_addr = cfg_.bmm_addr;
 
-    // Critical for being able to WRITE BMM150 regs via BMI270 AUX (commonly missed).
-    cfg.cfg.aux.fcu_write_en = BMI2_ENABLE;  [oai_citation:1‡Bosch Sensortec Community](https://community.bosch-sensortec.com/mems-sensors-forum-jrmujtaw/post/bmm150-not-updating-in-forced-mode-5cScOBVRV62u0o8?utm_source=chatgpt.com)
+    // Critical: allow writes to the AUX device via FCU.
+    sc.cfg.aux.fcu_write_en = BMI2_ENABLE;
 
-    // Manual burst read length: BMM150 mag block (0x42..0x49) is 8 bytes.
+    // Manual burst read length. BMM150 data block (0x42..0x49) is 8 bytes.
 #if defined(BMI2_AUX_READ_LEN_3)
-    cfg.cfg.aux.man_rd_burst = BMI2_AUX_READ_LEN_3;
+    sc.cfg.aux.man_rd_burst = BMI2_AUX_READ_LEN_3;
+#elif defined(BMI2_AUX_READ_LEN_2)
+    sc.cfg.aux.man_rd_burst = BMI2_AUX_READ_LEN_2;
+#elif defined(BMI2_AUX_READ_LEN_1)
+    sc.cfg.aux.man_rd_burst = BMI2_AUX_READ_LEN_1;
 #else
-    // Fallback if your build only has _0.._2
-    cfg.cfg.aux.man_rd_burst = BMI2_AUX_READ_LEN_2;
+    sc.cfg.aux.man_rd_burst = BMI2_AUX_READ_LEN_0;
 #endif
 
     // Start address for manual reads (BMM150 data block).
 #if defined(BMM150_REG_DATA_X_LSB)
-    cfg.cfg.aux.read_addr = BMM150_REG_DATA_X_LSB;
+    sc.cfg.aux.read_addr = BMM150_REG_DATA_X_LSB;
 #elif defined(BMM150_DATA_X_LSB)
-    cfg.cfg.aux.read_addr = BMM150_DATA_X_LSB;
+    sc.cfg.aux.read_addr = BMM150_DATA_X_LSB;
 #else
-    cfg.cfg.aux.read_addr = 0x42; // datasheet default
+    sc.cfg.aux.read_addr = 0x42;
 #endif
 
-    cfg.cfg.aux.odr = auxOdrFromHz_(aux_odr_hz);
+    sc.cfg.aux.odr = auxOdrFromHz_(cfg_.aux_odr_hz);
 
-    rslt = bmi270_set_sensor_config(&cfg, 1, bmi_dev_);
+    rslt = bmi270_set_sensor_config(&sc, 1, bmi_dev_);
     if (rslt != BMI2_OK) return false;
 
     // Hook BMM150 SensorAPI to BMI270 AUX manual read/write.
-    memset(&bmm_dev_, 0, sizeof(bmm_dev_));
-    bmm_dev_.intf = BMM150_I2C_INTF;
+    std::memset(&bmm_dev_, 0, sizeof(bmm_dev_));
+    bmm_dev_.intf     = BMM150_I2C_INTF; // still "I2C" logically; transport is provided by callbacks
     bmm_dev_.intf_ptr = this;
-    bmm_dev_.read = &BoschBmm150Aux::bmm_read_;
-    bmm_dev_.write = &BoschBmm150Aux::bmm_write_;
+    bmm_dev_.read     = &BoschBmm150Aux::bmm_read_;
+    bmm_dev_.write    = &BoschBmm150Aux::bmm_write_;
     bmm_dev_.delay_us = &BoschBmm150Aux::bmm_delay_us_;
 
-    int8_t br = bmm150_init(&bmm_dev_);
+    const int8_t br = bmm150_init(&bmm_dev_);
     if (br != BMM150_OK) return false;
 
-    // Configure BMM150 for continuous reads (good for wizard + runtime).
-    memset(&bmm_settings_, 0, sizeof(bmm_settings_));
-    bmm_settings_.preset_mode = BMM150_PRESETMODE_REGULAR;
+    // Configure BMM150 operating mode / preset.
+    std::memset(&bmm_settings_, 0, sizeof(bmm_settings_));
+    bmm_settings_.preset_mode = cfg_.preset_mode;
     (void)bmm150_set_presetmode(&bmm_settings_, &bmm_dev_);
 
+    // Prefer continuous mode for stable “latest sample” reads through AUX.
+    // If your SensorAPI lacks these macros, fall back to 0 (common "normal").
+    if (cfg_.normal_mode) {
 #if defined(BMM150_POWERMODE_NORMAL)
-    bmm_settings_.pwr_mode = BMM150_POWERMODE_NORMAL;
+      bmm_settings_.pwr_mode = BMM150_POWERMODE_NORMAL;
 #elif defined(BMM150_NORMAL_MODE)
-    bmm_settings_.pwr_mode = BMM150_NORMAL_MODE;
+      bmm_settings_.pwr_mode = BMM150_NORMAL_MODE;
 #else
-    bmm_settings_.pwr_mode = 0x00; // normal in many SensorAPI versions
+      bmm_settings_.pwr_mode = 0x00;
 #endif
+    } else {
+#if defined(BMM150_POWERMODE_FORCED)
+      bmm_settings_.pwr_mode = BMM150_POWERMODE_FORCED;
+#elif defined(BMM150_FORCED_MODE)
+      bmm_settings_.pwr_mode = BMM150_FORCED_MODE;
+#else
+      bmm_settings_.pwr_mode = 0x01;
+#endif
+    }
+
     (void)bmm150_set_op_mode(&bmm_settings_, &bmm_dev_);
+
+    // Optional: make sure we can read chip-id once (helps catch AUX misconfig early).
+    uint8_t id = 0;
+    if (!readChipId(id)) return false;
 
     ok_ = true;
     return true;
   }
 
   // Read compensated magnetometer in micro-tesla.
-  // bmm150_read_mag_data() reads 0x42..0x49 and returns compensated uT.  [oai_citation:2‡GitHub](https://github.com/arduino-libraries/Arduino_BMI270_BMM150/blob/master/src/utilities/BMM150-Sensor-API/bmm150.h)
   bool readMag_uT(Vector3f& m_uT_out) {
     if (!ok_) return false;
 
-    struct bmm150_mag_data md{};
+    bmm150_mag_data md{};
     const int8_t r = bmm150_read_mag_data(&md, &bmm_dev_);
     if (r != BMM150_OK) return false;
 
-    // When BMM150_USE_FLOATING_POINT=1, md.x/y/z are floats in uT.
     const float mx = (float)md.x;
     const float my = (float)md.y;
     const float mz = (float)md.z;
 
-    if (!isfinite(mx) || !isfinite(my) || !isfinite(mz)) return false;
+    if (!std::isfinite(mx) || !std::isfinite(my) || !std::isfinite(mz)) return false;
     m_uT_out = Vector3f(mx, my, mz);
     return true;
   }
 
-  // Optional: quick “is it alive?” check
+  // Read chip-id via AUX path (optional validation).
   bool readChipId(uint8_t& chip_id_out) {
-    if (!ok_) return false;
 #if defined(BMM150_REG_CHIP_ID)
     uint8_t id = 0;
     if (bmm_read_(BMM150_REG_CHIP_ID, &id, 1, this) != 0) return false;
@@ -193,7 +211,6 @@ private:
 #if defined(BMI2_AUX_ODR_0_78HZ)
     return BMI2_AUX_ODR_0_78HZ;
 #else
-    // Fallback (many builds at least have 25Hz)
 #if defined(BMI2_AUX_ODR_25HZ)
     return BMI2_AUX_ODR_25HZ;
 #else
@@ -206,14 +223,17 @@ private:
   static BMM150_INTF_RET_TYPE bmm_read_(uint8_t reg, uint8_t* data, uint32_t len, void* intf_ptr) {
     auto* self = reinterpret_cast<BoschBmm150Aux*>(intf_ptr);
     if (!self || !self->bmi_dev_) return (BMM150_INTF_RET_TYPE)-1;
-    // bmi2_read_aux_man_mode routes through BMI270 AUX I2C master.  [oai_citation:3‡GitHub](https://github.com/m5stack/M5Unit-IMU-Pro-Mini/blob/main/src/BMI270.cpp)
-    return (BMM150_INTF_RET_TYPE)bmi2_read_aux_man_mode(reg, data, len, self->bmi_dev_);
+
+    const int8_t r = bmi2_read_aux_man_mode(reg, data, len, self->bmi_dev_);
+    return (BMM150_INTF_RET_TYPE)r;
   }
 
   static BMM150_INTF_RET_TYPE bmm_write_(uint8_t reg, const uint8_t* data, uint32_t len, void* intf_ptr) {
     auto* self = reinterpret_cast<BoschBmm150Aux*>(intf_ptr);
     if (!self || !self->bmi_dev_) return (BMM150_INTF_RET_TYPE)-1;
-    return (BMM150_INTF_RET_TYPE)bmi2_write_aux_man_mode(reg, data, len, self->bmi_dev_);
+
+    const int8_t r = bmi2_write_aux_man_mode(reg, data, len, self->bmi_dev_);
+    return (BMM150_INTF_RET_TYPE)r;
   }
 
   static void bmm_delay_us_(uint32_t us, void*) { delayMicroseconds(us); }
@@ -221,10 +241,10 @@ private:
 private:
   bool ok_ = false;
 
+  Config cfg_{};
   struct bmi2_dev* bmi_dev_ = nullptr;
-  uint8_t bmm_addr_ = BMM150_DEFAULT_I2C_ADDRESS;
 
-  struct bmm150_dev bmm_dev_{};
+  struct bmm150_dev      bmm_dev_{};
   struct bmm150_settings bmm_settings_{};
 };
 
