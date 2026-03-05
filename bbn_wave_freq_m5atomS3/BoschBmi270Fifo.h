@@ -1,4 +1,5 @@
 #pragma once
+
 #include <Arduino.h>
 #include <Wire.h>
 #include <cmath>
@@ -7,9 +8,9 @@
 #include "bmi270.h"   // Bosch BMI270 SensorAPI (bmi2 + bmi270)
 #include "bmm150.h"   // Optional (see notes below)
 
-// If your BMI270 sensortime resolution differs, change here.
+// If BMI270 sensortime resolution differs, change here.
 // BMI-family sensors commonly use 39.0625 us ticks (2^(-8) ms).
-static constexpr float BMI270_SENSORTIME_TICK_S = 39.0625e-6f;  // 39.0625 µs per tick :contentReference[oaicite:5]{index=5}
+static constexpr float BMI270_SENSORTIME_TICK_S = 39.0625e-6f;  // 39.0625 µs per tick 
 static constexpr uint32_t BMI270_SENSORTIME_MASK = 0x00FFFFFFu; // 24-bit counter wrap
 
 struct BoschAGSample {
@@ -27,7 +28,7 @@ public:
     wire_ = &wire;
     bmi_addr_ = bmi270_addr;
 
-    // -------- BMI270 (Bosch vendor API) init --------
+    // BMI270 (Bosch vendor API) init
     memset(&bmi_, 0, sizeof(bmi_));
     bmi_.intf = BMI2_I2C_INTF;
     bmi_.read = &BoschBmi270Fifo::bmi2_i2c_read_;
@@ -47,7 +48,7 @@ public:
     rslt = bmi270_get_sensor_config(cfg, 2, &bmi_);
     if (rslt != BMI2_OK) return false;
 
-    // Map requested ODR to the closest macro (extend if you need more)
+    // Map requested ODR to the closest macro
     cfg[0].cfg.acc.odr = (odr_hz >= 200.0f) ? BMI2_ACC_ODR_200HZ : BMI2_ACC_ODR_100HZ;
     cfg[0].cfg.acc.range = BMI2_ACC_RANGE_2G;
     cfg[0].cfg.acc.bwp = BMI2_ACC_NORMAL_AVG4;
@@ -66,7 +67,7 @@ public:
     rslt = bmi270_sensor_enable(sens_list, 2, &bmi_);
     if (rslt != BMI2_OK) return false;
 
-    // FIFO reads require disabling advanced power save. :contentReference[oaicite:6]{index=6}
+    // FIFO reads require disabling advanced power save. 
     rslt = bmi2_set_adv_power_save(BMI2_DISABLE, &bmi_);
     if (rslt != BMI2_OK) return false;
 
@@ -102,80 +103,109 @@ public:
   int readAG(BoschAGSample* out, int max_out)
   {
     if (!out || max_out <= 0) return 0;
-
-    uint16_t fifo_len = 0;
-    if (bmi2_get_fifo_length(&fifo_len, &bmi_) != BMI2_OK) return 0;
-    if (fifo_len < 16) return 0;
-
-    // Bosch FIFO header-mode example reads extra bytes to ensure sensor_time/control frames are included. :contentReference[oaicite:8]{index=8}
-    constexpr uint16_t OVERREAD = 220; // same idea as Bosch example
-    uint16_t req = fifo_len + OVERREAD + bmi_.dummy_byte;
-    if (req > sizeof(fifo_buf_)) req = sizeof(fifo_buf_);
-
-    fifo_.data = fifo_buf_;
-    fifo_.length = req;
-
-    if (bmi2_read_fifo_data(&fifo_, &bmi_) != BMI2_OK) return 0;
-
-    uint16_t a_len = (uint16_t)max_out;
-    uint16_t g_len = (uint16_t)max_out;
-
-    (void)bmi2_extract_accel(accel_, &a_len, &fifo_, &bmi_);
-    (void)bmi2_extract_gyro (gyro_,  &g_len, &fifo_, &bmi_);
-
-    const int n = (int)std::min(a_len, g_len);
-    if (n <= 0) return 0;
-
-    skipped_total_ += fifo_.skipped_frame_count;
-
-    // Convert sensor_time (ticks) -> dt across the *batch*, then per-sample dt.
-    float dt_per = nominal_dt_;
-
-    const uint32_t st = ((uint32_t)fifo_.sensor_time) & BMI270_SENSORTIME_MASK;
-    if (!have_stime_) {
-      have_stime_ = true;
-      last_stime_ = st;
-      dt_per = nominal_dt_;
-    } else {
-      const uint32_t d = (st - last_stime_) & BMI270_SENSORTIME_MASK;
-      last_stime_ = st;
-
-      const float dt_total = (float)d * BMI270_SENSORTIME_TICK_S;
-      dt_per = dt_total / (float)n;
-
-      // sanity clamps (protect the filter if FIFO stalls or bursts oddly)
-      if (!(dt_per > 0.0f) || dt_per < 0.0005f) dt_per = 0.0005f;
-      if (dt_per > 0.0500f) dt_per = 0.0500f;
-    }
-
-    // LSB -> physical units (using configured ranges: ±2g, ±2000 dps)
-    // accel: ±2g full-scale maps to ±32768
-    // gyro : ±2000 dps full-scale maps to ±32768
-    constexpr float ACC_RANGE_G = 2.0f;
-    constexpr float GYR_RANGE_DPS = 2000.0f;
-    constexpr float G0 = 9.80665f;
-
-    for (int i = 0; i < n; ++i) {
-      const int16_t ax = accel_[i].x;
-      const int16_t ay = accel_[i].y;
-      const int16_t az = accel_[i].z;
-      const int16_t gx = gyro_[i].x;
-      const int16_t gy = gyro_[i].y;
-      const int16_t gz = gyro_[i].z;
-
-      out[i].dt_s = dt_per;
-
-      out[i].ax = ((float)ax) * (ACC_RANGE_G * G0) / 32768.0f;
-      out[i].ay = ((float)ay) * (ACC_RANGE_G * G0) / 32768.0f;
-      out[i].az = ((float)az) * (ACC_RANGE_G * G0) / 32768.0f;
-
+  
+    // Ensure FIFO returns sensortime frame (fifo_time_en)
+    // "Return sensortime frame after the last valid data frame." :contentReference[oaicite:4]{index=4}
+    #ifdef BMI2_FIFO_TIME_EN
+      (void)bmi2_set_fifo_config(BMI2_FIFO_TIME_EN, BMI2_ENABLE, &bmi_);
+    #endif
+  
+    const float dt_nom = nominal_dt_;
+    const uint32_t st_prev = have_stime_ ? last_stime_ : 0;
+  
+    int total = 0;
+    uint32_t st_last_seen = st_prev;
+    bool saw_new_stime = false;
+  
+    // Drain FIFO to empty so sensortime frame is actually emitted. :contentReference[oaicite:5]{index=5}
+    while (total < max_out) {
+      uint16_t fifo_len = 0;
+      if (bmi2_get_fifo_length(&fifo_len, &bmi_) != BMI2_OK) break;
+      if (fifo_len < 16) break; // effectively empty
+  
+      constexpr uint16_t OVERREAD = 220;
+      uint16_t req = fifo_len + OVERREAD + bmi_.dummy_byte;
+      if (req > sizeof(fifo_buf_)) req = sizeof(fifo_buf_);
+  
+      fifo_.data = fifo_buf_;
+      fifo_.length = req;
+  
+      if (bmi2_read_fifo_data(&fifo_, &bmi_) != BMI2_OK) break;
+  
+      // Extract into temp arrays
+      uint16_t a_len = (uint16_t)std::min<int>(64, max_out - total);
+      uint16_t g_len = (uint16_t)std::min<int>(64, max_out - total);
+  
+      (void)bmi2_extract_accel(accel_, &a_len, &fifo_, &bmi_);
+      (void)bmi2_extract_gyro (gyro_,  &g_len, &fifo_, &bmi_);
+  
+      const int n = (int)std::min(a_len, g_len);
+      if (n <= 0) {
+        // Even if no samples extracted, continue draining to reach FIFO-empty/sensortime.
+        skipped_total_ += fifo_.skipped_frame_count;
+        continue;
+      }
+  
+      skipped_total_ += fifo_.skipped_frame_count;
+  
+      // Capture sensortime parsed from FIFO (only valid when FIFO drained to empty at some point)
+      const uint32_t st = ((uint32_t)fifo_.sensor_time) & BMI270_SENSORTIME_MASK;
+      if (have_stime_) {
+        if (st != 0 && st != st_last_seen) { st_last_seen = st; saw_new_stime = true; }
+      } else {
+        if (st != 0) { st_last_seen = st; saw_new_stime = true; }
+      }
+  
+      // Convert raw -> physical (same as your previous conversion)
+      constexpr float ACC_RANGE_G = 2.0f;
+      constexpr float GYR_RANGE_DPS = 2000.0f;
+      constexpr float G0 = 9.80665f;
       const float dps_to_rps = (float)M_PI / 180.0f;
-      out[i].gx = ((float)gx) * (GYR_RANGE_DPS * dps_to_rps) / 32768.0f;
-      out[i].gy = ((float)gy) * (GYR_RANGE_DPS * dps_to_rps) / 32768.0f;
-      out[i].gz = ((float)gz) * (GYR_RANGE_DPS * dps_to_rps) / 32768.0f;
+  
+      for (int i = 0; i < n; ++i) {
+        out[total + i].dt_s = dt_nom; // temp; we overwrite after we know dt from sensortime
+        out[total + i].ax = ((float)accel_[i].x) * (ACC_RANGE_G * G0) / 32768.0f;
+        out[total + i].ay = ((float)accel_[i].y) * (ACC_RANGE_G * G0) / 32768.0f;
+        out[total + i].az = ((float)accel_[i].z) * (ACC_RANGE_G * G0) / 32768.0f;
+  
+        out[total + i].gx = ((float)gyro_[i].x) * (GYR_RANGE_DPS * dps_to_rps) / 32768.0f;
+        out[total + i].gy = ((float)gyro_[i].y) * (GYR_RANGE_DPS * dps_to_rps) / 32768.0f;
+        out[total + i].gz = ((float)gyro_[i].z) * (GYR_RANGE_DPS * dps_to_rps) / 32768.0f;
+      }
+  
+      total += n;
     }
-
-    return n;
+  
+    // Compute dt from FIFO sensortime across the whole drained batch.
+    // Sensortime resolution is 39.0625us. :contentReference[oaicite:6]{index=6}
+    if (total > 0) {
+      if (!have_stime_) {
+        have_stime_ = saw_new_stime;
+        last_stime_ = st_last_seen;
+        // keep nominal dt on first batch
+        return total;
+      }
+  
+      if (saw_new_stime) {
+        const uint32_t d_ticks = (st_last_seen - last_stime_) & BMI270_SENSORTIME_MASK;
+        last_stime_ = st_last_seen;
+  
+        const float dt_total = (float)d_ticks * BMI270_SENSORTIME_TICK_S;
+        float dt_per = dt_total / (float)total;
+  
+        // sanity
+        if (!(dt_per > 0.0f) || dt_per < 0.0005f) dt_per = 0.0005f;
+        if (dt_per > 0.0500f) dt_per = 0.0500f;
+  
+        for (int i = 0; i < total; ++i) out[i].dt_s = dt_per;
+      } else {
+        // No new FIFO sensortime observed (should be rare if we truly drained to empty).
+        // Fall back to nominal dt to avoid bursty dt jitter.
+        for (int i = 0; i < total; ++i) out[i].dt_s = nominal_dt_;
+      }
+    }
+  
+    return total;
   }
 
   uint32_t skippedFramesTotal() const { return skipped_total_; }
