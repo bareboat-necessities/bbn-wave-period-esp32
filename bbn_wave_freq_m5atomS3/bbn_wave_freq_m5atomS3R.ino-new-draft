@@ -376,7 +376,9 @@ private:
 
     if (!runtime_imu_.begin(Wire, cfg)) {
       Serial.printf("[BOOT] Bosch IMU init failed: %s\n", runtime_imu_.lastErrorString());
-      ui_.fail("IMU", "Bosch IMU init fail");
+      Serial.printf("[BOOT] FIFO detail: %s\n", runtime_imu_.fifo().lastErrorString());
+      Serial.printf("[BOOT] BMI addr tried: 0x%02X\n", cfg.bmi270_addr);
+      ui_.fail("IMU", runtime_imu_.fifo().lastErrorString());
       while (true) delay(100);
     }
 
