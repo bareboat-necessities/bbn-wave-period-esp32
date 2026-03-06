@@ -1,762 +1,543 @@
+#pragma once
+
 /*
-  Copyright 2026, Mikhail Grushinskiy
+  BoschBmi270_ImuCal.h  (AtomS3R)
 
-  AtomS3R SeaStateFusion (+ optional IMU Calibration Wizard)
-  (SeaStateFusion version: Kalman3D_Wave + mag init + yaw correction)
+  Bosch-backed IMU sample source that matches the SAME axis convention as
+  AtomS3R_ImuCal.h (BODY NED):
 
-  Assumptions:
-    - fusion_.raw().mekf().quaternion_boat() returns BODY->WORLD quaternion (q_bw), world frame is NED (+Z down).
-    - runtime_.apply* already includes temperature compensation.
+    acc_body = ( ay, ax, -az )    [m/s^2]
+    gyr_body = ( gy, gx, -gz )    [rad/s]
+    mag_body = ( my, mx, -mz )    [uT]
+
+  - Accel/Gyro: BMI270 FIFO via BoschBmi270Fifo
+  - Mag: BMM150 via BMI270 AUX using BoschBmm150Aux manual AUX bridge
+
+  Notes:
+  - Reuses atoms3r_ical::ImuSample / Vector3f from AtomS3R_ImuCal.h.
+  - sample_us is FIFO-time-derived, not read-time-derived.
+  - out.mask intentionally reports accel+gyro only, matching AtomS3R_ImuCal.h.
+  - Mag validity is communicated by finite out.m versus NaN, plus hasMag().
 */
 
 #include <Arduino.h>
-
-#ifndef SEA_STATE_ENABLE_WIZARD
-  #define SEA_STATE_ENABLE_WIZARD 1
-#endif
-
-#include <M5Unified.h>
+#include <Wire.h>
 #include <cmath>
+#include <cstdint>
+#include <cstring>
 #include <limits>
-#include <algorithm>
 #include <type_traits>
 
-#ifndef EIGEN_STACK_ALLOCATION_LIMIT
-  #define EIGEN_STACK_ALLOCATION_LIMIT 0
-#endif
-#include <ArduinoEigenDense.h>
-
+#include "BoschBmi270Fifo.h"
+#include "BoschBmm150Aux.h"
 #include "AtomS3R_ImuCal.h"
-#include "BoschBmi270_ImuCal.h"
-#include "AtomS3R_M5Ui.h"
-#if SEA_STATE_ENABLE_WIZARD
-  #include "AtomS3R_ImuCalWizard.h"
-#endif
-#include "AtomS3R_CompassUI.h"
-#include "NmeaCompass.h"
 
-// ----------------------------- HW -----------------------------
-static constexpr uint8_t BMI270_ADDR = 0x68;  // change to 0x69 if your board straps SA0 high
+namespace atoms3r_ical {
 
-// ----------------------------- UI / serial defaults -----------------------------
-#ifndef SEA_STATE_UI_DEFAULT_GRAPHICS
-  #define SEA_STATE_UI_DEFAULT_GRAPHICS 1
-#endif
-
-#ifndef SEA_STATE_SERIAL_NMEA
-  #define SEA_STATE_SERIAL_NMEA 0
-#endif
-
-#ifndef SEA_STATE_NMEA_TALKER
-  #define SEA_STATE_NMEA_TALKER "II"
-#endif
-
-// ----------------------------- SeaStateFusion requirements -----------------------------
-constexpr float g_std      = atoms3r_ical::ImuCalCfg::g_std;
-constexpr float FREQ_GUESS = 0.3f;
-
-#define ZERO_CROSSINGS_SCALE          1.0f
-#define ZERO_CROSSINGS_DEBOUNCE_TIME  0.12f
-#define ZERO_CROSSINGS_STEEPNESS_TIME 0.21f
-
-enum class TrackerType { ARANOVSKIY = 0, KALMANF = 1, ZEROCROSS = 2 };
-#include "SeaStateFusionFilter.h"
-
-// Use your baseline MAG_DELAY_SEC if provided by headers; fallback otherwise.
-#ifndef MAG_DELAY_SEC
-  #define MAG_DELAY_SEC 8.0f
-#endif
-
-// Loop timing
-static constexpr float    LOOP_HZ        = 100.0f;
-static constexpr uint32_t LOOP_PERIOD_US = static_cast<uint32_t>(1000000.0f / LOOP_HZ);
-
-// Display / serial rates
-static constexpr uint32_t UI_REFRESH_MS   = 100;
-static constexpr uint32_t DEBUG_SERIAL_MS = 150;
-static constexpr uint32_t NMEA_SERIAL_MS  = 100;
-
-// ROT bias removal (stillness-gated gyro bias estimator)
-static constexpr float ROT_BIAS_TAU_S       = 5.0f;
-static constexpr float ROT_STILL_G_TOL_FRAC = 0.12f;
-static constexpr float ROT_STILL_GYRO_RAD_S = 0.15f;
-
-// If |a| is close to 1 g, derive tilt from accelerometer to keep heading fully
-// independent from gyro sign/convention issues in quaternion propagation.
-static constexpr float HEADING_ACCEL_G_TOL_FRAC = 0.18f;
-
-// Mag gating
-static constexpr float MAG_MIN_DELTA_uT = 0.002f;
-
-// IMU stale telemetry
-static constexpr float IMU_STALE_EPS_ACC = 1e-8f;
-static constexpr float IMU_STALE_EPS_GYR = 1e-8f;
-static constexpr float IMU_STALE_EPS_MAG = 1e-8f;
-
-using namespace atoms3r_ical;
-using Vector3f = Eigen::Vector3f;
-
-// helpers
-static inline float clampf_(float x, float lo, float hi) { return x < lo ? lo : (x > hi ? hi : x); }
-
-static inline float wrap360_(float deg) {
-  while (deg < 0.0f) deg += 360.0f;
-  while (deg >= 360.0f) deg -= 360.0f;
-  return deg;
-}
-
-static inline float wrap180_(float deg) {
-  while (deg <= -180.0f) deg += 360.0f;
-  while (deg >   180.0f) deg -= 360.0f;
-  return deg;
-}
-
-static inline bool finite3_(const Vector3f& v) {
-  return std::isfinite(v.x()) && std::isfinite(v.y()) && std::isfinite(v.z());
-}
-
-// Applies q * v * q_conj (q maps "from" -> "to")
-static inline Vector3f quatRotate_(const Eigen::Quaternionf& q, const Vector3f& v) {
-  const Vector3f qv(q.x(), q.y(), q.z());
-  const Vector3f t = 2.0f * qv.cross(v);
-  return v + q.w() * t + qv.cross(t);
-}
-
-// Compute heading from down vector + magnetometer in BODY frame.
-static inline bool magneticHeadingFromDownAndMagBody_(
-    const Vector3f& down_b_unit,
-    const Vector3f& mag_b_uT,
-    float& heading_deg_out)
-{
-  const Vector3f FWD_B(1.0f, 0.0f, 0.0f);
-
-  Vector3f d = down_b_unit;
-  const float dn = d.norm();
-  if (dn < 1e-6f) return false;
-  d /= dn;
-
-  Vector3f m = mag_b_uT;
-  const float mn = m.norm();
-  if (mn < 1e-6f) return false;
-  m /= mn;
-
-  Vector3f east_b = d.cross(m);
-  const float en = east_b.norm();
-  if (en < 1e-6f) return false;
-  east_b /= en;
-
-  Vector3f north_b = east_b.cross(d);
-  const float nn = north_b.norm();
-  if (nn < 1e-6f) return false;
-  north_b /= nn;
-
-  const float e = east_b.dot(FWD_B);
-  const float n = north_b.dot(FWD_B);
-  heading_deg_out = wrap360_(atan2f(e, n) * RAD_TO_DEG);
-  return true;
-}
-
-// ----------------------------- App -----------------------------
-class FusionApp {
+class BoschBmi270_ImuCal {
 public:
-  FusionApp() = default;
+  struct Config {
+    uint8_t  bmi270_addr = 0x68;
+    float    ag_hz       = 100.0f;   // BoschBmi270Fifo quantizes to 100/200 Hz
 
-  void begin() {
-    delay(50);
-    Serial.begin(115200);
-    delay(100);
+    bool     enable_mag_aux             = true;
+    uint8_t  mag_bmm150_addr            = 0x10;
+    float    mag_aux_odr_hz             = 25.0f;   // manual AUX bridge service rate
+    uint16_t mag_startup_settle_ms      = 3;
+    bool     mag_verify_first_read      = true;
 
-    auto cfg = M5.config();
-    cfg.internal_imu = false;   // do NOT auto-init IMU
-    M5.begin(cfg);
+    // Mag is considered stale once older than:
+    // max(mag_stale_min_us, mag_stale_factor * poll_period).
+    uint32_t mag_stale_min_us           = 75000u;
+    uint8_t  mag_stale_factor           = 3u;
 
-    // Ensure Wire uses the board's I2C pins (AtomS3R internal bus)
-    {
-      const int sda = M5.getPin(m5::pin_name_t::i2c_sda);
-      const int scl = M5.getPin(m5::pin_name_t::i2c_scl);
-      if (sda >= 0 && scl >= 0) {
-        Wire.begin(sda, scl);
-      } else {
-        Wire.begin();
+    // Best-effort mag recovery after repeated failures.
+    bool     enable_mag_recovery        = true;
+    uint8_t  mag_recover_after_failures = 6u;
+    uint32_t mag_recover_cooldown_us    = 1000000u;
+
+    float    tempC_default              = 25.0f;
+    uint32_t i2c_hz                     = 400000u;
+  };
+
+  enum class Error : uint8_t {
+    NONE = 0,
+    NOT_INITIALIZED,
+    FIFO_BEGIN_FAILED,
+    FIFO_READ_FAILED,
+    MAG_BEGIN_FAILED,
+    MAG_READ_FAILED,
+    MAG_STALE,
+    MAG_RECOVER_FAILED,
+    END_MAG_FAILED,
+    END_AG_FAILED
+  };
+
+  BoschBmi270_ImuCal() = default;
+
+  bool ok() const { return ok_; }
+
+  bool hasMag() const { return magHealthy(); }
+  bool magConfigured() const { return mag_configured_; }
+  bool haveValidMagSample() const { return magHealthy(); }
+
+  bool magHealthy() const {
+    return mag_configured_ && have_valid_mag_ && !magCurrentlyStale_();
+  }
+
+  Error lastError() const { return last_error_; }
+
+  const char* lastErrorString() const {
+    switch (last_error_) {
+      case Error::NONE:               return "none";
+      case Error::NOT_INITIALIZED:    return "not initialized";
+      case Error::FIFO_BEGIN_FAILED:  return "BMI270 FIFO begin failed";
+      case Error::FIFO_READ_FAILED:   return "BMI270 FIFO read failed";
+      case Error::MAG_BEGIN_FAILED:   return "BMM150 AUX begin failed";
+      case Error::MAG_READ_FAILED:    return "BMM150 read failed";
+      case Error::MAG_STALE:          return "BMM150 data stale";
+      case Error::MAG_RECOVER_FAILED: return "BMM150 recovery failed";
+      case Error::END_MAG_FAILED:     return "BMM150 shutdown failed";
+      case Error::END_AG_FAILED:      return "BMI270 accel/gyro shutdown failed";
+      default:                        return "unknown";
+    }
+  }
+
+  const Config& config() const { return cfg_; }
+
+  const BoschBmi270Fifo& fifo() const { return fifo_; }
+  BoschBmi270Fifo& fifo() { return fifo_; }
+
+  const BoschBmm150Aux& mag() const { return mag_; }
+  BoschBmm150Aux& mag() { return mag_; }
+
+  uint32_t readTotal() const                { return read_total_; }
+  uint32_t agReadFailuresTotal() const      { return ag_read_fail_total_; }
+  uint32_t magPollsTotal() const            { return mag_poll_total_; }
+  uint32_t magReadOkTotal() const           { return mag_ok_total_; }
+  uint32_t magReadFailuresTotal() const     { return mag_fail_total_; }
+  uint32_t magStaleTransitionsTotal() const { return mag_stale_total_; }
+  uint32_t magRecoveriesTotal() const       { return mag_recover_total_; }
+  uint32_t recoveriesTotal() const          { return recover_total_; }
+
+  uint64_t sampleClockUs64() const { return sample_clock_us_; }
+  uint64_t lastMagSampleUs64() const { return last_mag_sample_us_; }
+
+  const Vector3f& lastGoodMag_uT() const { return last_mag_uT_; }
+  bool haveLastGoodMag() const { return have_last_good_mag_; }
+
+  bool begin(TwoWire& wire) {
+    return begin(wire, Config{});
+  }
+
+  bool begin(TwoWire& wire, const Config& cfg) {
+    if (ok_ || mag_configured_) {
+      if (!end()) {
+        return false;
       }
-      Wire.setClock(400000);
     }
 
-    // UI init
-    ui_.begin();
-    if (use_graphics_) {
-      ui_.setReadRotation();
-      compass_ui_.begin();
-      compass_ui_ready_ = compass_ui_.ok();
-      if (!compass_ui_ready_) use_graphics_ = false;
-    }
+    wire_ = &wire;
+    cfg_  = cfg;
 
-    reloadBlobAndRuntime_();
+    resetRuntimeState_();
+    last_error_ = Error::NONE;
 
-#if SEA_STATE_ENABLE_WIZARD
-    if (!have_blob_) {
-      Serial.println("[BOOT] No saved calibration. Starting wizard...");
-      const bool saved = runWizardFlow_(true);
-      if (saved) {
-        Serial.println("[BOOT] Wizard saved calibration.");
-      } else {
-        Serial.println("[BOOT] Wizard did not save calibration. Running with raw values.");
-      }
-    }
-#endif
-
-    reinitBoschImu_();
-    resetFusion_();
-    drawHomeStatic_();
-
-    delay(100);
-    start_us_     = micros();
-    next_tick_us_ = micros();
-  }
-
-  void tick() {
-    const uint32_t now_us = micros();
-    const int32_t wait_us = static_cast<int32_t>(next_tick_us_ - now_us);
-
-    if (wait_us > 0) {
-      delayMicroseconds(static_cast<uint32_t>(wait_us));
-    } else {
-      next_tick_us_ = now_us;
-    }
-    next_tick_us_ += LOOP_PERIOD_US;
-
-#if SEA_STATE_ENABLE_WIZARD
-    Input::update();
-
-    if (Input::tapPressed()) {
-      tap_count_++;
-      tap_deadline_ms_ = millis() + M5UiCfg::MENU_TAP_WINDOW_MS;
-      drawHomePending_();
-      Serial.printf("[TAP] count=%d\n", tap_count_);
-    }
-
-    if (tap_count_ > 0 && static_cast<int32_t>(millis() - tap_deadline_ms_) > 0) {
-      if (tap_count_ >= 3) handleErase_();
-      else                 handleRunWizard_();
-      tap_count_ = 0;
-      tap_deadline_ms_ = 0;
-      drawHomeStatic_();
-    }
-#endif
-
-    pollRuntimeMag_();
-
-    constexpr int MAX_STEPS_PER_TICK = 24;
-    BoschAGSample batch[MAX_STEPS_PER_TICK];
-    const int n = runtime_imu_.fifo().readAG(batch, MAX_STEPS_PER_TICK);
-
-    const uint32_t skipped_now = runtime_imu_.fifo().skippedFramesTotal();
-    const uint32_t skipped_delta = skipped_now - last_skipped_total_;
-    last_skipped_total_ = skipped_now;
-    stale_frame_count_ = static_cast<uint16_t>(std::min<uint32_t>(skipped_delta, 0xFFFFu));
-
-    if (n > 0) {
-      for (int i = 0; i < n; ++i) {
-        updateFilter_(batch[i]);
-      }
-    }
-
-    updateUI_();
-    streamSerial_();
-  }
-
-private:
-  using UI = atoms3r_ical::M5Ui;
-  using Fusion = SeaStateFusion<TrackerType::KALMANF>;
-
-  bool use_graphics_ = (SEA_STATE_UI_DEFAULT_GRAPHICS != 0);
-
-  CompassUI compass_ui_{};
-  bool      compass_ui_ready_ = false;
-  UI        ui_{};
-
-  ImuCalStoreNvs store_{};
-  bool           have_blob_ = false;
-  ImuCalBlobV1   blob_{};
-  RuntimeCals    runtime_{};
-
-  BoschBmi270_ImuCal runtime_imu_{};
-
-#if SEA_STATE_ENABLE_WIZARD
-  int      tap_count_ = 0;
-  uint32_t tap_deadline_ms_ = 0;
-#endif
-
-  uint32_t start_us_     = 0;
-  uint32_t next_tick_us_ = 0;
-  uint32_t last_ui_ms_   = 0;
-  uint32_t last_serial_ms_ = 0;
-
-  Fusion fusion_{};
-
-  // Runtime mag state (BODY uT, mapped), updated by AUX poll
-  uint32_t last_mag_poll_ms_ = 0;
-  uint64_t last_consumed_mag_sample_us_ = 0;
-  Vector3f mag_raw_uT_ = Vector3f::Constant(NAN);
-  bool     pending_mag_update_ = false;
-
-  Vector3f a_cal_ = Vector3f::Zero();
-  Vector3f w_cal_ = Vector3f::Zero();
-  Vector3f m_cal_ = Vector3f::Constant(NAN);
-  float    a_raw_norm_ = 0.0f;
-
-  float dt_            = 0.0f;
-  float roll_deg_      = 0.0f;
-  float pitch_deg_     = 0.0f;
-  float heading_deg_   = 0.0f;
-  float heave_m_       = 0.0f;
-  float wave_envelope_m_ = 0.0f;
-  float wave_hz_       = FREQ_GUESS;
-
-  bool  mag_ok_        = false;
-  bool  mag_fresh_     = false;
-  float mag_norm_uT_   = NAN;
-
-  uint16_t stale_frame_count_ = 0;
-  uint32_t last_skipped_total_ = 0;
-
-  bool     rot_inited_    = false;
-  float    rot_dpm_filt_  = 0.0f;
-  bool     gyro_bias_ok_  = false;
-  Vector3f gyro_bias_ema_ = Vector3f::Zero();   // rad/s (BODY)
-
-private:
-  BoschBmi270_ImuCal::Config makeImuConfig_() const {
-    BoschBmi270_ImuCal::Config cfg;
-    cfg.bmi270_addr                = BMI270_ADDR;
-    cfg.ag_hz                      = LOOP_HZ;
-    cfg.enable_mag_aux             = true;
-    cfg.mag_bmm150_addr            = 0x10;
-    cfg.mag_aux_odr_hz             = 25.0f;
-    cfg.mag_startup_settle_ms      = 3;
-    cfg.mag_verify_first_read      = true;
-    cfg.mag_stale_min_us           = 75000u;
-    cfg.mag_stale_factor           = 3u;
-    cfg.enable_mag_recovery        = true;
-    cfg.mag_recover_after_failures = 6u;
-    cfg.mag_recover_cooldown_us    = 1000000u;
-    cfg.tempC_default              = 25.0f;
-    cfg.i2c_hz                     = 400000u;
-    return cfg;
-  }
-
-  uint32_t magPollMs_() const {
-    const float hz = runtime_imu_.config().mag_aux_odr_hz;
-    const float use_hz = (hz > 0.0f && std::isfinite(hz)) ? hz : 25.0f;
-    const float ms_f = 1000.0f / use_hz;
-    if (!(ms_f > 0.0f) || !std::isfinite(ms_f)) {
-      return 40u;
-    }
-    const uint32_t ms = static_cast<uint32_t>(ms_f + 0.5f);
-    return std::max<uint32_t>(1u, ms);
-  }
-
-  void reloadBlobAndRuntime_() {
-    have_blob_ = store_.load(blob_);
-    if (!have_blob_) {
-      std::memset(&blob_, 0, sizeof(blob_));
-    }
-    runtime_.rebuildFromBlob(blob_);
-  }
-
-  bool runWizardFlow_(bool boot_mode) {
-#if SEA_STATE_ENABLE_WIZARD
-    BoschBmi270_ImuCal wiz_imu;
-    const BoschBmi270_ImuCal::Config cfg = makeImuConfig_();
-
-    if (!wiz_imu.begin(Wire, cfg)) {
-      Serial.printf("[WIZ] IMU init failed: %s\n", wiz_imu.lastErrorString());
-      if (boot_mode) {
-        ui_.fail("IMU", "Wizard IMU init fail");
-      } else {
-        ui_.fail("WIZ", "IMU init fail");
-      }
-      (void)wiz_imu.end();
+    if (!fifo_.begin(wire, cfg_.bmi270_addr, cfg_.ag_hz, cfg_.i2c_hz)) {
+      ok_ = false;
+      last_error_ = Error::FIFO_BEGIN_FAILED;
       return false;
     }
 
-    ImuCalWizard wizard(ui_, store_, wiz_imu);
-    ImuCalBlobV1 saved{};
-    const bool did_save = wizard.runAndSave(saved);
+    ok_ = true;
 
-    (void)wiz_imu.end();
+#if defined(ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI) && ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI
+    if (cfg_.enable_mag_aux) {
+      BoschBmm150Aux::Config mcfg;
+      mcfg.bmm_addr          = cfg_.mag_bmm150_addr;
+      mcfg.aux_odr_hz        = sanitizedMagOdrHz_();
+      mcfg.startup_settle_ms = cfg_.mag_startup_settle_ms;
+      mcfg.verify_first_read = cfg_.mag_verify_first_read;
 
-    if (did_save) {
-      blob_ = saved;
-      have_blob_ = true;
-      runtime_.rebuildFromBlob(blob_);
-      return true;
+      mag_configured_ = mag_.begin(rawBmiDev_(), mcfg);
+      if (!mag_configured_) {
+        last_error_ = Error::MAG_BEGIN_FAILED;
+      }
+    } else {
+      mag_configured_ = false;
     }
-    return false;
 #else
-    (void)boot_mode;
-    return false;
-#endif
-  }
-
-  void reinitBoschImu_() {
-    const BoschBmi270_ImuCal::Config cfg = makeImuConfig_();
-
-    if (!runtime_imu_.begin(Wire, cfg)) {
-      Serial.printf("[BOOT] Bosch IMU init failed: %s\n", runtime_imu_.lastErrorString());
-      ui_.fail("IMU", "Bosch IMU init fail");
-      while (true) delay(100);
-    }
-
-    last_mag_poll_ms_ = 0;
-    last_consumed_mag_sample_us_ = 0;
-    mag_raw_uT_.setConstant(NAN);
-    pending_mag_update_ = false;
-
-    last_skipped_total_ = runtime_imu_.fifo().skippedFramesTotal();
-  }
-
-  void pollRuntimeMag_() {
-    if (!runtime_imu_.magConfigured()) return;
-    if (!runtime_imu_.mag().ok()) return;
-
-    const uint32_t now_ms = millis();
-    const uint32_t poll_ms = magPollMs_();
-
-    if (last_mag_poll_ms_ != 0 && static_cast<uint32_t>(now_ms - last_mag_poll_ms_) < poll_ms) {
-      return;
-    }
-    last_mag_poll_ms_ = now_ms;
-
-    Vector3f m_s;
-    if (!runtime_imu_.mag().readMag_uT(m_s)) return;
-
-    // AtomS3R mapping: mag_body = (my, mx, -mz)
-    const Vector3f m_body(m_s.y(), m_s.x(), -m_s.z());
-
-    const bool have_prev = finite3_(mag_raw_uT_);
-    const float dm = have_prev ? (m_body - mag_raw_uT_).norm() : INFINITY;
-
-    if (!have_prev || dm >= MAG_MIN_DELTA_uT) {
-      mag_raw_uT_ = m_body;
-      pending_mag_update_ = true;
-    }
-  }
-
-  void resetFusion_() {
-    constexpr bool WANT_LINEAR_BLOCK = true;
-
-    constexpr float IMU_TUNE_REF_HZ = 100.0f;
-    constexpr float MAG_TUNE_REF_HZ = 30.0f;
-
-    constexpr float acc_sigma_ref_mps2 = 0.090f;
-    constexpr float gyr_sigma_ref_rps  = 0.00135f;
-    constexpr float mag_sigma_ref_uT   = 1.80f;
-
-    const float imu_rate_scale = sqrtf(IMU_TUNE_REF_HZ / LOOP_HZ);
-    const float mag_rate_runtime_hz = 1000.0f / static_cast<float>(magPollMs_());
-    const float mag_rate_scale = sqrtf(MAG_TUNE_REF_HZ / mag_rate_runtime_hz);
-
-    const Vector3f sigma_a(acc_sigma_ref_mps2 * imu_rate_scale,
-                           acc_sigma_ref_mps2 * imu_rate_scale,
-                           acc_sigma_ref_mps2 * imu_rate_scale);
-    const Vector3f sigma_g(gyr_sigma_ref_rps * imu_rate_scale,
-                           gyr_sigma_ref_rps * imu_rate_scale,
-                           gyr_sigma_ref_rps * imu_rate_scale);
-    const float sigma_m_uT = mag_sigma_ref_uT * mag_rate_scale;
-    const Vector3f sigma_m(sigma_m_uT, sigma_m_uT, sigma_m_uT);
-
-    Fusion::Config fcfg;
-    fcfg.with_mag = true;
-    fcfg.online_tune_warmup_sec = ONLINE_TUNE_WARMUP_SEC;
-    fcfg.use_fixed_mag_world_ref = false;
-    fcfg.mag_world_ref = Vector3f(0.0f, 0.0f, 0.0f);
-
-    fcfg.freeze_acc_bias_until_live = true;
-    fcfg.Racc_warmup = 0.16f;
-
-    fcfg.sigma_a  = sigma_a;
-    fcfg.sigma_g  = sigma_g;
-    fcfg.sigma_m  = sigma_m;
-
-    fcfg.mag_delay_sec       = MAG_DELAY_SEC;
-    fcfg.mag_ref_timeout_sec = 2.0f;
-    fcfg.mag_odr_guess_hz    = MAG_TUNE_REF_HZ;
-    fcfg.use_custom_mag_tuner_cfg = false;
-
-    fusion_.begin(fcfg);
-
-    auto& ff = fusion_.raw();
-    using FF = std::remove_reference_t<decltype(ff)>;
-
-    ff.enableLinearBlock(WANT_LINEAR_BLOCK);
-    ff.enableTuner(true);
-    ff.setWithMag(true);
-    ff.setSFactor(1.0f);
-    ff.setTauCoeff(1.4f);
-    ff.setSigmaCoeff(0.9f);
-    ff.setRSCoeff(1.0f);
-    ff.setRSXYFactor(0.17f);
-    ff.setAccNoiseFloorSigma(ACC_NOISE_FLOOR_SIGMA_DEFAULT);
-    ff.setHarmonicPositionDespikeConfig(5, 4.0f);
-    ff.enableClamp(true);
-    ff.setFreqInputCutoffHz(6.0f);
-
-    FF::DriftPseudoCfg pm_vz_zero_on_pos_breach_{false, 1, 0.04f, 0.01f, 0.9f};
-    FF::DriftPseudoCfg pm_pos_zero_{false, 3, 8.0f, 0.2f, 0.001f};
-    FF::DriftPseudoCfg pm_vz_clamp_{false, 1, 0.04f, 0.02f, 0.8f};
-    FF::DriftPseudoCfg pm_harmonic_pos_{false, 1, 2.0f, 0.1f, 0.005f};
-
-    ff.setPseudoVzZeroOnPosBreachCfg(pm_vz_zero_on_pos_breach_);
-    ff.setPseudoPosZeroCfg(pm_pos_zero_);
-    ff.setPseudoVzClampCfg(pm_vz_clamp_);
-    ff.setPseudoHarmonicPosCfg(pm_harmonic_pos_);
-
-    rot_inited_   = false;
-    rot_dpm_filt_ = 0.0f;
-    gyro_bias_ok_ = false;
-    gyro_bias_ema_.setZero();
-    heading_deg_  = 0.0f;
-
-    mag_raw_uT_.setConstant(NAN);
-    pending_mag_update_ = false;
-    last_consumed_mag_sample_us_ = 0;
-    mag_ok_ = false;
-    mag_fresh_ = false;
-    mag_norm_uT_ = NAN;
-
-    stale_frame_count_ = 0;
-    last_skipped_total_ = 0;
-  }
-
-#if SEA_STATE_ENABLE_WIZARD
-  void handleErase_() {
-    Serial.println("[HOME] ERASE");
-    if (!ui_.eraseConfirm()) {
-      Serial.println("[HOME] erase cancelled");
-      return;
-    }
-
-    store_.erase();
-    reloadBlobAndRuntime_();
-    reinitBoschImu_();
-    resetFusion_();
-  }
-
-  void handleRunWizard_() {
-    Serial.println("[HOME] RUN WIZARD");
-
-    const bool saved = runWizardFlow_(false);
-    if (!saved) {
-      ui_.notSavedNotice();
-    }
-
-    // Wizard touched the device state either way. Restore runtime config.
-    reinitBoschImu_();
-    resetFusion_();
-  }
-
-  void drawHomePending_() {
-    ui_.setReadRotation();
-    ui_.title("COMPASS");
-    M5.Display.printf("Tap count: %d\n", tap_count_);
-    ui_.line("");
-    ui_.line("Wait...");
-    ui_.line("1 tap=CAL");
-    ui_.line("3 taps=ERASE");
-
-    int32_t remain = static_cast<int32_t>(tap_deadline_ms_ - millis());
-    remain = remain < 0 ? 0 : remain;
-    const float t01 = 1.0f - static_cast<float>(remain) / static_cast<float>(M5UiCfg::MENU_TAP_WINDOW_MS);
-    ui_.bar01(t01);
-  }
+    mag_configured_ = false;
 #endif
 
-  void updateFilter_(const BoschAGSample& s) {
-    dt_ = s.dt_s;
-    constexpr float tempC = 25.0f;
+    return true;
+  }
 
-    // AtomS3R mapping for FIFO sensor axes -> BODY NED:
-    // acc_body = ( ay, ax, -az )
-    // gyr_body = ( gy, gx, -gz )
-    const Vector3f a_s(s.ax, s.ay, s.az);
-    const Vector3f w_s(s.gx, s.gy, s.gz);
-
-    const Vector3f a_raw(a_s.y(), a_s.x(), -a_s.z());
-    const Vector3f w_raw(w_s.y(), w_s.x(), -w_s.z());
-
-    a_raw_norm_ = a_raw.norm();
-
-    a_cal_ = runtime_.applyAccel(a_raw, tempC);
-    w_cal_ = runtime_.applyGyro (w_raw, tempC);
-    m_cal_ = runtime_.applyMag(mag_raw_uT_);
-
-    mag_norm_uT_ = m_cal_.norm();
-    mag_ok_ = std::isfinite(mag_norm_uT_) && (mag_norm_uT_ > 5.0f) && (mag_norm_uT_ < 200.0f);
-
-    const bool still =
-        (fabsf(a_cal_.norm() - g_std) < ROT_STILL_G_TOL_FRAC * g_std) &&
-        (w_cal_.norm() < ROT_STILL_GYRO_RAD_S);
-
-    mag_fresh_ = false;
-    if (pending_mag_update_ && mag_ok_) {
-      const uint64_t mag_stamp = runtime_imu_.mag().lastReadMillis();
-      (void)mag_stamp; // user-visible freshness comes from the app gate below
-
-      fusion_.updateMag(m_cal_);
-      mag_fresh_ = true;
-      pending_mag_update_ = false;
+  bool recover() {
+    if (wire_ == nullptr) {
+      last_error_ = Error::NOT_INITIALIZED;
+      return false;
     }
 
-    fusion_.update(dt_, w_cal_, a_cal_);
+    const bool ok = begin(*wire_, cfg_);
+    if (ok) {
+      ++recover_total_;
+    }
+    return ok;
+  }
 
-    Eigen::Quaternionf q_bw = fusion_.raw().mekf().quaternion_boat();
-    q_bw.normalize();
+  bool end() {
+    bool all_ok = true;
+    Error first_err = Error::NONE;
 
-    Vector3f down_b(0.0f, 0.0f, 0.0f);
-    {
-      const Vector3f down_w(0.0f, 0.0f, 1.0f);
-      Vector3f down_q_b = quatRotate_(q_bw.conjugate(), down_w);
-      const float dnq = down_q_b.norm();
-      if (dnq > 1e-6f) down_q_b /= dnq;
+#if defined(ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI) && ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI
+    if (mag_configured_) {
+      if (!mag_.end()) {
+        all_ok = false;
+        first_err = Error::END_MAG_FAILED;
+      }
+    }
+#endif
 
-      const float a_norm = a_cal_.norm();
-      const bool accel_trust = fabsf(a_norm - g_std) <= (HEADING_ACCEL_G_TOL_FRAC * g_std);
-
-      if (accel_trust && a_norm > 1e-6f) {
-        down_b = a_cal_ / a_norm;
-        if (dnq > 1e-6f && down_b.dot(down_q_b) < 0.0f) down_b = -down_b;
-      } else {
-        down_b = down_q_b;
+    if (!endFifo_()) {
+      all_ok = false;
+      if (first_err == Error::NONE) {
+        first_err = Error::END_AG_FAILED;
       }
     }
 
-    {
-      float hdg_meas = heading_deg_;
-      if (mag_ok_) {
-        float hdg = heading_deg_;
-        if (magneticHeadingFromDownAndMagBody_(down_b, m_cal_, hdg)) {
-          hdg_meas = hdg;
+    ok_ = false;
+    mag_configured_ = false;
+    resetRuntimeState_();
+
+    if (!all_ok) {
+      last_error_ = first_err;
+      return false;
+    }
+
+    last_error_ = Error::NONE;
+    return true;
+  }
+
+  bool read(ImuSample& out) {
+    if (!ok_) {
+      last_error_ = Error::NOT_INITIALIZED;
+      return false;
+    }
+
+    BoschAGSample ag;
+    if (!fifo_.readOneAG(ag)) {
+      ++ag_read_fail_total_;
+      last_error_ = Error::FIFO_READ_FAILED;
+      return false;
+    }
+
+    ++read_total_;
+
+    const uint64_t sample_us64 = advanceSampleClockUs_(ag.dt_s);
+
+    // Sensor frame -> AtomS3R BODY NED
+    const Vector3f a_s(ag.ax, ag.ay, ag.az);
+    const Vector3f w_s(ag.gx, ag.gy, ag.gz);
+
+    const Vector3f a_b(a_s.y(), a_s.x(), -a_s.z());
+    const Vector3f w_b(w_s.y(), w_s.x(), -w_s.z());
+
+    maybePollMag_(sample_us64);
+    updateMagFreshness_(sample_us64);
+
+    out.a = a_b;
+    out.w = w_b;
+    out.m = magHealthy() ? last_mag_uT_ : nanVec_();
+    out.tempC = cfg_.tempC_default;
+    out.mask = kImuMaskAccelGyro;
+    out.sample_us = static_cast<uint32_t>(sample_us64 & 0xFFFFFFFFull);
+
+    if (magHealthy() &&
+        (last_error_ == Error::MAG_READ_FAILED ||
+         last_error_ == Error::MAG_STALE ||
+         last_error_ == Error::MAG_RECOVER_FAILED)) {
+      last_error_ = Error::NONE;
+    }
+
+    return true;
+  }
+
+private:
+  template <typename TFifo>
+  static auto rawBmiDevImpl_(TFifo& f, int) -> decltype(f.rawDevUnsafe()) {
+    return f.rawDevUnsafe();
+  }
+
+  template <typename TFifo>
+  static auto rawBmiDevImpl_(TFifo& f, long) -> decltype(const_cast<bmi2_dev*>(f.rawDev())) {
+    return const_cast<bmi2_dev*>(f.rawDev());
+  }
+
+  bmi2_dev* rawBmiDev_() {
+    return rawBmiDevImpl_(fifo_, 0);
+  }
+
+  template <typename TFifo>
+  static auto fifoEndImpl_(TFifo& f, int) -> decltype(f.end()) {
+    return f.end();
+  }
+
+  template <typename TFifo>
+  static bool fifoEndImpl_(TFifo& f, long) {
+#if defined(ATOMS3R_HAVE_BOSCH_SENSORAPI) && ATOMS3R_HAVE_BOSCH_SENSORAPI
+    bmi2_dev* dev = rawBmiDevImpl_(f, 0);
+    if (dev != nullptr) {
+      bool all_ok = true;
+      const uint8_t sens[2] = { BMI2_ACCEL, BMI2_GYRO };
+      if (bmi270_sensor_disable(sens, 2, dev) != BMI2_OK) {
+        all_ok = false;
+      }
+      (void)bmi2_flush_fifo(dev);
+      return all_ok;
+    }
+#endif
+    return true;
+  }
+
+  bool endFifo_() {
+    return fifoEndImpl_(fifo_, 0);
+  }
+
+  static Vector3f nanVec_() {
+    return Vector3f::Constant(std::numeric_limits<float>::quiet_NaN());
+  }
+
+  static bool finite3_(const Vector3f& v) {
+    return std::isfinite(v.x()) && std::isfinite(v.y()) && std::isfinite(v.z());
+  }
+
+  static uint64_t clampU64_(uint64_t v, uint64_t lo, uint64_t hi) {
+    return (v < lo) ? lo : ((v > hi) ? hi : v);
+  }
+
+  float sanitizedMagOdrHz_() const {
+    const float hz = cfg_.mag_aux_odr_hz;
+    if (!(hz > 0.0f) || !std::isfinite(hz)) {
+      return 25.0f;
+    }
+    return hz;
+  }
+
+  uint64_t nominalDtUs_() const {
+    return (cfg_.ag_hz > 150.0f) ? 5000ull : 10000ull;
+  }
+
+  uint64_t magPollUs_() const {
+    const float hz = sanitizedMagOdrHz_();
+    const float us_f = 1.0e6f / hz;
+    if (!(us_f > 0.0f) || !std::isfinite(us_f)) {
+      return 40000ull;
+    }
+    const uint64_t us = static_cast<uint64_t>(us_f + 0.5f);
+    return clampU64_(us, 5000ull, 1000000ull);
+  }
+
+  uint64_t magStaleAfterUs_() const {
+    const uint64_t min_us = (cfg_.mag_stale_min_us > 0u)
+                          ? static_cast<uint64_t>(cfg_.mag_stale_min_us)
+                          : 75000ull;
+
+    const uint64_t factor = (cfg_.mag_stale_factor > 0u)
+                          ? static_cast<uint64_t>(cfg_.mag_stale_factor)
+                          : 3ull;
+
+    const uint64_t dyn_us = factor * magPollUs_();
+    return (dyn_us > min_us) ? dyn_us : min_us;
+  }
+
+  uint64_t advanceSampleClockUs_(float dt_s) {
+    if (!have_sample_clock_) {
+      have_sample_clock_ = true;
+      sample_clock_us_ = 0ull;
+      sample_clock_frac_us_ = 0.0;
+      return 0ull;
+    }
+
+    double dt_us_f = static_cast<double>(dt_s) * 1.0e6;
+    if (!(dt_us_f > 0.0) || !std::isfinite(dt_us_f)) {
+      dt_us_f = static_cast<double>(nominalDtUs_());
+    }
+
+    dt_us_f += sample_clock_frac_us_;
+
+    uint64_t dt_us = static_cast<uint64_t>(dt_us_f);
+    sample_clock_frac_us_ = dt_us_f - static_cast<double>(dt_us);
+
+    if (dt_us == 0ull) {
+      dt_us = 1ull;
+    }
+
+    sample_clock_us_ += dt_us;
+    return sample_clock_us_;
+  }
+
+  void maybePollMag_(uint64_t sample_us) {
+#if defined(ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI) && ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI
+    if (!mag_configured_) {
+      return;
+    }
+
+    if (!have_mag_poll_time_ || (sample_us - last_mag_poll_us_) >= magPollUs_()) {
+      have_mag_poll_time_ = true;
+      last_mag_poll_us_ = sample_us;
+      ++mag_poll_total_;
+
+      Vector3f m_s;
+      if (mag_.readMag_uT(m_s) && finite3_(m_s)) {
+        // Sensor frame -> AtomS3R BODY NED
+        last_mag_uT_ = Vector3f(m_s.y(), m_s.x(), -m_s.z());
+
+        have_last_good_mag_ = true;
+        have_valid_mag_ = true;
+        mag_marked_stale_ = false;
+        last_mag_sample_us_ = sample_us;
+        mag_consecutive_failures_ = 0;
+        ++mag_ok_total_;
+        return;
+      }
+
+      ++mag_fail_total_;
+      ++mag_consecutive_failures_;
+      last_error_ = Error::MAG_READ_FAILED;
+
+      if (cfg_.enable_mag_recovery &&
+          mag_consecutive_failures_ >= cfg_.mag_recover_after_failures &&
+          (last_mag_recover_attempt_us_ == 0ull ||
+           (sample_us - last_mag_recover_attempt_us_) >= static_cast<uint64_t>(cfg_.mag_recover_cooldown_us))) {
+        last_mag_recover_attempt_us_ = sample_us;
+        if (recoverMag_()) {
+          ++mag_recover_total_;
+          mag_consecutive_failures_ = 0;
+        } else {
+          last_error_ = Error::MAG_RECOVER_FAILED;
         }
       }
-      heading_deg_ = wrap360_(hdg_meas);
+    }
+#else
+    (void)sample_us;
+#endif
+  }
+
+  void updateMagFreshness_(uint64_t sample_us) {
+    if (!have_valid_mag_) {
+      return;
     }
 
-    {
-      const float pitch = asinf(clampf_(-down_b.x(), -1.0f, 1.0f));
-      const float roll  = atan2f(down_b.y(), down_b.z());
-      roll_deg_  = wrap180_(roll  * RAD_TO_DEG);
-      pitch_deg_ = wrap180_(pitch * RAD_TO_DEG);
+    if (last_mag_sample_us_ > sample_us) {
+      return;
     }
 
-    if (still) {
-      const float alpha_b = 1.0f - expf(-dt_ / ROT_BIAS_TAU_S);
-      if (!gyro_bias_ok_) {
-        gyro_bias_ok_  = true;
-        gyro_bias_ema_ = w_cal_;
-      } else {
-        gyro_bias_ema_ += alpha_b * (w_cal_ - gyro_bias_ema_);
+    const uint64_t age_us = sample_us - last_mag_sample_us_;
+    if (age_us > magStaleAfterUs_()) {
+      have_valid_mag_ = false;
+      if (!mag_marked_stale_) {
+        mag_marked_stale_ = true;
+        ++mag_stale_total_;
       }
+      last_error_ = Error::MAG_STALE;
+    }
+  }
+
+  bool magCurrentlyStale_() const {
+    if (!have_valid_mag_ || !have_sample_clock_) {
+      return true;
+    }
+    if (last_mag_sample_us_ > sample_clock_us_) {
+      return false;
+    }
+    return (sample_clock_us_ - last_mag_sample_us_) > magStaleAfterUs_();
+  }
+
+  bool recoverMag_() {
+#if defined(ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI) && ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI
+    if (!ok_ || rawBmiDev_() == nullptr) {
+      return false;
     }
 
-    Vector3f w_use = w_cal_;
-    if (gyro_bias_ok_) w_use -= gyro_bias_ema_;
+    if (mag_configured_) {
+      (void)mag_.end();
+    }
 
-    Vector3f w_world = quatRotate_(q_bw, w_use);
-    float rot_dpm_meas = w_world.z() * RAD_TO_DEG * 60.0f;
-    rot_dpm_meas = clampf_(rot_dpm_meas, -720.0f, 720.0f);
+    BoschBmm150Aux::Config mcfg;
+    mcfg.bmm_addr          = cfg_.mag_bmm150_addr;
+    mcfg.aux_odr_hz        = sanitizedMagOdrHz_();
+    mcfg.startup_settle_ms = cfg_.mag_startup_settle_ms;
+    mcfg.verify_first_read = cfg_.mag_verify_first_read;
 
-    const float tau_rot = 1.5f;
-    const float alpha_r = 1.0f - expf(-dt_ / tau_rot);
-    if (!rot_inited_) { rot_inited_ = true; rot_dpm_filt_ = rot_dpm_meas; }
-    else              { rot_dpm_filt_ += alpha_r * (rot_dpm_meas - rot_dpm_filt_); }
+    mag_configured_ = mag_.begin(rawBmiDev_(), mcfg);
+    if (!mag_configured_) {
+      have_valid_mag_ = false;
+      return false;
+    }
 
-    heave_m_         = -fusion_.raw().mekf().get_position().z();
-    wave_envelope_m_ =  fusion_.raw().getDisplacementScale();
-    wave_hz_         =  fusion_.raw().getFreqHz();
-  }
-
-  void drawHomeStatic_() {
-    ui_.setReadRotation();
-    ui_.title("COMPASS");
-    M5.Display.printf("BLOB: %s\n", have_blob_ ? "YES" : "NO");
-    M5.Display.printf("A:%d G:%d M:%d\n",
-                      static_cast<int>(runtime_.acc.ok),
-                      static_cast<int>(runtime_.gyr.ok),
-                      static_cast<int>(runtime_.mag.ok));
-
-#if SEA_STATE_ENABLE_WIZARD
-    ui_.line("Tap: calibrate");
-    ui_.line("Tap x3: erase");
+    return true;
 #else
-    ui_.line("Wizard: DISABLED");
-    ui_.line("Set SEA_STATE_ENABLE_WIZARD=1");
-#endif
-    ui_.line("");
-    ui_.line("Fusion: FULL");
-  }
-
-  void updateUI_() {
-#if SEA_STATE_ENABLE_WIZARD
-    if (tap_count_ > 0) return;
-#endif
-    const uint32_t now_ms = millis();
-    if (now_ms - last_ui_ms_ < UI_REFRESH_MS) return;
-    last_ui_ms_ = now_ms;
-
-    if (use_graphics_ && compass_ui_ready_) updateUI_graphics_();
-    else                                   updateUI_text_();
-  }
-
-  void updateUI_graphics_() {
-    ui_.setReadRotation();
-    const bool tiltWarn = (fabsf(roll_deg_) > 35.0f) || (fabsf(pitch_deg_) > 35.0f);
-    compass_ui_.draw(heading_deg_, mag_ok_, mag_norm_uT_, tiltWarn);
-  }
-
-  void updateUI_text_() {
-    ui_.setReadRotation();
-    ui_.title("COMPASS");
-    M5.Display.printf("HDG: %6.1f deg\n", static_cast<double>(heading_deg_));
-    M5.Display.printf("ROL: %6.1f deg\n", static_cast<double>(roll_deg_));
-    M5.Display.printf("PIT: %6.1f deg\n", static_cast<double>(pitch_deg_));
-    M5.Display.printf("HEV: %6.3f m\n", static_cast<double>(heave_m_));
-    M5.Display.printf("FRQ: %6.3f Hz\n", static_cast<double>(wave_hz_));
-    M5.Display.printf("MAG: %s %s\n", mag_ok_ ? "OK " : "BAD", mag_fresh_ ? "NEW" : "OLD");
-    M5.Display.printf("|m|: %6.1f uT\n", static_cast<double>(mag_norm_uT_));
-    M5.Display.printf("|aR|:%5.2f |aC|:%5.2f\n",
-                      static_cast<double>(a_raw_norm_),
-                      static_cast<double>(a_cal_.norm()));
-    ui_.line("");
-  }
-
-  void streamSerial_() {
-    const uint32_t now_ms = millis();
-
-#if SEA_STATE_SERIAL_NMEA
-    if (now_ms - last_serial_ms_ < NMEA_SERIAL_MS) return;
-#else
-    if (now_ms - last_serial_ms_ < DEBUG_SERIAL_MS) return;
-#endif
-    last_serial_ms_ = now_ms;
-
-#if SEA_STATE_SERIAL_NMEA
-    const bool valid = fusion_.isLive();
-    nmea_hdm(SEA_STATE_NMEA_TALKER, heading_deg_);
-    nmea_xdr_pitch_roll(SEA_STATE_NMEA_TALKER, pitch_deg_, roll_deg_);
-    nmea_xdr_heave(SEA_STATE_NMEA_TALKER, heave_m_);
-    nmea_xdr_freq(SEA_STATE_NMEA_TALKER, wave_hz_);
-    nmea_rot(SEA_STATE_NMEA_TALKER, rot_dpm_filt_, valid);
-#else
-    Serial.printf("Hcm:%+.3f\twaveEnvelopeCM:%+.3f\timuStale:%u\n",
-                  static_cast<double>(heave_m_ * 100.0f),
-                  static_cast<double>(wave_envelope_m_ * 100.0f),
-                  static_cast<unsigned>(stale_frame_count_));
+    return false;
 #endif
   }
+
+  void resetRuntimeState_() {
+    last_mag_uT_ = nanVec_();
+
+    have_last_good_mag_ = false;
+    have_valid_mag_ = false;
+    mag_marked_stale_ = false;
+
+    have_sample_clock_ = false;
+    sample_clock_us_ = 0ull;
+    sample_clock_frac_us_ = 0.0;
+
+    have_mag_poll_time_ = false;
+    last_mag_poll_us_ = 0ull;
+    last_mag_sample_us_ = 0ull;
+    last_mag_recover_attempt_us_ = 0ull;
+
+    mag_consecutive_failures_ = 0u;
+  }
+
+private:
+  TwoWire* wire_ = nullptr;
+  Config   cfg_{};
+
+  bool ok_ = false;
+  bool mag_configured_ = false;
+
+  Error last_error_ = Error::NONE;
+
+  BoschBmi270Fifo fifo_{};
+  BoschBmm150Aux  mag_{};
+
+  Vector3f last_mag_uT_ = nanVec_();
+
+  bool     have_last_good_mag_ = false;
+  bool     have_valid_mag_     = false;
+  bool     mag_marked_stale_   = false;
+
+  bool     have_sample_clock_    = false;
+  uint64_t sample_clock_us_      = 0ull;
+  double   sample_clock_frac_us_ = 0.0;
+
+  bool     have_mag_poll_time_          = false;
+  uint64_t last_mag_poll_us_            = 0ull;
+  uint64_t last_mag_sample_us_          = 0ull;
+  uint64_t last_mag_recover_attempt_us_ = 0ull;
+
+  uint8_t  mag_consecutive_failures_ = 0u;
+
+  uint32_t read_total_         = 0u;
+  uint32_t ag_read_fail_total_ = 0u;
+  uint32_t mag_poll_total_     = 0u;
+  uint32_t mag_ok_total_       = 0u;
+  uint32_t mag_fail_total_     = 0u;
+  uint32_t mag_stale_total_    = 0u;
+  uint32_t mag_recover_total_  = 0u;
+  uint32_t recover_total_      = 0u;
 };
 
-static FusionApp g_app;
-
-void setup() { g_app.begin(); }
-void loop()  { g_app.tick(); }
+} // namespace atoms3r_ical
