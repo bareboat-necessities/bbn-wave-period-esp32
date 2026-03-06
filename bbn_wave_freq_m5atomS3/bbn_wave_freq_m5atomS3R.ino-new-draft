@@ -160,12 +160,12 @@ public:
     cfg.internal_imu = false;
     M5.begin(cfg);
 
-#if defined(PIN_WIRE_SDA) && defined(PIN_WIRE_SCL)
-    Wire.begin(PIN_WIRE_SDA, PIN_WIRE_SCL);
-#else
-    Wire.begin();
-#endif
+    // AtomS3R internal IMU I2C bus
+    Wire.end();
+    delay(10);
+    Wire.begin(45, 0);   // SDA=45, SCL=0
     Wire.setClock(400000);
+    delay(10);
 
     ui_.begin();
     if (use_graphics_) {
