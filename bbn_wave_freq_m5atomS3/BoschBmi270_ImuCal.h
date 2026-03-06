@@ -270,11 +270,16 @@ private:
   }
 
   template <typename TFifo>
-  static auto rawBmiDevImpl_(TFifo& f, long) -> decltype(const_cast<bmi2_dev*>(f.rawDev())) {
-    return const_cast<bmi2_dev*>(f.rawDev());
+  static auto rawBmiDevImpl_(TFifo& f, int) -> decltype(f.rawDevUnsafe()) {
+    return f.rawDevUnsafe();
+  }
+  
+  template <typename TFifo>
+  static auto rawBmiDevImpl_(TFifo& f, long) -> decltype(const_cast< ::bmi2_dev* >(f.rawDev())) {
+    return const_cast< ::bmi2_dev* >(f.rawDev());
   }
 
-  bmi2_dev* rawBmiDev_() {
+  ::bmi2_dev* rawBmiDev_() {
     return rawBmiDevImpl_(fifo_, 0);
   }
 
@@ -286,7 +291,7 @@ private:
   template <typename TFifo>
   static bool fifoEndImpl_(TFifo& f, long) {
 #if defined(ATOMS3R_HAVE_BOSCH_SENSORAPI) && ATOMS3R_HAVE_BOSCH_SENSORAPI
-    bmi2_dev* dev = rawBmiDevImpl_(f, 0);
+    ::bmi2_dev* dev = rawBmiDevImpl_(f, 0);
     if (dev != nullptr) {
       bool all_ok = true;
       const uint8_t sens[2] = { BMI2_ACCEL, BMI2_GYRO };
