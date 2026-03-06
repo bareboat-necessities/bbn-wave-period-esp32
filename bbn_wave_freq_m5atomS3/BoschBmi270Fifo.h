@@ -467,7 +467,11 @@ private:
   bool flushFifo_()
   {
     uint8_t cmd = fifoFlushCmd_();
-    return bmi2_set_regs(cmdRegAddr_(), &cmd, 1, &bmi_) == BMI2_OK;
+    if (bmi2_set_regs(cmdRegAddr_(), &cmd, 1, &bmi_) != BMI2_OK) {
+      return false;
+    }
+    delayMicroseconds(1000);
+    return true;
   }
 
   bool teardownDevice_(Error* first_err_out, bool count_failure)
