@@ -684,7 +684,15 @@ public:
   }
 
   template <typename Dummy = void>
-  bool begin(struct bmi2_dev*, const Config& = Config()) {
+  bool begin(struct bmi2_dev*) {
+    static_assert(always_false<Dummy>::value,
+      "BoschBmm150Aux: Bosch SensorAPI headers not found. Install Arduino_BMI270_BMM150, "
+      "or exclude BoschBmm150Aux from this build.");
+    return false;
+  }
+  
+  template <typename Dummy = void>
+  bool begin(struct bmi2_dev*, const Config&) {
     static_assert(always_false<Dummy>::value,
       "BoschBmm150Aux: Bosch SensorAPI headers not found. Install Arduino_BMI270_BMM150, "
       "or exclude BoschBmm150Aux from this build.");
