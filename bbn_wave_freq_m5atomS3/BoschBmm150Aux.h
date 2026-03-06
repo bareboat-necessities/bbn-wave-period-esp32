@@ -131,7 +131,11 @@ public:
   // - This wrapper is a manual AUX bridge, not an auto-stream FIFO driver.
   // - It deliberately leaves BMI270 advanced power save disabled once started.
   // - On begin() failure it attempts best-effort rollback of prior AUX config.
-  bool begin(struct bmi2_dev* bmi_dev, const Config& cfg = Config()) {
+  bool begin(struct bmi2_dev* bmi_dev) {
+    return begin(bmi_dev, Config{});
+  }
+  
+  bool begin(struct bmi2_dev* bmi_dev, const Config& cfg) {
     // If a prior session is still attached, always try to end it first,
     // regardless of ok_. This prevents a failed end() from being silently
     // discarded by a later begin().
