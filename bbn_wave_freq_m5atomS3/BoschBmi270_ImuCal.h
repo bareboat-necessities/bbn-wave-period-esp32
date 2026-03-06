@@ -134,7 +134,6 @@ public:
       }
     }
 
-    wire_ = &wire;
     cfg_  = cfg;
 
     resetRuntimeState_();
