@@ -7,24 +7,12 @@
 #include <cstring>
 #include <algorithm>
 
-// -----------------------------------------------------------------------------
-// Bosch SensorAPI availability detection
-// -----------------------------------------------------------------------------
-// Include the public Arduino library header first so arduino-cli resolves and
-// activates the library, adding its src/ include path.
-#if defined(__has_include)
-  #if __has_include(<Arduino_BMI270_BMM150.h>)
-    #include <Arduino_BMI270_BMM150.h>
-    #define ATOMS3R_HAVE_ARDUINO_BMI270_BMM150 1
-  #else
-    #define ATOMS3R_HAVE_ARDUINO_BMI270_BMM150 0
-  #endif
-#else
-  #define ATOMS3R_HAVE_ARDUINO_BMI270_BMM150 0
-#endif
+// Force Arduino builder to activate the library and add its include path.
+// If this header is missing, fail at compile time instead of silently building stubs.
+#include <Arduino_BMI270_BMM150.h>
 
-#if ATOMS3R_HAVE_ARDUINO_BMI270_BMM150 && defined(__has_include)
-  // Some forks use utility/, others utilities/
+// Some library revisions use utilities/, others utility/
+#if defined(__has_include)
   #if __has_include(<utilities/BMI270-Sensor-API/bmi2.h>)
     #include <utilities/BMI270-Sensor-API/bmi2.h>
     #include <utilities/BMI270-Sensor-API/bmi2_defs.h>
@@ -36,13 +24,12 @@
     #include <utility/BMI270-Sensor-API/bmi270.h>
     #define ATOMS3R_HAVE_BOSCH_SENSORAPI 1
   #else
-    #define ATOMS3R_HAVE_BOSCH_SENSORAPI 0
+    #error "Arduino_BMI270_BMM150 is present, but BMI270 vendor headers were not found under utility/ or utilities/."
   #endif
 #else
-  #define ATOMS3R_HAVE_BOSCH_SENSORAPI 0
+  #error "__has_include is required for Bosch vendor header path detection."
 #endif
 
-// Forward declaration so stub build can expose rawDev().
 struct bmi2_dev;
 
 // -----------------------------------------------------------------------------
