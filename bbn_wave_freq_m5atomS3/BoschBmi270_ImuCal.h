@@ -10,16 +10,15 @@
     gyr_body = ( gy, gx, -gz )    [rad/s]
     mag_body = ( my, mx, -mz )    [uT]
 
-  - Accel/Gyro: BMI270 FIFO via BoschBmi270Fifo (stable, low jitter)
+  - Accel/Gyro: BMI270 FIFO via BoschBmi270Fifo
   - Mag: BMM150 via BMI270 AUX using BoschBmm150Aux manual AUX bridge
 
   Notes:
   - Reuses atoms3r_ical::ImuSample / Vector3f from AtomS3R_ImuCal.h
     to avoid type duplication and guarantee identical conventions.
   - sample_us is FIFO-time-derived, not read-time-derived.
-  - Magnetometer is optional and non-fatal to overall AG operation.
-  - Magnetometer validity is freshness-gated; stale mag is dropped to NaN and
-    its mask bit is cleared.
+  - out.mask intentionally reports accel+gyro only, matching AtomS3R_ImuCal.h.
+  - Mag validity is communicated by finite out.m versus NaN, plus hasMag().
 */
 
 #include <Arduino.h>
@@ -28,17 +27,10 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
-#include <algorithm>
 
 #include "BoschBmi270Fifo.h"
 #include "BoschBmm150Aux.h"
 #include "AtomS3R_ImuCal.h"
-
-// Assumed mag-valid mask bit. Override before including this header if your
-// AtomS3R_ImuCal.h uses a different bit for "mag present/valid".
-#ifndef ATOMS3R_ICAL_IMUCAL_MAG_MASK_VALUE
-  #define ATOMS3R_ICAL_IMUCAL_MAG_MASK_VALUE 0x04u
-#endif
 
 namespace atoms3r_ical {
 
@@ -46,24 +38,26 @@ class BoschBmi270_ImuCal {
 public:
   struct Config {
     uint8_t  bmi270_addr = 0x68;
-    float    ag_hz       = 100.0f;   // BoschBmi270Fifo chooses nearest supported 100/200 Hz
+    float    ag_hz       = 100.0f;   // BoschBmi270Fifo will quantize to 100/200 Hz
 
-    bool     enable_mag_aux            = true;
-    float    mag_aux_odr_hz            = 25.0f;   // manual AUX bridge service rate
-    uint16_t mag_startup_settle_ms     = 3;
-    bool     mag_verify_first_read     = true;
+    bool     enable_mag_aux             = true;
+    uint8_t  mag_bmm150_addr            = 0x10;
+    float    mag_aux_odr_hz             = 25.0f;    // manual AUX bridge service rate
+    uint16_t mag_startup_settle_ms      = 3;
+    bool     mag_verify_first_read      = true;
 
-    // Mark mag invalid once its last good sample is older than:
-    // max(3 * mag_poll_period, mag_stale_min_us).
-    uint32_t mag_stale_min_us          = 75000u;
+    // Mag is considered stale once older than:
+    // max(mag_stale_min_us, mag_stale_factor * poll_period).
+    uint32_t mag_stale_min_us           = 75000u;
+    uint8_t  mag_stale_factor           = 3u;
 
-    // Best-effort mag reinit after repeated read failures.
-    bool     enable_mag_recovery       = true;
-    uint8_t  mag_recover_after_failures = 6;
-    uint32_t mag_recover_cooldown_us   = 1000000u;
+    // Best-effort mag recovery after repeated failures.
+    bool     enable_mag_recovery        = true;
+    uint8_t  mag_recover_after_failures = 6u;
+    uint32_t mag_recover_cooldown_us    = 1000000u;
 
-    float    tempC_default             = 25.0f;
-    uint32_t i2c_hz                    = 400000;
+    float    tempC_default              = 25.0f;
+    uint32_t i2c_hz                     = 400000u;
   };
 
   enum class Error : uint8_t {
@@ -83,10 +77,11 @@ public:
 
   bool ok() const { return ok_; }
 
-  // Current mag validity, not just "mag init once succeeded".
+  // "hasMag" means currently fresh/usable magnetometer output is available.
   bool hasMag() const { return magHealthy(); }
   bool magConfigured() const { return mag_configured_; }
-  bool haveValidMagSample() const { return have_valid_mag_; }
+  bool haveValidMagSample() const { return magHealthy(); }
+
   bool magHealthy() const {
     return mag_configured_ && have_valid_mag_ && !magCurrentlyStale_();
   }
@@ -97,17 +92,19 @@ public:
     switch (last_error_) {
       case Error::NONE:               return "none";
       case Error::NOT_INITIALIZED:    return "not initialized";
-      case Error::FIFO_BEGIN_FAILED:  return "BMI270 accel/gyro FIFO begin failed";
-      case Error::FIFO_READ_FAILED:   return "BMI270 accel/gyro FIFO read failed";
+      case Error::FIFO_BEGIN_FAILED:  return "BMI270 FIFO begin failed";
+      case Error::FIFO_READ_FAILED:   return "BMI270 FIFO read failed";
       case Error::MAG_BEGIN_FAILED:   return "BMM150 AUX begin failed";
       case Error::MAG_READ_FAILED:    return "BMM150 read failed";
-      case Error::MAG_STALE:          return "BMM150 data became stale";
+      case Error::MAG_STALE:          return "BMM150 data stale";
       case Error::MAG_RECOVER_FAILED: return "BMM150 recovery failed";
-      case Error::END_MAG_FAILED:     return "BMM150 end/restore failed";
-      case Error::END_AG_FAILED:      return "BMI270 accel/gyro disable failed";
+      case Error::END_MAG_FAILED:     return "BMM150 shutdown failed";
+      case Error::END_AG_FAILED:      return "BMI270 accel/gyro shutdown failed";
       default:                        return "unknown";
     }
   }
+
+  const Config& config() const { return cfg_; }
 
   const BoschBmi270Fifo& fifo() const { return fifo_; }
   BoschBmi270Fifo& fifo() { return fifo_; }
@@ -115,18 +112,17 @@ public:
   const BoschBmm150Aux& mag() const { return mag_; }
   BoschBmm150Aux& mag() { return mag_; }
 
-  const Config& config() const { return cfg_; }
+  uint32_t readTotal() const                { return read_total_; }
+  uint32_t agReadFailuresTotal() const      { return ag_read_fail_total_; }
+  uint32_t magPollsTotal() const            { return mag_poll_total_; }
+  uint32_t magReadOkTotal() const           { return mag_ok_total_; }
+  uint32_t magReadFailuresTotal() const     { return mag_fail_total_; }
+  uint32_t magStaleTransitionsTotal() const { return mag_stale_total_; }
+  uint32_t magRecoveriesTotal() const       { return mag_recover_total_; }
+  uint32_t recoveriesTotal() const          { return recover_total_; }
 
-  uint32_t readTotal() const               { return read_total_; }
-  uint32_t agReadFailuresTotal() const     { return ag_read_fail_total_; }
-  uint32_t magPollsTotal() const           { return mag_poll_total_; }
-  uint32_t magReadOkTotal() const          { return mag_ok_total_; }
-  uint32_t magReadFailuresTotal() const    { return mag_fail_total_; }
-  uint32_t magStaleTransitionsTotal() const{ return mag_stale_total_; }
-  uint32_t magRecoveriesTotal() const      { return mag_recover_total_; }
-
-  uint64_t sampleClockUs() const { return sample_clock_us_; }
-  uint64_t lastMagSampleUs() const { return last_mag_sample_us_; }
+  uint64_t sampleClockUs64() const { return sample_clock_us_; }
+  uint64_t lastMagSampleUs64() const { return last_mag_sample_us_; }
 
   const Vector3f& lastGoodMag_uT() const { return last_mag_uT_; }
   bool haveLastGoodMag() const { return have_last_good_mag_; }
@@ -152,11 +148,13 @@ public:
 
     ok_ = true;
 
+#if defined(ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI) && ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI
     if (cfg_.enable_mag_aux) {
       BoschBmm150Aux::Config mcfg;
-      mcfg.aux_odr_hz         = sanitizedMagOdrHz_();
-      mcfg.startup_settle_ms  = cfg_.mag_startup_settle_ms;
-      mcfg.verify_first_read  = cfg_.mag_verify_first_read;
+      mcfg.bmm_addr          = cfg_.mag_bmm150_addr;
+      mcfg.aux_odr_hz        = sanitizedMagOdrHz_();
+      mcfg.startup_settle_ms = cfg_.mag_startup_settle_ms;
+      mcfg.verify_first_read = cfg_.mag_verify_first_read;
 
       mag_configured_ = mag_.begin(fifo_.rawDev(), mcfg);
       if (!mag_configured_) {
@@ -165,6 +163,9 @@ public:
     } else {
       mag_configured_ = false;
     }
+#else
+    mag_configured_ = false;
+#endif
 
     return true;
   }
@@ -174,6 +175,7 @@ public:
       last_error_ = Error::NOT_INITIALIZED;
       return false;
     }
+
     const bool ok = begin(*wire_, cfg_);
     if (ok) {
       ++recover_total_;
@@ -185,12 +187,14 @@ public:
     bool all_ok = true;
     Error first_err = Error::NONE;
 
+#if defined(ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI) && ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI
     if (mag_configured_) {
       if (!mag_.end()) {
         all_ok = false;
         first_err = Error::END_MAG_FAILED;
       }
     }
+#endif
 
 #if defined(ATOMS3R_HAVE_BOSCH_SENSORAPI) && ATOMS3R_HAVE_BOSCH_SENSORAPI
     if (fifo_.rawDev() != nullptr) {
@@ -207,12 +211,7 @@ public:
 
     ok_ = false;
     mag_configured_ = false;
-    have_valid_mag_ = false;
-    have_last_good_mag_ = false;
-    have_sample_clock_ = false;
-    have_mag_poll_time_ = false;
-    mag_consecutive_failures_ = 0;
-    mag_marked_stale_ = false;
+    resetRuntimeState_();
 
     if (!all_ok) {
       last_error_ = first_err;
@@ -238,35 +237,30 @@ public:
 
     ++read_total_;
 
-    const uint64_t sample_us = advanceSampleClockUs_(ag.dt_s);
+    const uint64_t sample_us64 = advanceSampleClockUs_(ag.dt_s);
 
+    // Sensor frame -> AtomS3R BODY NED
     const Vector3f a_s(ag.ax, ag.ay, ag.az);
     const Vector3f w_s(ag.gx, ag.gy, ag.gz);
 
     const Vector3f a_b(a_s.y(), a_s.x(), -a_s.z());
     const Vector3f w_b(w_s.y(), w_s.x(), -w_s.z());
 
-    maybePollMag_(sample_us);
-    updateMagFreshness_(sample_us);
-
-    Vector3f m_b = nanVec_();
-    bool mag_valid_now = false;
-
-    if (magHealthy()) {
-      m_b = last_mag_uT_;
-      mag_valid_now = true;
-    }
+    maybePollMag_(sample_us64);
+    updateMagFreshness_(sample_us64);
 
     out.a = a_b;
     out.w = w_b;
-    out.m = m_b;
+    out.m = magHealthy() ? last_mag_uT_ : nanVec_();
     out.tempC = cfg_.tempC_default;
-    out.sample_us = sample_us;
-    out.mask = combinedMask_(mag_valid_now);
+    out.mask = kImuMaskAccelGyro;
+    out.sample_us = static_cast<uint32_t>(sample_us64 & 0xFFFFFFFFull);
 
-    if (last_error_ == Error::MAG_STALE || last_error_ == Error::MAG_READ_FAILED) {
-      // Keep non-fatal mag diagnostics visible while still producing AG samples.
-    } else {
+    // Clear non-fatal mag status once mag becomes healthy again.
+    if (magHealthy() &&
+        (last_error_ == Error::MAG_READ_FAILED ||
+         last_error_ == Error::MAG_STALE ||
+         last_error_ == Error::MAG_RECOVER_FAILED)) {
       last_error_ = Error::NONE;
     }
 
@@ -309,10 +303,15 @@ private:
   }
 
   uint64_t magStaleAfterUs_() const {
-    const uint64_t dyn_us =
-        3ull * magPollUs_();
-    const uint64_t min_us =
-        (cfg_.mag_stale_min_us > 0u) ? static_cast<uint64_t>(cfg_.mag_stale_min_us) : 75000ull;
+    const uint64_t min_us = (cfg_.mag_stale_min_us > 0u)
+                          ? static_cast<uint64_t>(cfg_.mag_stale_min_us)
+                          : 75000ull;
+
+    const uint64_t factor = (cfg_.mag_stale_factor > 0u)
+                          ? static_cast<uint64_t>(cfg_.mag_stale_factor)
+                          : 3ull;
+
+    const uint64_t dyn_us = factor * magPollUs_();
     return (dyn_us > min_us) ? dyn_us : min_us;
   }
 
@@ -320,19 +319,19 @@ private:
     if (!have_sample_clock_) {
       have_sample_clock_ = true;
       sample_clock_us_ = 0ull;
-      sample_clock_frac_us_ = 0.0f;
+      sample_clock_frac_us_ = 0.0;
       return 0ull;
     }
 
-    float dt_us_f = dt_s * 1.0e6f;
-    if (!(dt_us_f > 0.0f) || !std::isfinite(dt_us_f)) {
-      dt_us_f = static_cast<float>(nominalDtUs_());
+    double dt_us_f = static_cast<double>(dt_s) * 1.0e6;
+    if (!(dt_us_f > 0.0) || !std::isfinite(dt_us_f)) {
+      dt_us_f = static_cast<double>(nominalDtUs_());
     }
 
     dt_us_f += sample_clock_frac_us_;
 
     uint64_t dt_us = static_cast<uint64_t>(dt_us_f);
-    sample_clock_frac_us_ = dt_us_f - static_cast<float>(dt_us);
+    sample_clock_frac_us_ = dt_us_f - static_cast<double>(dt_us);
 
     if (dt_us == 0ull) {
       dt_us = 1ull;
@@ -343,6 +342,7 @@ private:
   }
 
   void maybePollMag_(uint64_t sample_us) {
+#if defined(ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI) && ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI
     if (!mag_configured_) {
       return;
     }
@@ -354,7 +354,7 @@ private:
 
       Vector3f m_s;
       if (mag_.readMag_uT(m_s) && finite3_(m_s)) {
-        // Sensor frame -> BODY NED
+        // Sensor frame -> AtomS3R BODY NED
         last_mag_uT_ = Vector3f(m_s.y(), m_s.x(), -m_s.z());
 
         have_last_good_mag_ = true;
@@ -383,6 +383,9 @@ private:
         }
       }
     }
+#else
+    (void)sample_us;
+#endif
   }
 
   void updateMagFreshness_(uint64_t sample_us) {
@@ -416,6 +419,7 @@ private:
   }
 
   bool recoverMag_() {
+#if defined(ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI) && ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI
     if (!ok_ || fifo_.rawDev() == nullptr) {
       return false;
     }
@@ -425,9 +429,10 @@ private:
     }
 
     BoschBmm150Aux::Config mcfg;
-    mcfg.aux_odr_hz         = sanitizedMagOdrHz_();
-    mcfg.startup_settle_ms  = cfg_.mag_startup_settle_ms;
-    mcfg.verify_first_read  = cfg_.mag_verify_first_read;
+    mcfg.bmm_addr          = cfg_.mag_bmm150_addr;
+    mcfg.aux_odr_hz        = sanitizedMagOdrHz_();
+    mcfg.startup_settle_ms = cfg_.mag_startup_settle_ms;
+    mcfg.verify_first_read = cfg_.mag_verify_first_read;
 
     mag_configured_ = mag_.begin(fifo_.rawDev(), mcfg);
     if (!mag_configured_) {
@@ -436,14 +441,9 @@ private:
     }
 
     return true;
-  }
-
-  static decltype(ImuSample{}.mask) combinedMask_(bool mag_valid) {
-    const uint32_t base =
-        static_cast<uint32_t>(kImuMaskAccelGyro);
-    const uint32_t magb =
-        mag_valid ? static_cast<uint32_t>(ATOMS3R_ICAL_IMUCAL_MAG_MASK_VALUE) : 0u;
-    return static_cast<decltype(ImuSample{}.mask)>(base | magb);
+#else
+    return false;
+#endif
   }
 
   void resetRuntimeState_() {
@@ -455,14 +455,14 @@ private:
 
     have_sample_clock_ = false;
     sample_clock_us_ = 0ull;
-    sample_clock_frac_us_ = 0.0f;
+    sample_clock_frac_us_ = 0.0;
 
     have_mag_poll_time_ = false;
     last_mag_poll_us_ = 0ull;
     last_mag_sample_us_ = 0ull;
     last_mag_recover_attempt_us_ = 0ull;
 
-    mag_consecutive_failures_ = 0;
+    mag_consecutive_failures_ = 0u;
   }
 
 private:
@@ -483,25 +483,25 @@ private:
   bool     have_valid_mag_     = false;
   bool     mag_marked_stale_   = false;
 
-  bool     have_sample_clock_    = false;
-  uint64_t sample_clock_us_      = 0ull;
-  float    sample_clock_frac_us_ = 0.0f;
+  bool     have_sample_clock_   = false;
+  uint64_t sample_clock_us_     = 0ull;
+  double   sample_clock_frac_us_ = 0.0;
 
-  bool     have_mag_poll_time_       = false;
-  uint64_t last_mag_poll_us_         = 0ull;
-  uint64_t last_mag_sample_us_       = 0ull;
+  bool     have_mag_poll_time_         = false;
+  uint64_t last_mag_poll_us_           = 0ull;
+  uint64_t last_mag_sample_us_         = 0ull;
   uint64_t last_mag_recover_attempt_us_ = 0ull;
 
-  uint8_t  mag_consecutive_failures_ = 0;
+  uint8_t  mag_consecutive_failures_ = 0u;
 
-  uint32_t read_total_         = 0;
-  uint32_t ag_read_fail_total_ = 0;
-  uint32_t mag_poll_total_     = 0;
-  uint32_t mag_ok_total_       = 0;
-  uint32_t mag_fail_total_     = 0;
-  uint32_t mag_stale_total_    = 0;
-  uint32_t mag_recover_total_  = 0;
-  uint32_t recover_total_      = 0;
+  uint32_t read_total_         = 0u;
+  uint32_t ag_read_fail_total_ = 0u;
+  uint32_t mag_poll_total_     = 0u;
+  uint32_t mag_ok_total_       = 0u;
+  uint32_t mag_fail_total_     = 0u;
+  uint32_t mag_stale_total_    = 0u;
+  uint32_t mag_recover_total_  = 0u;
+  uint32_t recover_total_      = 0u;
 };
 
 } // namespace atoms3r_ical
