@@ -123,11 +123,11 @@ public:
   const Vector3f& lastGoodMag_uT() const { return last_mag_uT_; }
   bool haveLastGoodMag() const { return have_last_good_mag_; }
 
-  bool begin(TwoWire& wire) {
-    return begin(wire, Config{});
+  bool begin(m5::I2C_Class& i2c) {
+    return begin(i2c, Config{});
   }
-
-  bool begin(TwoWire& wire, const Config& cfg) {
+  
+  bool begin(m5::I2C_Class& i2c, const Config& cfg) {
     if (ok_ || mag_configured_) {
       if (!end()) {
         return false;
@@ -140,7 +140,8 @@ public:
     resetRuntimeState_();
     last_error_ = Error::NONE;
 
-    if (!fifo_.begin(wire, cfg_.bmi270_addr, cfg_.ag_hz, cfg_.i2c_hz)) {
+    i2c_ = &i2c;
+    if (!fifo_.begin(i2c, cfg_.bmi270_addr, cfg_.ag_hz, cfg_.i2c_hz)) {
       ok_ = false;
       last_error_ = Error::FIFO_BEGIN_FAILED;
       return false;
@@ -171,12 +172,12 @@ public:
   }
 
   bool recover() {
-    if (wire_ == nullptr) {
+    if (i2c_ == nullptr) {
       last_error_ = Error::NOT_INITIALIZED;
       return false;
     }
 
-    const bool ok = begin(*wire_, cfg_);
+    const bool ok = begin(*i2c_, cfg_);
     if (ok) {
       ++recover_total_;
     }
@@ -497,7 +498,7 @@ private:
   }
 
 private:
-  TwoWire* wire_ = nullptr;
+  m5::I2C_Class* i2c_ = nullptr;
   Config   cfg_{};
 
   bool ok_ = false;
