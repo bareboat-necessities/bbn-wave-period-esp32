@@ -18,10 +18,14 @@
   - sample_us is FIFO-time-derived, not read-time-derived.
   - out.mask intentionally reports accel+gyro only, matching AtomS3R_ImuCal.h.
   - Mag validity is communicated by finite out.m versus NaN, plus hasMag().
+
+  IMPORTANT:
+  - This AtomS3R path is M5.In_I2C-based.
+  - Call begin(M5.In_I2C, cfg), not begin(Wire, cfg).
 */
 
 #include <Arduino.h>
-#include <Wire.h>
+#include <M5Unified.h>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -126,7 +130,7 @@ public:
   bool begin(m5::I2C_Class& i2c) {
     return begin(i2c, Config{});
   }
-  
+
   bool begin(m5::I2C_Class& i2c, const Config& cfg) {
     if (ok_ || mag_configured_) {
       if (!end()) {
@@ -134,12 +138,12 @@ public:
       }
     }
 
-    cfg_  = cfg;
+    cfg_ = cfg;
+    i2c_ = &i2c;
 
     resetRuntimeState_();
     last_error_ = Error::NONE;
 
-    i2c_ = &i2c;
     if (!fifo_.begin(i2c, cfg_.bmi270_addr, cfg_.ag_hz, cfg_.i2c_hz)) {
       ok_ = false;
       last_error_ = Error::FIFO_BEGIN_FAILED;
@@ -289,7 +293,6 @@ private:
       if (bmi270_sensor_disable(sens, 2, dev) != BMI2_OK) {
         all_ok = false;
       }
-      // Some vendored Bosch revisions do not expose bmi2_flush_fifo().
       return all_ok;
     }
   #endif
@@ -498,7 +501,7 @@ private:
 
 private:
   m5::I2C_Class* i2c_ = nullptr;
-  Config   cfg_{};
+  Config cfg_{};
 
   bool ok_ = false;
   bool mag_configured_ = false;
