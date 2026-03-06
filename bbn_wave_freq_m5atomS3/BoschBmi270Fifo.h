@@ -120,6 +120,19 @@ public:
   const char* lastRecoveryErrorString() const { return errorString_(last_recovery_error_); }
   const char* lastShutdownErrorString() const { return errorString_(last_shutdown_error_); }
 
+  bool usedMaximumFifoInit() const { return used_maximum_fifo_init_; }
+  bool fellBackToPlainInit() const { return fell_back_to_plain_init_; }
+  int8_t lastBoschInitResult() const { return last_bosch_init_rslt_; }
+
+  const char* initPathString() const {
+    if (used_maximum_fifo_init_) {
+      return fell_back_to_plain_init_
+          ? "bmi270_maximum_fifo_init -> bmi270_init fallback"
+          : "bmi270_maximum_fifo_init";
+    }
+    return "bmi270_init";
+  }
+
   void resetStatistics()
   {
     skipped_total_           = 0;
@@ -457,10 +470,23 @@ private:
 
   bool initDeviceForFifo_()
   {
+    used_maximum_fifo_init_  = false;
+    fell_back_to_plain_init_ = false;
+    last_bosch_init_rslt_    = BMI2_OK;
+
 #if ATOMS3R_HAVE_BMI270_MAXIMUM_FIFO_INIT
-    return bmi270_maximum_fifo_init(&bmi_) == BMI2_OK;
+    used_maximum_fifo_init_ = true;
+    last_bosch_init_rslt_ = bmi270_maximum_fifo_init(&bmi_);
+    if (last_bosch_init_rslt_ == BMI2_OK) {
+      return true;
+    }
+
+    fell_back_to_plain_init_ = true;
+    last_bosch_init_rslt_ = bmi270_init(&bmi_);
+    return (last_bosch_init_rslt_ == BMI2_OK);
 #else
-    return bmi270_init(&bmi_) == BMI2_OK;
+    last_bosch_init_rslt_ = bmi270_init(&bmi_);
+    return (last_bosch_init_rslt_ == BMI2_OK);
 #endif
   }
 
@@ -551,6 +577,10 @@ private:
     fifo_configured_    = false;
     aps_disabled_       = false;
 
+    used_maximum_fifo_init_  = false;
+    fell_back_to_plain_init_ = false;
+    last_bosch_init_rslt_    = BMI2_OK;
+    
     odr_hz_     = 100.0f;
     nominal_dt_ = 0.01f;
 
@@ -997,6 +1027,10 @@ private:
   Error last_error_          = Error::NONE;
   Error last_recovery_error_ = Error::NONE;
   Error last_shutdown_error_ = Error::NONE;
+
+  bool   used_maximum_fifo_init_   = false;
+  bool   fell_back_to_plain_init_  = false;
+  int8_t last_bosch_init_rslt_     = BMI2_OK;
 
 #if ATOMS3R_HAVE_BOSCH_SENSORAPI
   bmi2_dev        bmi_{};
