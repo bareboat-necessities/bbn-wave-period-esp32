@@ -43,10 +43,8 @@
 
 struct bmi2_dev;
 
-// -----------------------------------------------------------------------------
 // Timing constants
 // BMI270 sensortime tick = 39.0625 us, 24-bit counter wraps.
-// -----------------------------------------------------------------------------
 static constexpr float    BMI270_SENSORTIME_TICK_S = 39.0625e-6f;
 static constexpr uint32_t BMI270_SENSORTIME_MASK   = 0x00FFFFFFu;
 
@@ -56,18 +54,14 @@ static constexpr uint32_t BMI270_SENSORTIME_MASK   = 0x00FFFFFFu;
   #define ATOMS3R_FIFO_ENABLE_UNSAFE_RAWDEV_COMPAT 0
 #endif
 
-// -----------------------------------------------------------------------------
 // Output sample
-// -----------------------------------------------------------------------------
 struct BoschAGSample {
   float dt_s = 0.0f;
   float ax = 0.0f, ay = 0.0f, az = 0.0f; // m/s^2
   float gx = 0.0f, gy = 0.0f, gz = 0.0f; // rad/s
 };
 
-// -----------------------------------------------------------------------------
 // Driver
-// -----------------------------------------------------------------------------
 class BoschBmi270Fifo {
 public:
   enum class Error : uint8_t {
