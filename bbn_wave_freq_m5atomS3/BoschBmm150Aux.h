@@ -111,40 +111,28 @@ public:
   BoschBmm150Aux() = default;
 
   bool ok() const { return ok_; }
+  bool sessionAttached() const { return session_attached_; }
+
   Error lastError() const { return last_error_; }
+  Error lastEndError() const { return last_end_error_; }
 
   const char* lastErrorString() const {
-    switch (last_error_) {
-      case Error::NONE:                              return "none";
-      case Error::NOT_BUILT:                         return "Bosch SensorAPI not available in this build";
-      case Error::NULL_BMI_DEV:                      return "null bmi2_dev";
-      case Error::NOT_INITIALIZED:                   return "not initialized";
-      case Error::BMI_GET_AUX_CFG_FAILED:            return "bmi270_get_sensor_config(BMI2_AUX) failed";
-      case Error::BMI_ADV_POWER_SAVE_DISABLE_FAILED: return "bmi2_set_adv_power_save(DISABLE) failed";
-      case Error::BMI_AUX_ENABLE_FAILED:             return "bmi2_sensor_enable(BMI2_AUX) failed";
-      case Error::BMI_SET_AUX_CFG_FAILED:            return "bmi270_set_sensor_config(BMI2_AUX) failed";
-      case Error::CHIP_ID_READ_FAILED:               return "BMM150 chip-id read failed";
-      case Error::CHIP_ID_MISMATCH:                  return "BMM150 chip-id mismatch";
-      case Error::BMM_INIT_FAILED:                   return "bmm150_init failed";
-      case Error::BMM_SET_PRESET_FAILED:             return "bmm150_set_presetmode failed";
-      case Error::BMM_SET_OPMODE_FAILED:             return "bmm150_set_op_mode failed";
-      case Error::BMM_TEST_READ_FAILED:              return "initial BMM150 read failed";
-      case Error::MAG_READ_FAILED:                   return "bmm150_read_mag_data failed";
-      case Error::NONFINITE_MAG:                     return "non-finite magnetometer output";
-      case Error::BMI_RESTORE_AUX_CFG_FAILED:        return "failed to restore prior BMI270 AUX config";
-      case Error::BMI_AUX_DISABLE_FAILED:            return "failed to disable BMI270 AUX after restore";
-      default:                                       return "unknown";
-    }
+    return errorString_(last_error_);
+  }
+
+  const char* lastEndErrorString() const {
+    return errorString_(last_end_error_);
   }
 
   const Config& config() const { return cfg_; }
 
-  uint32_t initFailuresTotal() const         { return init_fail_total_; }
-  uint32_t readOkTotal() const               { return read_ok_total_; }
-  uint32_t readFailuresTotal() const         { return read_fail_total_; }
-  uint32_t rollbackFailuresTotal() const     { return rollback_fail_total_; }
-  uint32_t possibleDuplicateReadsTotal() const { return possible_duplicate_total_; }
-  uint32_t lastReadMillis() const            { return last_read_ms_; }
+  uint32_t initFailuresTotal() const            { return init_fail_total_; }
+  uint32_t readOkTotal() const                  { return read_ok_total_; }
+  uint32_t readFailuresTotal() const            { return read_fail_total_; }
+  uint32_t rollbackFailuresTotal() const        { return rollback_fail_total_; } // begin() rollback failures
+  uint32_t endFailuresTotal() const             { return end_fail_total_; }      // explicit end() failures
+  uint32_t possibleDuplicateReadsTotal() const  { return possible_duplicate_total_; }
+  uint32_t lastReadMillis() const               { return last_read_ms_; }
 
   const Vector3f& lastGoodMag_uT() const { return last_good_uT_; }
   bool haveLastGoodMag() const { return have_last_good_; }
@@ -157,9 +145,11 @@ public:
   // - It deliberately leaves BMI270 advanced power save disabled once started.
   // - On begin() failure it attempts best-effort rollback of prior AUX config.
   bool begin(struct bmi2_dev* bmi_dev, const Config& cfg = Config()) {
-    if (ok_) {
+    // If a prior session is still attached, always try to end it first,
+    // regardless of ok_. This prevents a failed end() from being silently
+    // discarded by a later begin().
+    if (session_attached_) {
       if (!end()) {
-        // Preserve the end() failure as the reason begin() could not proceed.
         ++init_fail_total_;
         return false;
       }
@@ -169,7 +159,19 @@ public:
 
     cfg_ = cfg;
     bmi_dev_ = bmi_dev;
+    session_attached_ = (bmi_dev_ != nullptr);
     last_error_ = Error::NONE;
+    last_end_error_ = Error::NONE;
+
+    std::memset(&saved_aux_cfg_, 0, sizeof(saved_aux_cfg_));
+    std::memset(&bmm_dev_, 0, sizeof(bmm_dev_));
+    std::memset(&bmm_settings_, 0, sizeof(bmm_settings_));
+    saved_aux_cfg_valid_ = false;
+    saved_aux_was_enabled_ = false;
+    ok_ = false;
+    have_last_good_ = false;
+    last_good_uT_ = Vector3f::Zero();
+    last_read_ms_ = 0;
 
     if (!bmi_dev_) {
       ++init_fail_total_;
@@ -178,6 +180,8 @@ public:
       return false;
     }
 
+    // Save the current AUX config first so rollback/end can restore it.
+    saved_aux_cfg_.type = BMI2_AUX;
     if (bmi270_get_sensor_config(&saved_aux_cfg_, 1, bmi_dev_) != BMI2_OK) {
       ++init_fail_total_;
       last_error_ = Error::BMI_GET_AUX_CFG_FAILED;
@@ -204,9 +208,10 @@ public:
       }
     }
 
-    bmi2_sens_config sc{};
+    // Start from the previously-read AUX config so we preserve any unknown or
+    // revision-specific fields, then override only the fields this wrapper owns.
+    bmi2_sens_config sc = saved_aux_cfg_;
     sc.type = BMI2_AUX;
-
     sc.cfg.aux.aux_en          = BMI2_ENABLE;
     sc.cfg.aux.manual_en       = BMI2_ENABLE;
     sc.cfg.aux.i2c_device_addr = cfg_.bmm_addr;
@@ -292,10 +297,13 @@ public:
   // Note: advanced power save is intentionally NOT restored, because the
   // surrounding BMI270 FIFO/AUX stack commonly requires it disabled and
   // Bosch vendored revisions do not expose a portable "get current APS state".
+  //
+  // If end() fails, the session remains attached so the caller can retry cleanup.
   bool end() {
-    if (!bmi_dev_) {
+    if (!session_attached_ || !bmi_dev_) {
       resetSessionState_();
       last_error_ = Error::NONE;
+      last_end_error_ = Error::NONE;
       return true;
     }
 
@@ -316,14 +324,16 @@ public:
     }
 
     if (!restore_ok) {
-      ++rollback_fail_total_;
+      ++end_fail_total_;
       ok_ = false;
       last_error_ = first_restore_error;
+      last_end_error_ = first_restore_error;
       return false;
     }
 
     detachSession_();
     last_error_ = Error::NONE;
+    last_end_error_ = Error::NONE;
     return true;
   }
 
@@ -350,6 +360,30 @@ public:
   }
 
 private:
+  static const char* errorString_(Error e) {
+    switch (e) {
+      case Error::NONE:                              return "none";
+      case Error::NOT_BUILT:                         return "Bosch SensorAPI not available in this build";
+      case Error::NULL_BMI_DEV:                      return "null bmi2_dev";
+      case Error::NOT_INITIALIZED:                   return "not initialized";
+      case Error::BMI_GET_AUX_CFG_FAILED:            return "bmi270_get_sensor_config(BMI2_AUX) failed";
+      case Error::BMI_ADV_POWER_SAVE_DISABLE_FAILED: return "bmi2_set_adv_power_save(DISABLE) failed";
+      case Error::BMI_AUX_ENABLE_FAILED:             return "bmi2_sensor_enable(BMI2_AUX) failed";
+      case Error::BMI_SET_AUX_CFG_FAILED:            return "bmi270_set_sensor_config(BMI2_AUX) failed";
+      case Error::CHIP_ID_READ_FAILED:               return "BMM150 chip-id read failed";
+      case Error::CHIP_ID_MISMATCH:                  return "BMM150 chip-id mismatch";
+      case Error::BMM_INIT_FAILED:                   return "bmm150_init failed";
+      case Error::BMM_SET_PRESET_FAILED:             return "bmm150_set_presetmode failed";
+      case Error::BMM_SET_OPMODE_FAILED:             return "bmm150_set_op_mode failed";
+      case Error::BMM_TEST_READ_FAILED:              return "initial BMM150 read failed";
+      case Error::MAG_READ_FAILED:                   return "bmm150_read_mag_data failed";
+      case Error::NONFINITE_MAG:                     return "non-finite magnetometer output";
+      case Error::BMI_RESTORE_AUX_CFG_FAILED:        return "failed to restore prior BMI270 AUX config";
+      case Error::BMI_AUX_DISABLE_FAILED:            return "failed to disable BMI270 AUX after restore";
+      default:                                       return "unknown";
+    }
+  }
+
   static constexpr uint8_t expectedChipId_() { return 0x32u; }
 
   static constexpr uint8_t chipIdReg_() {
@@ -523,7 +557,9 @@ private:
 
   void resetSessionState_() {
     ok_ = false;
+    session_attached_ = false;
     last_error_ = Error::NONE;
+    last_end_error_ = Error::NONE;
 
     cfg_ = Config{};
     bmi_dev_ = nullptr;
@@ -544,6 +580,8 @@ private:
     resetSessionState_();
   }
 
+  // Best-effort rollback during begin() failure.
+  // If rollback itself fails, keep the session attached so the caller can retry end().
   void bestEffortRollback_() {
     bool restore_ok = true;
 
@@ -560,7 +598,10 @@ private:
 
     if (!restore_ok) {
       ++rollback_fail_total_;
+      ok_ = false;
       // Do NOT overwrite the primary failure cause in last_error_.
+      // Keep session_attached_ true so explicit end() can retry cleanup.
+      return;
     }
 
     detachSession_();
@@ -568,7 +609,9 @@ private:
 
 private:
   bool  ok_ = false;
+  bool  session_attached_ = false;
   Error last_error_ = Error::NONE;
+  Error last_end_error_ = Error::NONE;
 
   Config cfg_{};
   struct bmi2_dev* bmi_dev_ = nullptr;
@@ -584,6 +627,7 @@ private:
   uint32_t read_ok_total_ = 0;
   uint32_t read_fail_total_ = 0;
   uint32_t rollback_fail_total_ = 0;
+  uint32_t end_fail_total_ = 0;
   uint32_t possible_duplicate_total_ = 0;
 
   bool     have_last_good_ = false;
@@ -615,9 +659,16 @@ public:
   BoschBmm150Aux() = default;
 
   bool ok() const { return false; }
+  bool sessionAttached() const { return false; }
+
   Error lastError() const { return Error::NOT_BUILT; }
+  Error lastEndError() const { return Error::NOT_BUILT; }
 
   const char* lastErrorString() const {
+    return "Bosch SensorAPI headers not found in this build";
+  }
+
+  const char* lastEndErrorString() const {
     return "Bosch SensorAPI headers not found in this build";
   }
 
@@ -625,6 +676,7 @@ public:
   uint32_t readOkTotal() const { return 0; }
   uint32_t readFailuresTotal() const { return 0; }
   uint32_t rollbackFailuresTotal() const { return 0; }
+  uint32_t endFailuresTotal() const { return 0; }
   uint32_t possibleDuplicateReadsTotal() const { return 0; }
   uint32_t lastReadMillis() const { return 0; }
 
@@ -634,6 +686,7 @@ public:
   }
 
   bool haveLastGoodMag() const { return false; }
+
   const Config& config() const {
     static const Config kCfg{};
     return kCfg;
