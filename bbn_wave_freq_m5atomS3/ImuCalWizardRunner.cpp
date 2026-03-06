@@ -30,6 +30,11 @@ bool runImuCalWizard(M5Ui& ui, ImuCalStoreNvs& store, ImuCalBlobV1& out_saved) {
   cfg.i2c_hz                     = 400000u;
 
   if (!imu.begin(Wire, cfg)) {
+    Serial.printf("[WIZ] IMU init failed: %s\n", imu.lastErrorString());
+    Serial.printf("[WIZ] FIFO detail: %s\n", imu.fifo().lastErrorString());
+    Serial.printf("[WIZ] FIFO init path: %s\n", imu.fifo().initPathString());
+    Serial.printf("[WIZ] FIFO Bosch init rslt: %d\n", (int)imu.fifo().lastBoschInitResult());
+    Serial.printf("[WIZ] BMI addr tried: 0x%02X\n", cfg.bmi270_addr);
     return false;
   }
 
