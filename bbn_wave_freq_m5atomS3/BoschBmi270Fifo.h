@@ -1,7 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
-#include <Wire.h>
+#include <M5Unified.h>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -57,25 +57,20 @@
 
 struct bmi2_dev;
 
-// Timing constants
 // BMI270 sensortime tick = 39.0625 us, 24-bit counter wraps.
 static constexpr float    BMI270_SENSORTIME_TICK_S = 39.0625e-6f;
 static constexpr uint32_t BMI270_SENSORTIME_MASK   = 0x00FFFFFFu;
 
-// Optional compatibility escape hatch.
-// Default is production-safe API: mutable device access is only via rawDevUnsafe().
 #ifndef ATOMS3R_FIFO_ENABLE_UNSAFE_RAWDEV_COMPAT
   #define ATOMS3R_FIFO_ENABLE_UNSAFE_RAWDEV_COMPAT 0
 #endif
 
-// Output sample
 struct BoschAGSample {
   float dt_s = 0.0f;
   float ax = 0.0f, ay = 0.0f, az = 0.0f; // m/s^2
   float gx = 0.0f, gy = 0.0f, gz = 0.0f; // rad/s
 };
 
-// Driver
 class BoschBmi270Fifo {
 public:
   enum class Error : uint8_t {
@@ -106,6 +101,7 @@ public:
     RECOVERY_FAILED,
     NOT_OK
   };
+
   bool ok() const { return ok_; }
 
   const bmi2_dev* rawDev() const { return rawDevPtr_(); }
@@ -117,7 +113,6 @@ public:
   bmi2_dev* rawDevUnsafe() { return rawDevPtr_(); }
 
   uint8_t addr() const { return bmi_addr_; }
-
   float odrHz() const { return odr_hz_; }
   float nominalDt() const { return nominal_dt_; }
 
@@ -155,7 +150,7 @@ public:
       }
       return "bmi270_maximum_fifo_init";
     }
-  
+
   #if ATOMS3R_HAVE_M5_BMI270_CONFIG
     return "M5 raw config upload";
   #else
@@ -163,8 +158,7 @@ public:
   #endif
   }
 
-  void resetStatistics()
-  {
+  void resetStatistics() {
     skipped_total_           = 0;
     unpaired_total_          = 0;
     bad_timing_total_        = 0;
@@ -176,19 +170,18 @@ public:
     last_shutdown_error_     = Error::NONE;
   }
 
-  bool begin(TwoWire& wire,
+  bool begin(m5::I2C_Class& i2c,
              uint8_t bmi270_addr = 0x68,
              float odr_hz = 100.0f,
-             uint32_t i2c_hz = 400000)
-  {
+             uint32_t i2c_hz = 400000) {
 #if !ATOMS3R_HAVE_BOSCH_SENSORAPI
     clearSessionState_();
-    wire_ = &wire;
-    bmi_addr_ = bmi270_addr;
-    requested_odr_hz_ = odr_hz;
-    i2c_hz_ = i2c_hz;
-    ok_ = false;
-    last_error_ = Error::NOT_BUILT;
+    i2c_             = &i2c;
+    bmi_addr_        = bmi270_addr;
+    requested_odr_hz_= odr_hz;
+    i2c_hz_          = i2c_hz;
+    ok_              = false;
+    last_error_      = Error::NOT_BUILT;
     return false;
 #else
     if ((ok_ || device_initialized_) && !end()) {
@@ -197,15 +190,11 @@ public:
 
     clearSessionState_();
 
-    wire_             = &wire;
+    i2c_              = &i2c;
     bmi_addr_         = bmi270_addr;
     requested_odr_hz_ = odr_hz;
     i2c_hz_           = i2c_hz;
     last_error_       = Error::NONE;
-
-    if (i2c_hz_ > 0u) {
-      wire_->setClock(i2c_hz_);
-    }
 
     std::memset(&bmi_, 0, sizeof(bmi_));
     bmi_.intf           = BMI2_I2C_INTF;
@@ -311,8 +300,7 @@ public:
 #endif
   }
 
-  bool recover()
-  {
+  bool recover() {
 #if !ATOMS3R_HAVE_BOSCH_SENSORAPI
     ok_ = false;
     last_error_ = Error::NOT_BUILT;
@@ -327,7 +315,7 @@ public:
       return false;
     }
 
-    if (wire_ == nullptr) {
+    if (i2c_ == nullptr) {
       last_error_ = Error::RECOVERY_FAILED;
       last_recovery_error_ = Error::RECOVERY_FAILED;
       ok_ = false;
@@ -336,7 +324,7 @@ public:
     }
 
     in_recovery_ = true;
-    const bool ok = begin(*wire_, bmi_addr_, requested_odr_hz_, i2c_hz_);
+    const bool ok = begin(*i2c_, bmi_addr_, requested_odr_hz_, i2c_hz_);
     in_recovery_ = false;
 
     if (ok) {
@@ -352,8 +340,7 @@ public:
 #endif
   }
 
-  bool end()
-  {
+  bool end() {
 #if !ATOMS3R_HAVE_BOSCH_SENSORAPI
     clearSessionState_();
     last_error_ = Error::NONE;
@@ -375,13 +362,11 @@ public:
 #endif
   }
 
-  bool readOneAG(BoschAGSample& out)
-  {
+  bool readOneAG(BoschAGSample& out) {
     return readAG(&out, 1) == 1;
   }
 
-  int readAG(BoschAGSample* out, int max_out)
-  {
+  int readAG(BoschAGSample* out, int max_out) {
 #if !ATOMS3R_HAVE_BOSCH_SENSORAPI
     (void)out;
     (void)max_out;
@@ -439,63 +424,62 @@ private:
   static constexpr float kPi = 3.14159265358979323846f;
   static constexpr float kG0 = 9.80665f;
 
-  static const char* errorString_(Error e)
-  {
+  static const char* errorString_(Error e) {
     switch (e) {
-      case Error::NONE:                        return "none";
-      case Error::NOT_BUILT:                   return "Bosch SensorAPI not available in this build";
-      case Error::BAD_ARG:                     return "bad argument";
-      case Error::INIT_FAILED:                 return "BMI270 init failed";
-      case Error::INIT_WHOAMI_FAILED:          return "BMI270 WHOAMI failed or chip id != 0x24";
-      case Error::INIT_SOFT_RESET_FAILED:      return "BMI270 soft reset write failed";
-      case Error::INIT_PWR_CONF_TIMEOUT:       return "BMI270 PWR_CONF did not become readable after reset";
-      case Error::INIT_CONFIG_UPLOAD_FAILED:   return "BMI270 config blob upload failed";
-      case Error::INIT_INTERNAL_STATUS_TIMEOUT:return "BMI270 INTERNAL_STATUS stayed 0 after config upload";
-      case Error::GET_CONFIG_FAILED:           return "bmi270_get_sensor_config failed";
-      case Error::SET_CONFIG_FAILED:           return "bmi270_set_sensor_config failed";
-      case Error::ENABLE_SENSOR_FAILED:        return "bmi270_sensor_enable failed";
-      case Error::SENSOR_DISABLE_FAILED:       return "bmi270_sensor_disable failed";
-      case Error::DISABLE_APS_FAILED:          return "bmi2_set_adv_power_save(DISABLE) failed";
-      case Error::ENABLE_APS_FAILED:           return "bmi2_set_adv_power_save(ENABLE) failed";
-      case Error::FIFO_CONFIG_FAILED:          return "bmi2_set_fifo_config failed";
-      case Error::FIFO_DISABLE_FAILED:         return "bmi2_set_fifo_config disable failed";
-      case Error::FIFO_WM_FAILED:              return "bmi2_set_fifo_wm failed";
-      case Error::FIFO_FLUSH_FAILED:           return "FIFO flush command failed";
-      case Error::FIFO_LEN_FAILED:             return "bmi2_get_fifo_length failed";
-      case Error::FIFO_READ_FAILED:            return "bmi2_read_fifo_data failed";
-      case Error::EXTRACT_FAILED:              return "bmi2_extract_accel/gyro failed";
-      case Error::RECOVERY_FAILED:             return "driver recovery failed";
-      case Error::NOT_OK:                      return "driver not initialized";
-      default:                                 return "unknown";
+      case Error::NONE:                         return "none";
+      case Error::NOT_BUILT:                    return "Bosch SensorAPI not available in this build";
+      case Error::BAD_ARG:                      return "bad argument";
+      case Error::INIT_FAILED:                  return "BMI270 init failed";
+      case Error::INIT_WHOAMI_FAILED:           return "BMI270 WHOAMI failed or chip id != 0x24";
+      case Error::INIT_SOFT_RESET_FAILED:       return "BMI270 soft reset write failed";
+      case Error::INIT_PWR_CONF_TIMEOUT:        return "BMI270 PWR_CONF did not become readable after reset";
+      case Error::INIT_CONFIG_UPLOAD_FAILED:    return "BMI270 config blob upload failed";
+      case Error::INIT_INTERNAL_STATUS_TIMEOUT: return "BMI270 INTERNAL_STATUS stayed 0 after config upload";
+      case Error::GET_CONFIG_FAILED:            return "bmi270_get_sensor_config failed";
+      case Error::SET_CONFIG_FAILED:            return "bmi270_set_sensor_config failed";
+      case Error::ENABLE_SENSOR_FAILED:         return "bmi270_sensor_enable failed";
+      case Error::SENSOR_DISABLE_FAILED:        return "bmi270_sensor_disable failed";
+      case Error::DISABLE_APS_FAILED:           return "bmi2_set_adv_power_save(DISABLE) failed";
+      case Error::ENABLE_APS_FAILED:            return "bmi2_set_adv_power_save(ENABLE) failed";
+      case Error::FIFO_CONFIG_FAILED:           return "bmi2_set_fifo_config failed";
+      case Error::FIFO_DISABLE_FAILED:          return "bmi2_set_fifo_config disable failed";
+      case Error::FIFO_WM_FAILED:               return "bmi2_set_fifo_wm failed";
+      case Error::FIFO_FLUSH_FAILED:            return "FIFO flush command failed";
+      case Error::FIFO_LEN_FAILED:              return "bmi2_get_fifo_length failed";
+      case Error::FIFO_READ_FAILED:             return "bmi2_read_fifo_data failed";
+      case Error::EXTRACT_FAILED:               return "bmi2_extract_accel/gyro failed";
+      case Error::RECOVERY_FAILED:              return "driver recovery failed";
+      case Error::NOT_OK:                       return "driver not initialized";
+      default:                                  return "unknown";
     }
   }
 
-  bool failBegin_(Error primary_err)
-  {
-  #if ATOMS3R_HAVE_BOSCH_SENSORAPI
-    const bool  used_maximum_fifo_init  = used_maximum_fifo_init_;
-    const bool  fell_back_to_plain_init = fell_back_to_plain_init_;
-    const int8_t last_bosch_init_rslt   = last_bosch_init_rslt_;
-  
+  bool failBegin_(Error primary_err) {
+#if ATOMS3R_HAVE_BOSCH_SENSORAPI
+    const bool   used_maximum_fifo_init  = used_maximum_fifo_init_;
+    const bool   fell_back_to_plain_init = fell_back_to_plain_init_;
+    const int8_t last_bosch_init_rslt    = last_bosch_init_rslt_;
+
     last_error_ = primary_err;
-  
+
     Error cleanup_err = Error::NONE;
     (void)teardownDevice_(&cleanup_err, true);
-  
+
     clearSessionState_();
-  
+
     used_maximum_fifo_init_  = used_maximum_fifo_init;
     fell_back_to_plain_init_ = fell_back_to_plain_init;
     last_bosch_init_rslt_    = last_bosch_init_rslt;
-  #else
+#else
     clearSessionState_();
-  #endif
-  
+#endif
+
     ok_ = false;
     last_error_ = primary_err;
     return false;
   }
 
+#if ATOMS3R_HAVE_BOSCH_SENSORAPI
   static constexpr uint8_t regChipId_() {
   #ifdef BMI2_CHIP_ID_ADDR
     return BMI2_CHIP_ID_ADDR;
@@ -576,23 +560,19 @@ private:
   #endif
   }
 
-  bool readReg8Raw_(uint8_t reg, uint8_t& value)
-  {
+  bool readReg8Raw_(uint8_t reg, uint8_t& value) {
     return bmi2_i2c_read_(reg, &value, 1, this) == BMI2_OK;
   }
 
-  bool writeReg8Raw_(uint8_t reg, uint8_t value)
-  {
+  bool writeReg8Raw_(uint8_t reg, uint8_t value) {
     return bmi2_i2c_write_(reg, &value, 1, this) == BMI2_OK;
   }
 
-  bool writeRegRaw_(uint8_t reg, const uint8_t* data, uint32_t len)
-  {
+  bool writeRegRaw_(uint8_t reg, const uint8_t* data, uint32_t len) {
     return bmi2_i2c_write_(reg, data, len, this) == BMI2_OK;
   }
 
-  bool uploadConfigBlobM5_()
-  {
+  bool uploadConfigBlobM5_() {
   #if !ATOMS3R_HAVE_M5_BMI270_CONFIG
     return false;
   #else
@@ -621,12 +601,11 @@ private:
   #endif
   }
 
-  bool initDeviceForFifo_()
-  {
+  bool initDeviceForFifo_() {
     used_maximum_fifo_init_  = false;
     fell_back_to_plain_init_ = false;
     last_bosch_init_rslt_    = BMI2_OK;
-  
+
   #if ATOMS3R_HAVE_BMI270_MAXIMUM_FIFO_INIT
     used_maximum_fifo_init_ = true;
     last_bosch_init_rslt_ = bmi270_maximum_fifo_init(&bmi_);
@@ -636,19 +615,19 @@ private:
     }
     fell_back_to_plain_init_ = true;
   #endif
-  
+
   #if ATOMS3R_HAVE_M5_BMI270_CONFIG
     uint8_t chip_id = 0;
     if (!readReg8Raw_(regChipId_(), chip_id) || chip_id != 0x24u) {
       last_error_ = Error::INIT_WHOAMI_FAILED;
       return false;
     }
-  
+
     if (!writeReg8Raw_(regCmd_(), softResetCmd_())) {
       last_error_ = Error::INIT_SOFT_RESET_FAILED;
       return false;
     }
-  
+
     {
       uint8_t pwr_conf = 0;
       int retry = 16;
@@ -658,37 +637,37 @@ private:
           pwr_conf = 0;
         }
       } while (pwr_conf == 0u && --retry);
-  
+
       if (retry <= 0) {
         last_error_ = Error::INIT_PWR_CONF_TIMEOUT;
         return false;
       }
     }
-  
+
     if (!writeReg8Raw_(regPwrConf_(), 0x00u)) {
       last_error_ = Error::INIT_SOFT_RESET_FAILED;
       return false;
     }
-  
+
     delay(1);
-  
+
     if (!writeReg8Raw_(regInitCtrl_(), 0x00u)) {
       last_error_ = Error::INIT_CONFIG_UPLOAD_FAILED;
       return false;
     }
-  
+
     if (!uploadConfigBlobM5_()) {
       last_error_ = Error::INIT_CONFIG_UPLOAD_FAILED;
       return false;
     }
-  
+
     if (!writeReg8Raw_(regInitCtrl_(), 0x01u)) {
       last_error_ = Error::INIT_CONFIG_UPLOAD_FAILED;
       return false;
     }
-  
+
     (void)writeReg8Raw_(regIntMapData_(), 0xFFu);
-  
+
     {
       uint8_t internal_status = 0;
       int retry = 16;
@@ -698,13 +677,13 @@ private:
           internal_status = 0;
         }
       } while (internal_status == 0u && --retry);
-  
+
       if (retry <= 0) {
         last_error_ = Error::INIT_INTERNAL_STATUS_TIMEOUT;
         return false;
       }
     }
-  
+
     last_error_ = Error::NONE;
     return true;
   #else
@@ -713,20 +692,17 @@ private:
       last_error_ = Error::INIT_FAILED;
       return false;
     }
-  
+
     last_error_ = Error::NONE;
     return true;
   #endif
   }
 
-  bool flushFifo_()
-  {
-    bool res = writeReg8Raw_(regCmd_(), fifoFlushCmd_());
-    return res;
+  bool flushFifo_() {
+    return writeReg8Raw_(regCmd_(), fifoFlushCmd_());
   }
 
-  bool teardownDevice_(Error* first_err_out, bool count_failure)
-  {
+  bool teardownDevice_(Error* first_err_out, bool count_failure) {
     Error first = Error::NONE;
     bool all_ok = true;
 
@@ -773,8 +749,7 @@ private:
     return all_ok;
   }
 
-  void clearReadPipelineState_()
-  {
+  void clearReadPipelineState_() {
     pending_head_  = 0;
     pending_count_ = 0;
 
@@ -790,8 +765,7 @@ private:
     std::memset(pending_, 0, sizeof(pending_));
   }
 
-  void clearSessionState_()
-  {
+  void clearSessionState_() {
     ok_                  = false;
     watermark_set_ok_    = false;
     last_fill_had_error_ = false;
@@ -805,7 +779,7 @@ private:
     used_maximum_fifo_init_  = false;
     fell_back_to_plain_init_ = false;
     last_bosch_init_rslt_    = BMI2_OK;
-    
+
     odr_hz_     = 100.0f;
     nominal_dt_ = 0.01f;
 
@@ -813,79 +787,62 @@ private:
 
     clearReadPipelineState_();
 
-    wire_ = nullptr;
+    i2c_ = nullptr;
   }
 
-  bmi2_dev* rawDevPtr_()
-  {
-    return &bmi_;
-  }
-
-  const bmi2_dev* rawDevPtr_() const
-  {
-    return &bmi_;
-  }
+  bmi2_dev* rawDevPtr_() { return &bmi_; }
+  const bmi2_dev* rawDevPtr_() const { return &bmi_; }
 
   template <typename T>
-  static auto sensTimeField_(const T& s, int) -> decltype(s.sens_time, uint32_t())
-  {
+  static auto sensTimeField_(const T& s, int) -> decltype(s.sens_time, uint32_t()) {
     return static_cast<uint32_t>(s.sens_time);
   }
 
   template <typename T>
-  static auto sensTimeField_(const T& s, long) -> decltype(s.virt_sens_time, uint32_t())
-  {
+  static auto sensTimeField_(const T& s, long) -> decltype(s.virt_sens_time, uint32_t()) {
     return static_cast<uint32_t>(s.virt_sens_time);
   }
 
   template <typename T>
-  static uint32_t sensTimeField_(const T&, ...)
-  {
+  static uint32_t sensTimeField_(const T&, ...) {
     return 0u;
   }
 
-  static uint32_t sensTime24_(const bmi2_sens_axes_data& s)
-  {
+  static uint32_t sensTime24_(const bmi2_sens_axes_data& s) {
     return sensTimeField_(s, 0) & BMI270_SENSORTIME_MASK;
   }
 
-  static bool streamHasUsableTime_(const bmi2_sens_axes_data* s, uint16_t n)
-  {
+  static bool streamHasUsableTime_(const bmi2_sens_axes_data* s, uint16_t n) {
     for (uint16_t i = 0; i < n; ++i) {
       if (sensTime24_(s[i]) != 0u) return true;
     }
     return false;
   }
 
-  static uint32_t absTickDiff24_(uint32_t a, uint32_t b)
-  {
+  static uint32_t absTickDiff24_(uint32_t a, uint32_t b) {
     const uint32_t d1 = (a - b) & BMI270_SENSORTIME_MASK;
     const uint32_t d2 = (b - a) & BMI270_SENSORTIME_MASK;
     return (d1 < d2) ? d1 : d2;
   }
 
-  static bool timeBefore24_(uint32_t a, uint32_t b)
-  {
+  static bool timeBefore24_(uint32_t a, uint32_t b) {
     return (a != b) && (((b - a) & BMI270_SENSORTIME_MASK) < 0x00800000u);
   }
 
-  static uint32_t chooseLaterTime24_(uint32_t a, uint32_t b)
-  {
+  static uint32_t chooseLaterTime24_(uint32_t a, uint32_t b) {
     if (a == 0u) return b;
     if (b == 0u) return a;
     return timeBefore24_(a, b) ? b : a;
   }
 
-  void noteReadError_(Error err)
-  {
+  void noteReadError_(Error err) {
     last_fill_had_error_ = true;
     ++fifo_read_errors_total_;
     ++consecutive_read_errors_;
     last_error_ = err;
   }
 
-  void noteReadSuccess_()
-  {
+  void noteReadSuccess_() {
     last_fill_had_error_ = false;
     consecutive_read_errors_ = 0;
     if (last_error_ == Error::FIFO_LEN_FAILED ||
@@ -895,8 +852,7 @@ private:
     }
   }
 
-  float computeDtFromSensTime_(uint32_t st24)
-  {
+  float computeDtFromSensTime_(uint32_t st24) {
     if (st24 == 0u) {
       ++bad_timing_total_;
       return nominal_dt_;
@@ -933,8 +889,7 @@ private:
 
   bool pushPairedSample_(const bmi2_sens_axes_data& a,
                          const bmi2_sens_axes_data& g,
-                         uint32_t st24)
-  {
+                         uint32_t st24) {
     if (pending_count_ >= PENDING_CAP) return false;
 
     const int idx = (pending_head_ + pending_count_) % PENDING_CAP;
@@ -958,8 +913,7 @@ private:
     return true;
   }
 
-  bool pairByIndex_(uint16_t a_len, uint16_t g_len)
-  {
+  bool pairByIndex_(uint16_t a_len, uint16_t g_len) {
     const uint16_t n = (a_len < g_len) ? a_len : g_len;
     for (uint16_t i = 0; i < n; ++i) {
       const uint32_t ta = sensTime24_(accel_[i]);
@@ -976,8 +930,7 @@ private:
     return n > 0u;
   }
 
-  bool pairLockstep_(uint16_t a_len, uint16_t g_len)
-  {
+  bool pairLockstep_(uint16_t a_len, uint16_t g_len) {
     if (a_len != g_len) return false;
 
     int compared = 0;
@@ -1018,8 +971,7 @@ private:
     return true;
   }
 
-  void pairByMergedTime_(uint16_t a_len, uint16_t g_len)
-  {
+  void pairByMergedTime_(uint16_t a_len, uint16_t g_len) {
     uint16_t ia = 0;
     uint16_t ig = 0;
 
@@ -1055,8 +1007,7 @@ private:
     unpaired_total_ += static_cast<uint32_t>(g_len - ig);
   }
 
-  bool fillPendingFromFifo_()
-  {
+  bool fillPendingFromFifo_() {
     if (!ok_) {
       last_error_ = Error::NOT_OK;
       last_fill_had_error_ = true;
@@ -1105,12 +1056,8 @@ private:
     const int8_t ra = bmi2_extract_accel(accel_, &a_len, &fifo_, &bmi_);
     const int8_t rg = bmi2_extract_gyro (gyro_,  &g_len, &fifo_, &bmi_);
 
-    if (ra != BMI2_OK) {
-      a_len = 0;
-    }
-    if (rg != BMI2_OK) {
-      g_len = 0;
-    }
+    if (ra != BMI2_OK) a_len = 0;
+    if (rg != BMI2_OK) g_len = 0;
     if (ra != BMI2_OK || rg != BMI2_OK) {
       noteReadError_(Error::EXTRACT_FAILED);
     }
@@ -1142,40 +1089,21 @@ private:
     return pending_count_ > 0;
   }
 
-  static int8_t bmi2_i2c_read_(uint8_t reg_addr, uint8_t* reg_data, uint32_t len, void* intf_ptr)
-  {
+  static int8_t bmi2_i2c_read_(uint8_t reg_addr, uint8_t* reg_data, uint32_t len, void* intf_ptr) {
     auto* self = static_cast<BoschBmi270Fifo*>(intf_ptr);
-    if (self == nullptr || self->wire_ == nullptr || reg_data == nullptr) {
+    if (self == nullptr || self->i2c_ == nullptr || reg_data == nullptr) {
       return static_cast<int8_t>(-1);
     }
 
     uint32_t off = 0;
     while (off < len) {
       const uint16_t n = static_cast<uint16_t>(std::min<uint32_t>(I2C_CHUNK, len - off));
-
       const uint8_t addr = (reg_addr == BMI2_FIFO_DATA_ADDR)
                          ? reg_addr
                          : static_cast<uint8_t>(reg_addr + off);
 
-      self->wire_->beginTransmission(self->bmi_addr_);
-      self->wire_->write(addr);
-      if (self->wire_->endTransmission(false) != 0) {
+      if (!self->i2c_->readRegister(self->bmi_addr_, addr, reg_data + off, n, self->i2c_hz_)) {
         return static_cast<int8_t>(-1);
-      }
-
-      const uint16_t got = static_cast<uint16_t>(
-          self->wire_->requestFrom(static_cast<int>(self->bmi_addr_),
-                                   static_cast<int>(n)));
-
-      if (got != n) {
-        return static_cast<int8_t>(-1);
-      }
-
-      for (uint16_t i = 0; i < n; ++i) {
-        if (!self->wire_->available()) {
-          return static_cast<int8_t>(-1);
-        }
-        reg_data[off + i] = static_cast<uint8_t>(self->wire_->read());
       }
 
       off += n;
@@ -1184,28 +1112,20 @@ private:
     return BMI2_OK;
   }
 
-  static int8_t bmi2_i2c_write_(uint8_t reg_addr, const uint8_t* reg_data, uint32_t len, void* intf_ptr)
-  {
+  static int8_t bmi2_i2c_write_(uint8_t reg_addr, const uint8_t* reg_data, uint32_t len, void* intf_ptr) {
     auto* self = static_cast<BoschBmi270Fifo*>(intf_ptr);
-    if (self == nullptr || self->wire_ == nullptr || reg_data == nullptr) {
+    if (self == nullptr || self->i2c_ == nullptr || reg_data == nullptr) {
       return static_cast<int8_t>(-1);
     }
 
     uint32_t off = 0;
     while (off < len) {
       const uint16_t n = static_cast<uint16_t>(std::min<uint32_t>(I2C_CHUNK, len - off));
-
-      self->wire_->beginTransmission(self->bmi_addr_);
       const uint8_t addr = (reg_addr == regInitData_())
                          ? reg_addr
                          : static_cast<uint8_t>(reg_addr + off);
-      self->wire_->write(addr);
 
-      for (uint16_t i = 0; i < n; ++i) {
-        self->wire_->write(reg_data[off + i]);
-      }
-
-      if (self->wire_->endTransmission(true) != 0) {
+      if (!self->i2c_->writeRegister(self->bmi_addr_, addr, reg_data + off, n, self->i2c_hz_)) {
         return static_cast<int8_t>(-1);
       }
 
@@ -1215,13 +1135,13 @@ private:
     return BMI2_OK;
   }
 
-  static void bmi2_delay_us_(uint32_t period, void*)
-  {
+  static void bmi2_delay_us_(uint32_t period, void*) {
     delayMicroseconds(period);
   }
+#endif
 
 private:
-  TwoWire* wire_ = nullptr;
+  m5::I2C_Class* i2c_ = nullptr;
   uint8_t  bmi_addr_ = 0x68;
   bool     ok_ = false;
   bool     watermark_set_ok_ = false;
