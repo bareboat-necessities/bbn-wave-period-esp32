@@ -40,10 +40,10 @@
 #include "AtomS3R_CompassUI.h"
 #include "NmeaCompass.h"
 
-// ----------------------------- HW -----------------------------
+// HW
 static constexpr uint8_t BMI270_ADDR = 0x68;  // change to 0x69 if your board straps SA0 high
 
-// ----------------------------- UI / serial defaults -----------------------------
+// UI / serial defaults
 #ifndef SEA_STATE_UI_DEFAULT_GRAPHICS
   #define SEA_STATE_UI_DEFAULT_GRAPHICS 1
 #endif
@@ -56,7 +56,7 @@ static constexpr uint8_t BMI270_ADDR = 0x68;  // change to 0x69 if your board st
   #define SEA_STATE_NMEA_TALKER "II"
 #endif
 
-// ----------------------------- SeaStateFusion requirements -----------------------------
+// SeaStateFusion requirements
 constexpr float g_std      = atoms3r_ical::ImuCalCfg::g_std;
 constexpr float FREQ_GUESS = 0.3f;
 
@@ -382,6 +382,8 @@ private:
     if (!runtime_imu_.begin(Wire, cfg)) {
       Serial.printf("[BOOT] Bosch IMU init failed: %s\n", runtime_imu_.lastErrorString());
       Serial.printf("[BOOT] FIFO detail: %s\n", runtime_imu_.fifo().lastErrorString());
+      Serial.printf("[BOOT] FIFO init path: %s\n", runtime_imu_.fifo().initPathString());
+      Serial.printf("[BOOT] FIFO Bosch init rslt: %d\n", (int)runtime_imu_.fifo().lastBoschInitResult());
       Serial.printf("[BOOT] BMI addr tried: 0x%02X\n", cfg.bmi270_addr);
       ui_.fail("IMU", runtime_imu_.fifo().lastErrorString());
       while (true) delay(100);
