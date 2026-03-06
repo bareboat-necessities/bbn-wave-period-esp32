@@ -3,8 +3,8 @@
 /*
   BoschBmi270_ImuCal.h  (AtomS3R)
 
-  Production-hardened IMU sample source for calibration + runtime that matches
-  the SAME axis convention as AtomS3R_ImuCal.h (BODY NED):
+  Bosch-backed IMU sample source that matches the SAME axis convention as
+  AtomS3R_ImuCal.h (BODY NED):
 
     acc_body = ( ay, ax, -az )    [m/s^2]
     gyr_body = ( gy, gx, -gz )    [rad/s]
@@ -14,8 +14,7 @@
   - Mag: BMM150 via BMI270 AUX using BoschBmm150Aux manual AUX bridge
 
   Notes:
-  - Reuses atoms3r_ical::ImuSample / Vector3f from AtomS3R_ImuCal.h
-    to avoid type duplication and guarantee identical conventions.
+  - Reuses atoms3r_ical::ImuSample / Vector3f from AtomS3R_ImuCal.h.
   - sample_us is FIFO-time-derived, not read-time-derived.
   - out.mask intentionally reports accel+gyro only, matching AtomS3R_ImuCal.h.
   - Mag validity is communicated by finite out.m versus NaN, plus hasMag().
@@ -39,7 +38,7 @@ class BoschBmi270_ImuCal {
 public:
   struct Config {
     uint8_t  bmi270_addr = 0x68;
-    float    ag_hz       = 100.0f;   // BoschBmi270Fifo will quantize to 100/200 Hz
+    float    ag_hz       = 100.0f;   // BoschBmi270Fifo quantizes to 100/200 Hz
 
     bool     enable_mag_aux             = true;
     uint8_t  mag_bmm150_addr            = 0x10;
@@ -271,8 +270,8 @@ private:
   }
 
   template <typename TFifo>
-  static auto rawBmiDevImpl_(TFifo& f, long) -> decltype(f.rawDev()) {
-    return f.rawDev();
+  static auto rawBmiDevImpl_(TFifo& f, long) -> decltype(const_cast<bmi2_dev*>(f.rawDev())) {
+    return const_cast<bmi2_dev*>(f.rawDev());
   }
 
   bmi2_dev* rawBmiDev_() {
@@ -520,8 +519,8 @@ private:
   bool     have_valid_mag_     = false;
   bool     mag_marked_stale_   = false;
 
-  bool     have_sample_clock_   = false;
-  uint64_t sample_clock_us_     = 0ull;
+  bool     have_sample_clock_    = false;
+  uint64_t sample_clock_us_      = 0ull;
   double   sample_clock_frac_us_ = 0.0;
 
   bool     have_mag_poll_time_          = false;
