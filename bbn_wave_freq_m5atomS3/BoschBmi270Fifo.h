@@ -1219,7 +1219,6 @@ private:
   {
     delayMicroseconds(period);
   }
-#endif
 
 private:
   TwoWire* wire_ = nullptr;
