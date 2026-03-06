@@ -1,421 +1,509 @@
 #pragma once
 
 /*
+  BoschBmi270_ImuCal.h  (AtomS3R)
 
-  Copyright 2026, Mikhail Grushinskiy
+  Production-hardened IMU sample source for calibration + runtime that matches
+  the SAME axis convention as AtomS3R_ImuCal.h (BODY NED):
 
-  AtomS3R reusable IMU calibration plumbing (NVS blob + CRC, runtime apply, axis mapping,
-  and M5Unified-calibration clearing).
+    acc_body = ( ay, ax, -az )    [m/s^2]
+    gyr_body = ( gy, gx, -gz )    [rad/s]
+    mag_body = ( my, mx, -mz )    [uT]
 
-  This header is intentionally UI-agnostic: you can reuse it in:
-    - the calibration wizard sketch
-    - your "real" application firmware
+  - Accel/Gyro: BMI270 FIFO via BoschBmi270Fifo
+  - Mag: BMM150 via BMI270 AUX using BoschBmm150Aux manual AUX bridge
 
-  Example boot flow:
-
-    #include <M5Unified.h>
-    #include "AtomS3R_ImuCal.h"
-
-    atoms3r_ical::ImuCalStoreNvs store;
-    atoms3r_ical::ImuCalBlobV1   blob;
-    atoms3r_ical::RuntimeCals    cals;
-
-    void setup() {
-      Serial.begin(115200);
-      delay(150);
-      Serial.println();
-
-      auto cfg = M5.config();
-      M5.begin(cfg);
-
-      // 1) Clear M5Unified's own IMU calibration/offset data so it can't "stack"
-      //    with our calibration (prevents two different calibrations colliding).
-      atoms3r_ical::clearM5UnifiedImuCalibration();
-
-      if (!M5.Imu.isEnabled()) {
-        Serial.println("[BOOT] IMU not found");
-        while (true) delay(100);
-      }
-
-      // 2) Load our calibration from NVS
-      bool have = store.load(blob);
-
-      if (have) {
-        // 3) Display it at startup on Serial
-        Serial.println("[BOOT] Found saved AtomS3R calibration:");
-        atoms3r_ical::printBlobSummary(Serial, blob);
-        atoms3r_ical::printBlobDetail(Serial, blob);
-
-        // 4) Build runtime calibration objects for fast apply()
-        cals.rebuildFromBlob(blob);
-      } else {
-        Serial.println("[BOOT] No saved AtomS3R calibration.");
-        Serial.println("[BOOT] Starting calibration UI...");
-
-        // 5) Start calibration UI / wizard
-        // run_my_calibration_ui_and_save_blob(store);
-
-        // After wizard saves:
-        // store.load(blob); cals.rebuildFromBlob(blob);
-      }
-    }
-
-    void loop() {
-      atoms3r_ical::ImuSample s;
-      if (!atoms3r_ical::readImuMapped(M5.Imu, s)) return;
-
-      const auto a_cal = cals.applyAccel(s.a, s.tempC);
-      const auto w_cal = cals.applyGyro (s.w, s.tempC);
-      const auto m_cal = cals.applyMag  (s.m);
-
-      // Use a_cal / w_cal / m_cal everywhere in the application
-      // ...
-    }
-
+  Notes:
+  - Reuses atoms3r_ical::ImuSample / Vector3f from AtomS3R_ImuCal.h
+    to avoid type duplication and guarantee identical conventions.
+  - sample_us is FIFO-time-derived, not read-time-derived.
+  - out.mask intentionally reports accel+gyro only, matching the real
+    ImuSample/M5 path in AtomS3R_ImuCal.h, which does not rely on a mag-valid bit.
+  - When mag is unavailable or stale, out.m is filled with NaNs.
 */
 
 #include <Arduino.h>
-#include <M5Unified.h>
-#include <Preferences.h>
+#include <Wire.h>
+#include <cmath>
+#include <cstdint>
+#include <cstring>
+#include <limits>
 
-#include <stdint.h>
-#include <stddef.h>   // offsetof
-#include <string.h>
-#include <math.h>
-
-#ifndef EIGEN_STACK_ALLOCATION_LIMIT
-#define EIGEN_STACK_ALLOCATION_LIMIT 0
-#endif
-#include <ArduinoEigenDense.h>
-
-// Requires existing calibration types (imu_cal::AccelCalibration, etc.)
-#include "CalibrateIMU.h"
+#include "BoschBmi270Fifo.h"
+#include "BoschBmm150Aux.h"
+#include "AtomS3R_ImuCal.h"
 
 namespace atoms3r_ical {
 
-using Vector3f = Eigen::Matrix<float,3,1>;
-using Matrix3f = Eigen::Matrix<float,3,3>;
+class BoschBmi270_ImuCal {
+public:
+  struct Config {
+    uint8_t  bmi270_addr = 0x68;
+    float    ag_hz       = 100.0f;   // BoschBmi270Fifo selects nearest supported 100/200 Hz
 
-// Config/constants (shared)
-struct ImuCalCfg {
-  static constexpr float g_std   = 9.80665f;
-  static constexpr float DEG2RAD = 3.14159265358979323846f / 180.0f;
-};
+    bool     enable_mag_aux             = true;
+    uint8_t  mag_bmm150_addr            = 0x10;
+    float    mag_aux_odr_hz             = 25.0f;   // manual AUX bridge service rate
+    uint16_t mag_startup_settle_ms      = 3;
+    bool     mag_verify_first_read      = true;
 
-// Axis mapping (AtomS3R)
-// acc_body = ( ay, ax, -az ) * g
-// gyr_body = ( gy, gx, -gz ) * deg2rad
-// mag_body = ( my, mx, -mz ) * (1/10)
-static inline Vector3f map_acc_to_body_ned_(const m5::imu_3d_t& a_g) {
-  return Vector3f(a_g.y * ImuCalCfg::g_std,
-                  a_g.x * ImuCalCfg::g_std,
-                 -a_g.z * ImuCalCfg::g_std);
-}
-static inline Vector3f map_gyr_to_body_ned_(const m5::imu_3d_t& w_deg_s) {
-  return Vector3f(w_deg_s.y * ImuCalCfg::DEG2RAD,
-                  w_deg_s.x * ImuCalCfg::DEG2RAD,
-                 -w_deg_s.z * ImuCalCfg::DEG2RAD);
-}
-static inline Vector3f map_mag_to_body_uT_(const m5::imu_3d_t& m_raw) {
-  return Vector3f(m_raw.y / 10.0f,
-                  m_raw.x / 10.0f,
-                 -m_raw.z / 10.0f);
-}
+    // Mag becomes invalid when its last good sample is older than:
+    // max(mag_stale_min_us, mag_stale_factor * mag_poll_period).
+    uint32_t mag_stale_min_us           = 75000u;
+    uint8_t  mag_stale_factor           = 3u;
 
-// Blob + CRC utilities
-struct ImuCalBlobV1 {
-  static constexpr uint32_t IMU_CAL_MAGIC   = 0x434C554D; // 'MULC'
-  static constexpr uint16_t IMU_CAL_VERSION = 1;
+    // Best-effort mag reinit after repeated read failures.
+    bool     enable_mag_recovery        = true;
+    uint8_t  mag_recover_after_failures = 6u;
+    uint32_t mag_recover_cooldown_us    = 1000000u;
 
-  uint32_t magic = IMU_CAL_MAGIC;
-  uint16_t version = IMU_CAL_VERSION;
-  uint16_t size_bytes = sizeof(ImuCalBlobV1);
+    float    tempC_default              = 25.0f;
+    uint32_t i2c_hz                     = 400000u;
+  };
 
-  uint8_t  accel_ok = 0;
-  float    accel_g = ImuCalCfg::g_std;
-  float    accel_S[9]{};
-  float    accel_T0 = 25.0f;
-  float    accel_b0[3]{};
-  float    accel_k[3]{};
-  float    accel_rms_mag = 0.0f;
+  enum class Error : uint8_t {
+    NONE = 0,
+    NOT_INITIALIZED,
+    FIFO_BEGIN_FAILED,
+    FIFO_READ_FAILED,
+    MAG_BEGIN_FAILED,
+    MAG_READ_FAILED,
+    MAG_STALE,
+    MAG_RECOVER_FAILED,
+    END_MAG_FAILED,
+    END_AG_FAILED
+  };
 
-  uint8_t  gyro_ok = 0;
-  float    gyro_T0 = 25.0f;
-  float    gyro_b0[3]{};
-  float    gyro_k[3]{};
+  BoschBmi270_ImuCal() = default;
 
-  uint8_t  mag_ok = 0;
-  float    mag_A[9]{};
-  float    mag_b[3]{};
-  float    mag_field_uT = 0.0f;
-  float    mag_rms = 0.0f;
+  bool ok() const { return ok_; }
 
-  uint32_t crc = 0;
-};
-static constexpr size_t IMU_CAL_CRC_LEN = offsetof(ImuCalBlobV1, crc);
+  // "hasMag" means currently fresh, valid mag is available for output.
+  bool hasMag() const { return magHealthy(); }
+  bool magConfigured() const { return mag_configured_; }
+  bool haveValidMagSample() const { return magHealthy(); }
 
-static inline uint32_t crc32_ieee_(const uint8_t* data, size_t n) {
-  uint32_t crc = 0xFFFFFFFFu;
-  for (size_t i = 0; i < n; ++i) {
-    crc ^= (uint32_t)data[i];
-    for (int k = 0; k < 8; ++k) {
-      uint32_t mask = -(crc & 1u);
-      crc = (crc >> 1) ^ (0xEDB88320u & mask);
+  bool magHealthy() const {
+    return mag_configured_ && have_valid_mag_ && !magCurrentlyStale_();
+  }
+
+  Error lastError() const { return last_error_; }
+
+  const char* lastErrorString() const {
+    switch (last_error_) {
+      case Error::NONE:               return "none";
+      case Error::NOT_INITIALIZED:    return "not initialized";
+      case Error::FIFO_BEGIN_FAILED:  return "BMI270 accel/gyro FIFO begin failed";
+      case Error::FIFO_READ_FAILED:   return "BMI270 accel/gyro FIFO read failed";
+      case Error::MAG_BEGIN_FAILED:   return "BMM150 AUX begin failed";
+      case Error::MAG_READ_FAILED:    return "BMM150 read failed";
+      case Error::MAG_STALE:          return "BMM150 data stale";
+      case Error::MAG_RECOVER_FAILED: return "BMM150 recovery failed";
+      case Error::END_MAG_FAILED:     return "BMM150 end failed";
+      case Error::END_AG_FAILED:      return "BMI270 accel/gyro shutdown failed";
+      default:                        return "unknown";
     }
   }
-  return ~crc;
-}
 
-static inline Matrix3f mat_from_rowmajor9_(const float a[9]) {
-  Matrix3f M;
-  M(0,0)=a[0]; M(0,1)=a[1]; M(0,2)=a[2];
-  M(1,0)=a[3]; M(1,1)=a[4]; M(1,2)=a[5];
-  M(2,0)=a[6]; M(2,1)=a[7]; M(2,2)=a[8];
-  return M;
-}
+  const Config& config() const { return cfg_; }
 
-static inline void mat_to_rowmajor9_(const Matrix3f& M, float a[9]) {
-  a[0]=M(0,0); a[1]=M(0,1); a[2]=M(0,2);
-  a[3]=M(1,0); a[4]=M(1,1); a[5]=M(1,2);
-  a[6]=M(2,0); a[7]=M(2,1); a[8]=M(2,2);
-}
+  const BoschBmi270Fifo& fifo() const { return fifo_; }
+  BoschBmi270Fifo& fifo() { return fifo_; }
 
-static inline uint32_t computeBlobCrc(const ImuCalBlobV1& in) {
-  ImuCalBlobV1 tmp = in;
-  tmp.crc = 0;
-  return crc32_ieee_((const uint8_t*)&tmp, IMU_CAL_CRC_LEN);
-}
+  const BoschBmm150Aux& mag() const { return mag_; }
+  BoschBmm150Aux& mag() { return mag_; }
 
-static inline bool validateBlob(const ImuCalBlobV1& b) {
-  if (b.magic != ImuCalBlobV1::IMU_CAL_MAGIC) return false;
-  if (b.version != ImuCalBlobV1::IMU_CAL_VERSION) return false;
-  if (b.size_bytes != sizeof(ImuCalBlobV1)) return false;
-  const uint32_t want = b.crc;
-  return (computeBlobCrc(b) == want);
-}
+  uint32_t readTotal() const               { return read_total_; }
+  uint32_t agReadFailuresTotal() const     { return ag_read_fail_total_; }
+  uint32_t magPollsTotal() const           { return mag_poll_total_; }
+  uint32_t magReadOkTotal() const          { return mag_ok_total_; }
+  uint32_t magReadFailuresTotal() const    { return mag_fail_total_; }
+  uint32_t magStaleTransitionsTotal() const{ return mag_stale_total_; }
+  uint32_t magRecoveriesTotal() const      { return mag_recover_total_; }
+  uint32_t recoveriesTotal() const         { return recover_total_; }
 
-// NVS store (Preferences)
-class ImuCalStoreNvs {
-public:
-  // Namespace/key kept stable so different sketches share the same saved cal.
-  // If you want per-app separation, change these strings.
-  static constexpr const char* kNamespace = "imu_cal";
-  static constexpr const char* kKey       = "blob";
+  uint64_t sampleClockUs() const { return sample_clock_us_; }
+  uint64_t lastMagSampleUs() const { return last_mag_sample_us_; }
 
-  bool load(ImuCalBlobV1& out) {
-    Preferences prefs;
-    prefs.begin(kNamespace, true);
-    size_t n = prefs.getBytesLength(kKey);
-    if (n != sizeof(ImuCalBlobV1)) { prefs.end(); return false; }
+  const Vector3f& lastGoodMag_uT() const { return last_mag_uT_; }
+  bool haveLastGoodMag() const { return have_last_good_mag_; }
 
-    ImuCalBlobV1 tmp;
-    size_t got = prefs.getBytes(kKey, &tmp, sizeof(tmp));
-    prefs.end();
-    if (got != sizeof(tmp)) return false;
+  bool begin(TwoWire& wire, const Config& cfg = Config()) {
+    if (ok_ || mag_configured_) {
+      if (!end()) {
+        return false;
+      }
+    }
 
-    if (!validateBlob(tmp)) return false;
-    out = tmp;
+    wire_ = &wire;
+    cfg_  = cfg;
+
+    resetRuntimeState_();
+    last_error_ = Error::NONE;
+
+    if (!fifo_.begin(wire, cfg_.bmi270_addr, cfg_.ag_hz, cfg_.i2c_hz)) {
+      ok_ = false;
+      last_error_ = Error::FIFO_BEGIN_FAILED;
+      return false;
+    }
+
+    ok_ = true;
+
+#if defined(ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI) && ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI
+    if (cfg_.enable_mag_aux) {
+      BoschBmm150Aux::Config mcfg;
+      mcfg.bmm_addr          = cfg_.mag_bmm150_addr;
+      mcfg.aux_odr_hz        = sanitizedMagOdrHz_();
+      mcfg.startup_settle_ms = cfg_.mag_startup_settle_ms;
+      mcfg.verify_first_read = cfg_.mag_verify_first_read;
+
+      mag_configured_ = mag_.begin(fifo_.rawDev(), mcfg);
+      if (!mag_configured_) {
+        last_error_ = Error::MAG_BEGIN_FAILED;
+      }
+    } else {
+      mag_configured_ = false;
+    }
+#else
+    mag_configured_ = false;
+    (void)cfg_;
+#endif
+
     return true;
   }
 
-  bool save(const ImuCalBlobV1& in) {
-    ImuCalBlobV1 tmp = in;
-    tmp.magic = ImuCalBlobV1::IMU_CAL_MAGIC;
-    tmp.version = ImuCalBlobV1::IMU_CAL_VERSION;
-    tmp.size_bytes = sizeof(ImuCalBlobV1);
-    tmp.crc = 0;
-    tmp.crc = computeBlobCrc(tmp);
-
-    Preferences prefs;
-    prefs.begin(kNamespace, false);
-    size_t wrote = prefs.putBytes(kKey, &tmp, sizeof(tmp));
-    prefs.end();
-    return (wrote == sizeof(tmp));
-  }
-
-  void erase() {
-    Preferences prefs;
-    prefs.begin(kNamespace, false);
-    prefs.remove(kKey);
-    prefs.end();
-  }
-};
-
-// Runtime calibration objects
-struct RuntimeCals {
-  imu_cal::AccelCalibration<float> acc{};
-  imu_cal::GyroCalibration<float>  gyr{};
-  imu_cal::MagCalibration<float>   mag{};
-
-  void rebuildFromBlob(const ImuCalBlobV1& b) {
-    acc.ok = (b.accel_ok != 0);
-    acc.g  = b.accel_g;
-    acc.S  = mat_from_rowmajor9_(b.accel_S);
-    acc.biasT.ok = acc.ok;
-    acc.biasT.T0 = b.accel_T0;
-    acc.biasT.b0 = Vector3f(b.accel_b0[0], b.accel_b0[1], b.accel_b0[2]);
-    acc.biasT.k  = Vector3f(b.accel_k[0],  b.accel_k[1],  b.accel_k[2]);
-    acc.rms_mag  = b.accel_rms_mag;
-
-    gyr.ok = (b.gyro_ok != 0);
-    gyr.S  = Matrix3f::Identity();
-    gyr.biasT.ok = gyr.ok;
-    gyr.biasT.T0 = b.gyro_T0;
-    gyr.biasT.b0 = Vector3f(b.gyro_b0[0], b.gyro_b0[1], b.gyro_b0[2]);
-    gyr.biasT.k  = Vector3f(b.gyro_k[0],  b.gyro_k[1],  b.gyro_k[2]);
-
-    mag.ok = (b.mag_ok != 0);
-    mag.A  = mat_from_rowmajor9_(b.mag_A);
-    mag.b  = Vector3f(b.mag_b[0], b.mag_b[1], b.mag_b[2]);
-    mag.field_uT = b.mag_field_uT;
-    mag.rms      = b.mag_rms;
-  }
-
-  Vector3f applyAccel(const Vector3f& a_raw, float tempC) const { return acc.ok ? acc.apply(a_raw, tempC) : a_raw; }
-  Vector3f applyGyro (const Vector3f& w_raw, float tempC) const { return gyr.ok ? gyr.apply(w_raw, tempC) : w_raw; }
-  Vector3f applyMag  (const Vector3f& m_raw) const { return mag.ok ? mag.apply(m_raw) : m_raw; }
-};
-
-// Pretty 3x3 print from row-major float[9].
-static inline void printMat3RowMajor(Print& out, const float a[9], int prec = 9) {
-  for (int r = 0; r < 3; ++r) {
-    out.print("      [");
-    for (int c = 0; c < 3; ++c) {
-      out.print(a[3 * r + c], prec);
-      if (c < 2) out.print(", ");
+  bool recover() {
+    if (wire_ == nullptr) {
+      last_error_ = Error::NOT_INITIALIZED;
+      return false;
     }
-    out.println("]");
+
+    const bool ok = begin(*wire_, cfg_);
+    if (ok) {
+      ++recover_total_;
+    }
+    return ok;
   }
-}
 
-// Print quick diag + off-diagonal RMS, so you can instantly see "not identity".
-static inline void printMatDiagOffDiagRms(Print& out, const float a[9]) {
-  const float d0 = a[0], d1 = a[4], d2 = a[8];
-  const float off2 =
-      a[1]*a[1] + a[2]*a[2] +
-      a[3]*a[3] + a[5]*a[5] +
-      a[6]*a[6] + a[7]*a[7];
-  const float off_rms = sqrtf(off2 / 6.0f);
-  out.printf("      diag=[%.6f %.6f %.6f], offdiag_rms=%.6f\n", (double)d0, (double)d1, (double)d2, (double)off_rms);
-}
+  bool end() {
+    bool all_ok = true;
+    Error first_err = Error::NONE;
 
-// Identity matrix in row-major storage.
-static inline const float* mat3_identity_rowmajor_() {
-  static const float I[9] = {1,0,0, 0,1,0, 0,0,1};
-  return I;
-}
+#if defined(ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI) && ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI
+    if (mag_configured_) {
+      if (!mag_.end()) {
+        all_ok = false;
+        first_err = Error::END_MAG_FAILED;
+      }
+    }
+#endif
 
-// Optional: print a matrix header line with a consistent style.
-static inline void printMatHeader(Print& out, const char* name, const char* meaning) {
-  out.print("    ");
-  out.print(name);
-  if (meaning && meaning[0]) {
-    out.print(" (");
-    out.print(meaning);
-    out.print(")");
+#if defined(ATOMS3R_HAVE_BOSCH_SENSORAPI) && ATOMS3R_HAVE_BOSCH_SENSORAPI
+    if (fifo_.rawDev() != nullptr) {
+      const uint8_t sens[2] = { BMI2_ACCEL, BMI2_GYRO };
+      if (bmi270_sensor_disable(sens, 2, fifo_.rawDev()) != BMI2_OK) {
+        all_ok = false;
+        if (first_err == Error::NONE) {
+          first_err = Error::END_AG_FAILED;
+        }
+      }
+      (void)bmi2_flush_fifo(fifo_.rawDev());
+    }
+#endif
+
+    ok_ = false;
+    mag_configured_ = false;
+    resetRuntimeState_();
+
+    if (!all_ok) {
+      last_error_ = first_err;
+      return false;
+    }
+
+    last_error_ = Error::NONE;
+    return true;
   }
-  out.println(":");
-}
 
-// Print helpers (startup serial)
-static inline void printBlobSummary(Print& out, const ImuCalBlobV1& b) {
-  out.printf("  ok: A=%d G=%d M=%d\n", (int)b.accel_ok, (int)b.gyro_ok, (int)b.mag_ok);
-}
+  bool read(ImuSample& out) {
+    if (!ok_) {
+      last_error_ = Error::NOT_INITIALIZED;
+      return false;
+    }
 
-static inline void printBlobDetail(Print& out, const ImuCalBlobV1& b) {
-  // ACCEL 
-  out.printf("  accel: g=%.6f T0=%.2f rms_mag=%.4f\n", (double)b.accel_g, (double)b.accel_T0, (double)b.accel_rms_mag);
-  out.printf("    b0=[%.5f %.5f %.5f]\n", (double)b.accel_b0[0], (double)b.accel_b0[1], (double)b.accel_b0[2]);
-  out.printf("    k =[%.6f %.6f %.6f]\n", (double)b.accel_k[0], (double)b.accel_k[1], (double)b.accel_k[2]);
+    BoschAGSample ag;
+    if (!fifo_.readOneAG(ag)) {
+      ++ag_read_fail_total_;
+      last_error_ = Error::FIFO_READ_FAILED;
+      return false;
+    }
 
-  printMatHeader(out, "S", "a_cal = S*(a_raw - bias(T))");
-  printMat3RowMajor(out, b.accel_S, 9);
-  printMatDiagOffDiagRms(out, b.accel_S);
+    ++read_total_;
 
-  // GYRO
-  out.printf("  gyro:  T0=%.2f\n", (double)b.gyro_T0);
-  out.printf("    b0=[%.6f %.6f %.6f]\n", (double)b.gyro_b0[0], (double)b.gyro_b0[1], (double)b.gyro_b0[2]);
-  out.printf("    k =[%.6f %.6f %.6f]\n", (double)b.gyro_k[0], (double)b.gyro_k[1], (double)b.gyro_k[2]);
+    const uint64_t sample_us = advanceSampleClockUs_(ag.dt_s);
 
-  // Gyro calibrator *always* sets S=I (stationary-only).
-  printMatHeader(out, "S", "w_cal = S*(w_raw - bias(T)) ; S=I (stationary bias-only fit)");
-  const float* I = mat3_identity_rowmajor_();
-  printMat3RowMajor(out, I, 3);
-  printMatDiagOffDiagRms(out, I);
+    // Sensor-frame AG from BoschBmi270Fifo -> AtomS3R BODY NED
+    const Vector3f a_s(ag.ax, ag.ay, ag.az);
+    const Vector3f w_s(ag.gx, ag.gy, ag.gz);
 
-  // MAG
-  out.printf("  mag: field_uT=%.3f rms=%.4f\n", (double)b.mag_field_uT, (double)b.mag_rms);
-  out.printf("    b=[%.3f %.3f %.3f]\n", (double)b.mag_b[0], (double)b.mag_b[1], (double)b.mag_b[2]);
+    const Vector3f a_b(a_s.y(), a_s.x(), -a_s.z());
+    const Vector3f w_b(w_s.y(), w_s.x(), -w_s.z());
 
-  printMatHeader(out, "A", "m_cal = A*(m_raw - b)");
-  printMat3RowMajor(out, b.mag_A, 9);
-  printMatDiagOffDiagRms(out, b.mag_A);
-}
+    maybePollMag_(sample_us);
+    updateMagFreshness_(sample_us);
 
-// IMU sample + mapped read
-struct ImuSample {
-  Vector3f a;     // m/s^2 (mapped to body NED per AtomS3R mapping)
-  Vector3f w;     // rad/s  (mapped to body NED)
-  Vector3f m;     // uT     (mapped to body)
-  float tempC;    // deg C
-  uint32_t mask;  // M5.Imu.update() mask
-  uint32_t sample_us; // micros() timestamp captured at imu.update()
+    out.a = a_b;
+    out.w = w_b;
+    out.m = magHealthy() ? last_mag_uT_ : nanVec_();
+    out.tempC = cfg_.tempC_default;
+    out.mask = kImuMaskAccelGyro;
+    out.sample_us = sample_us;
+
+    // Preserve non-fatal mag diagnostics, but clear stale/read errors once mag
+    // becomes healthy again.
+    if (magHealthy() && (last_error_ == Error::MAG_READ_FAILED ||
+                         last_error_ == Error::MAG_STALE ||
+                         last_error_ == Error::MAG_RECOVER_FAILED)) {
+      last_error_ = Error::NONE;
+    }
+
+    return true;
+  }
+
+private:
+  static Vector3f nanVec_() {
+    return Vector3f::Constant(std::numeric_limits<float>::quiet_NaN());
+  }
+
+  static bool finite3_(const Vector3f& v) {
+    return std::isfinite(v.x()) && std::isfinite(v.y()) && std::isfinite(v.z());
+  }
+
+  static uint64_t clampU64_(uint64_t v, uint64_t lo, uint64_t hi) {
+    return (v < lo) ? lo : ((v > hi) ? hi : v);
+  }
+
+  float sanitizedMagOdrHz_() const {
+    const float hz = cfg_.mag_aux_odr_hz;
+    if (!(hz > 0.0f) || !std::isfinite(hz)) {
+      return 25.0f;
+    }
+    return hz;
+  }
+
+  uint64_t nominalDtUs_() const {
+    return (cfg_.ag_hz > 150.0f) ? 5000ull : 10000ull;
+  }
+
+  uint64_t magPollUs_() const {
+    const float hz = sanitizedMagOdrHz_();
+    const float us_f = 1.0e6f / hz;
+    if (!(us_f > 0.0f) || !std::isfinite(us_f)) {
+      return 40000ull;
+    }
+    const uint64_t us = static_cast<uint64_t>(us_f + 0.5f);
+    return clampU64_(us, 5000ull, 1000000ull);
+  }
+
+  uint64_t magStaleAfterUs_() const {
+    const uint64_t min_us = (cfg_.mag_stale_min_us > 0u)
+                          ? static_cast<uint64_t>(cfg_.mag_stale_min_us)
+                          : 75000ull;
+
+    const uint64_t factor = (cfg_.mag_stale_factor > 0u)
+                          ? static_cast<uint64_t>(cfg_.mag_stale_factor)
+                          : 3ull;
+
+    const uint64_t dyn_us = factor * magPollUs_();
+    return (dyn_us > min_us) ? dyn_us : min_us;
+  }
+
+  uint64_t advanceSampleClockUs_(float dt_s) {
+    if (!have_sample_clock_) {
+      have_sample_clock_ = true;
+      sample_clock_us_ = 0ull;
+      sample_clock_frac_us_ = 0.0;
+      return 0ull;
+    }
+
+    double dt_us_f = static_cast<double>(dt_s) * 1.0e6;
+    if (!(dt_us_f > 0.0) || !std::isfinite(dt_us_f)) {
+      dt_us_f = static_cast<double>(nominalDtUs_());
+    }
+
+    dt_us_f += sample_clock_frac_us_;
+
+    uint64_t dt_us = static_cast<uint64_t>(dt_us_f);
+    sample_clock_frac_us_ = dt_us_f - static_cast<double>(dt_us);
+
+    if (dt_us == 0ull) {
+      dt_us = 1ull;
+    }
+
+    sample_clock_us_ += dt_us;
+    return sample_clock_us_;
+  }
+
+  void maybePollMag_(uint64_t sample_us) {
+#if defined(ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI) && ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI
+    if (!mag_configured_) {
+      return;
+    }
+
+    if (!have_mag_poll_time_ || (sample_us - last_mag_poll_us_) >= magPollUs_()) {
+      have_mag_poll_time_ = true;
+      last_mag_poll_us_ = sample_us;
+      ++mag_poll_total_;
+
+      Vector3f m_s;
+      if (mag_.readMag_uT(m_s) && finite3_(m_s)) {
+        // Sensor frame -> AtomS3R BODY NED
+        last_mag_uT_ = Vector3f(m_s.y(), m_s.x(), -m_s.z());
+
+        have_last_good_mag_ = true;
+        have_valid_mag_ = true;
+        mag_marked_stale_ = false;
+        last_mag_sample_us_ = sample_us;
+        mag_consecutive_failures_ = 0;
+        ++mag_ok_total_;
+        return;
+      }
+
+      ++mag_fail_total_;
+      ++mag_consecutive_failures_;
+      last_error_ = Error::MAG_READ_FAILED;
+
+      if (cfg_.enable_mag_recovery &&
+          mag_consecutive_failures_ >= cfg_.mag_recover_after_failures &&
+          (last_mag_recover_attempt_us_ == 0ull ||
+           (sample_us - last_mag_recover_attempt_us_) >= static_cast<uint64_t>(cfg_.mag_recover_cooldown_us))) {
+        last_mag_recover_attempt_us_ = sample_us;
+        if (recoverMag_()) {
+          ++mag_recover_total_;
+          mag_consecutive_failures_ = 0;
+        } else {
+          last_error_ = Error::MAG_RECOVER_FAILED;
+        }
+      }
+    }
+#else
+    (void)sample_us;
+#endif
+  }
+
+  void updateMagFreshness_(uint64_t sample_us) {
+    if (!have_valid_mag_) {
+      return;
+    }
+
+    if (last_mag_sample_us_ > sample_us) {
+      return;
+    }
+
+    const uint64_t age_us = sample_us - last_mag_sample_us_;
+    if (age_us > magStaleAfterUs_()) {
+      have_valid_mag_ = false;
+      if (!mag_marked_stale_) {
+        mag_marked_stale_ = true;
+        ++mag_stale_total_;
+      }
+      last_error_ = Error::MAG_STALE;
+    }
+  }
+
+  bool magCurrentlyStale_() const {
+    if (!have_valid_mag_ || !have_sample_clock_) {
+      return true;
+    }
+    if (last_mag_sample_us_ > sample_clock_us_) {
+      return false;
+    }
+    return (sample_clock_us_ - last_mag_sample_us_) > magStaleAfterUs_();
+  }
+
+  bool recoverMag_() {
+#if defined(ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI) && ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI
+    if (!ok_ || fifo_.rawDev() == nullptr) {
+      return false;
+    }
+
+    if (mag_configured_) {
+      (void)mag_.end();
+    }
+
+    BoschBmm150Aux::Config mcfg;
+    mcfg.bmm_addr          = cfg_.mag_bmm150_addr;
+    mcfg.aux_odr_hz        = sanitizedMagOdrHz_();
+    mcfg.startup_settle_ms = cfg_.mag_startup_settle_ms;
+    mcfg.verify_first_read = cfg_.mag_verify_first_read;
+
+    mag_configured_ = mag_.begin(fifo_.rawDev(), mcfg);
+    if (!mag_configured_) {
+      have_valid_mag_ = false;
+      return false;
+    }
+
+    return true;
+#else
+    return false;
+#endif
+  }
+
+  void resetRuntimeState_() {
+    last_mag_uT_ = nanVec_();
+
+    have_last_good_mag_ = false;
+    have_valid_mag_ = false;
+    mag_marked_stale_ = false;
+
+    have_sample_clock_ = false;
+    sample_clock_us_ = 0ull;
+    sample_clock_frac_us_ = 0.0;
+
+    have_mag_poll_time_ = false;
+    last_mag_poll_us_ = 0ull;
+    last_mag_sample_us_ = 0ull;
+    last_mag_recover_attempt_us_ = 0ull;
+
+    mag_consecutive_failures_ = 0;
+  }
+
+private:
+  TwoWire* wire_ = nullptr;
+  Config   cfg_{};
+
+  bool ok_ = false;
+  bool mag_configured_ = false;
+
+  Error last_error_ = Error::NONE;
+
+  BoschBmi270Fifo fifo_{};
+  BoschBmm150Aux  mag_{};
+
+  Vector3f last_mag_uT_ = nanVec_();
+
+  bool     have_last_good_mag_ = false;
+  bool     have_valid_mag_     = false;
+  bool     mag_marked_stale_   = false;
+
+  bool     have_sample_clock_ = false;
+  uint64_t sample_clock_us_   = 0ull;
+  double   sample_clock_frac_us_ = 0.0;
+
+  bool     have_mag_poll_time_ = false;
+  uint64_t last_mag_poll_us_   = 0ull;
+  uint64_t last_mag_sample_us_ = 0ull;
+  uint64_t last_mag_recover_attempt_us_ = 0ull;
+
+  uint8_t  mag_consecutive_failures_ = 0u;
+
+  uint32_t read_total_         = 0u;
+  uint32_t ag_read_fail_total_ = 0u;
+  uint32_t mag_poll_total_     = 0u;
+  uint32_t mag_ok_total_       = 0u;
+  uint32_t mag_fail_total_     = 0u;
+  uint32_t mag_stale_total_    = 0u;
+  uint32_t mag_recover_total_  = 0u;
+  uint32_t recover_total_      = 0u;
 };
-
-#ifndef ATOMS3R_IMU_MASK_ACCEL
-  #if defined(M5IMU_UPDATE_ACCEL)
-    #define ATOMS3R_IMU_MASK_ACCEL M5IMU_UPDATE_ACCEL
-  #elif defined(IMU_UPDATE_ACCEL)
-    #define ATOMS3R_IMU_MASK_ACCEL IMU_UPDATE_ACCEL
-  #else
-    #define ATOMS3R_IMU_MASK_ACCEL (1u << 0)
-  #endif
-#endif
-
-#ifndef ATOMS3R_IMU_MASK_GYRO
-  #if defined(M5IMU_UPDATE_GYRO)
-    #define ATOMS3R_IMU_MASK_GYRO M5IMU_UPDATE_GYRO
-  #elif defined(IMU_UPDATE_GYRO)
-    #define ATOMS3R_IMU_MASK_GYRO IMU_UPDATE_GYRO
-  #else
-    #define ATOMS3R_IMU_MASK_GYRO (1u << 1)
-  #endif
-#endif
-
-static constexpr uint32_t kImuMaskAccelGyro = (ATOMS3R_IMU_MASK_ACCEL | ATOMS3R_IMU_MASK_GYRO);
-
-// Reads M5.Imu, applies AtomS3R axis mapping and unit conversion, but does NOT calibrate.
-static inline bool readImuMapped(decltype(M5.Imu)& imu, uint32_t update_mask, uint32_t sample_us, ImuSample& out) {
-  out.sample_us = sample_us;
-  out.mask = update_mask;
-  if ((out.mask & kImuMaskAccelGyro) != kImuMaskAccelGyro) return false;
-
-  const auto data = imu.getImuData();
-  out.tempC = NAN;
-  (void)imu.getTemp(&out.tempC);
-
-  out.a = map_acc_to_body_ned_(data.accel);
-  out.w = map_gyr_to_body_ned_(data.gyro);
-
-  // IMPORTANT: do not rely on a "mag valid" bit. Many builds never set it.
-  out.m = map_mag_to_body_uT_(data.mag);
-
-  return true;
-}
-
-static inline bool readImuMapped(decltype(M5.Imu)& imu, ImuSample& out) {
-  const uint32_t sample_us = micros();
-  const uint32_t update_mask = imu.update();
-  return readImuMapped(imu, update_mask, sample_us, out);
-}
-
-// "No collisions" helper
-// Clears *M5Unified's* internal calibration/offset data, so we can safely apply our own calibration
-// (stored in ImuCalStoreNvs) without them stacking.
-static inline void clearM5UnifiedImuCalibration() {
-  // Clears runtime offsets and any stored "offset data" M5Unified may apply.
-  M5.Imu.setCalibration(0, 0, 0);
-  M5.Imu.clearOffsetData();
-}
 
 } // namespace atoms3r_ical
