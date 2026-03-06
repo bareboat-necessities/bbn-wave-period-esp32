@@ -379,7 +379,7 @@ private:
   void reinitBoschImu_() {
     const BoschBmi270_ImuCal::Config cfg = makeImuConfig_();
 
-    if (!runtime_imu_.begin(Wire, cfg)) {
+    if (!runtime_imu_.begin(M5.In_I2C, cfg)) {
       Serial.printf("[BOOT] Bosch IMU init failed: %s\n", runtime_imu_.lastErrorString());
       Serial.printf("[BOOT] FIFO detail: %s\n", runtime_imu_.fifo().lastErrorString());
       Serial.printf("[BOOT] FIFO init path: %s\n", runtime_imu_.fifo().initPathString());
