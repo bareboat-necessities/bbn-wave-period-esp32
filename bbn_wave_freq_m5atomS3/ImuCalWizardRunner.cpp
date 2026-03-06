@@ -1,26 +1,43 @@
 #include "ImuCalWizardRunner.h"
-#include "AtomS3R_ImuCalWizard.h"
 
-#if ATOMS3R_HAVE_BOSCH_API
-  #include "BoschBmi270_ImuCal.h"
-#endif
+#include <Wire.h>
+
+#include "BoschBmi270_ImuCal.h"
+#include "AtomS3R_ImuCalWizard.h"
 
 namespace atoms3r_ical {
 
-bool runImuCalWizard(M5Ui& ui, ImuCalStoreNvs& store, ImuCalBlobV1& out_saved) {
-  ImuCalWizard wizard(ui, store);
-  return wizard.runAndSave(out_saved);
-}
+static constexpr uint8_t RUNNER_BMI270_ADDR = 0x68;
+static constexpr float   RUNNER_AG_HZ       = 100.0f;
 
-#if ATOMS3R_HAVE_BOSCH_API
-bool runImuCalWizard(M5Ui& ui,
-                     ImuCalStoreNvs& store,
-                     BoschBmi270_ImuCal& imu,
-                     ImuCalBlobV1& out_saved)
-{
+bool runImuCalWizard(M5Ui& ui, ImuCalStoreNvs& store, ImuCalBlobV1& out_saved) {
+  BoschBmi270_ImuCal imu;
+
+  BoschBmi270_ImuCal::Config cfg;
+  cfg.bmi270_addr                = RUNNER_BMI270_ADDR;
+  cfg.ag_hz                      = RUNNER_AG_HZ;
+  cfg.enable_mag_aux             = true;
+  cfg.mag_bmm150_addr            = 0x10;
+  cfg.mag_aux_odr_hz             = 25.0f;
+  cfg.mag_startup_settle_ms      = 3;
+  cfg.mag_verify_first_read      = true;
+  cfg.mag_stale_min_us           = 75000u;
+  cfg.mag_stale_factor           = 3u;
+  cfg.enable_mag_recovery        = true;
+  cfg.mag_recover_after_failures = 6u;
+  cfg.mag_recover_cooldown_us    = 1000000u;
+  cfg.tempC_default              = 25.0f;
+  cfg.i2c_hz                     = 400000u;
+
+  if (!imu.begin(Wire, cfg)) {
+    return false;
+  }
+
   ImuCalWizard wizard(ui, store, imu);
-  return wizard.runAndSave(out_saved);
+  const bool ok = wizard.runAndSave(out_saved);
+
+  (void)imu.end();
+  return ok;
 }
-#endif
 
 } // namespace atoms3r_ical
