@@ -30,10 +30,6 @@
 #if !defined(ATOMS3R_HAVE_BOSCH_SENSORAPI) || !(ATOMS3R_HAVE_BOSCH_SENSORAPI)
   #error "Bosch BMI270 SensorAPI is not available in this build. Install the library that provides Arduino_BMI270_BMM150.h."
 #endif
-#include "BoschBmi270_ImuCal.h"
-#if !defined(ATOMS3R_HAVE_BOSCH_SENSORAPI) || !(ATOMS3R_HAVE_BOSCH_SENSORAPI)
-  #error "Bosch BMI270 SensorAPI is not available in this build. Install the library that provides Arduino_BMI270_BMM150.h."
-#endif
 
 #include "AtomS3R_ImuCal.h"
 
