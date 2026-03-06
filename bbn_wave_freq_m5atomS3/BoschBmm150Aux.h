@@ -10,45 +10,32 @@
   #define BMM150_USE_FLOATING_POINT 1
 #endif
 
-// Public Arduino library header first, so arduino-cli activates the library
-// and exposes its internal Bosch SensorAPI paths.
-#if !defined(ATOMS3R_HAVE_ARDUINO_BMI270_BMM150)
-  #if defined(__has_include)
-    #if __has_include(<Arduino_BMI270_BMM150.h>)
-      #include <Arduino_BMI270_BMM150.h>
-      #define ATOMS3R_HAVE_ARDUINO_BMI270_BMM150 1
-    #else
-      #define ATOMS3R_HAVE_ARDUINO_BMI270_BMM150 0
-    #endif
-  #else
-    #define ATOMS3R_HAVE_ARDUINO_BMI270_BMM150 0
-  #endif
-#endif
+#include <Arduino_BMI270_BMM150.h>
 
-#if !defined(ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI)
-  #if ATOMS3R_HAVE_ARDUINO_BMI270_BMM150 && defined(__has_include)
-    #if __has_include(<utilities/BMI270-Sensor-API/bmi2.h>) && \
-        __has_include(<utilities/BMM150-Sensor-API/bmm150.h>)
-      #include <utilities/BMI270-Sensor-API/bmi2.h>
-      #include <utilities/BMI270-Sensor-API/bmi2_defs.h>
-      #include <utilities/BMI270-Sensor-API/bmi270.h>
-      #include <utilities/BMM150-Sensor-API/bmm150.h>
-      #include <utilities/BMM150-Sensor-API/bmm150_defs.h>
-      #define ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI 1
-    #elif __has_include(<utility/BMI270-Sensor-API/bmi2.h>) && \
-          __has_include(<utility/BMM150-Sensor-API/bmm150.h>)
-      #include <utility/BMI270-Sensor-API/bmi2.h>
-      #include <utility/BMI270-Sensor-API/bmi2_defs.h>
-      #include <utility/BMI270-Sensor-API/bmi270.h>
-      #include <utility/BMM150-Sensor-API/bmm150.h>
-      #include <utility/BMM150-Sensor-API/bmm150_defs.h>
-      #define ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI 1
-    #else
-      #define ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI 0
-    #endif
+#if defined(__has_include)
+  #if __has_include(<utilities/BMI270-Sensor-API/bmi2.h>) && \
+      __has_include(<utilities/BMI270-Sensor-API/bmi270.h>) && \
+      __has_include(<utilities/BMM150-Sensor-API/bmm150.h>)
+    #include <utilities/BMI270-Sensor-API/bmi2.h>
+    #include <utilities/BMI270-Sensor-API/bmi2_defs.h>
+    #include <utilities/BMI270-Sensor-API/bmi270.h>
+    #include <utilities/BMM150-Sensor-API/bmm150.h>
+    #include <utilities/BMM150-Sensor-API/bmm150_defs.h>
+    #define ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI 1
+  #elif __has_include(<utility/BMI270-Sensor-API/bmi2.h>) && \
+        __has_include(<utility/BMI270-Sensor-API/bmi270.h>) && \
+        __has_include(<utility/BMM150-Sensor-API/bmm150.h>)
+    #include <utility/BMI270-Sensor-API/bmi2.h>
+    #include <utility/BMI270-Sensor-API/bmi2_defs.h>
+    #include <utility/BMI270-Sensor-API/bmi270.h>
+    #include <utility/BMM150-Sensor-API/bmm150.h>
+    #include <utility/BMM150-Sensor-API/bmm150_defs.h>
+    #define ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI 1
   #else
-    #define ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI 0
+    #error "Arduino_BMI270_BMM150 is present, but BMM150 vendor headers were not found under utility/ or utilities/."
   #endif
+#else
+  #error "__has_include is required for Bosch vendor header path detection."
 #endif
 
 #ifdef EIGEN_NON_ARDUINO
