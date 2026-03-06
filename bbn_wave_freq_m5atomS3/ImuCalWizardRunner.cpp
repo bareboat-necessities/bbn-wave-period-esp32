@@ -29,7 +29,7 @@ bool runImuCalWizard(M5Ui& ui, ImuCalStoreNvs& store, ImuCalBlobV1& out_saved) {
   cfg.tempC_default              = 25.0f;
   cfg.i2c_hz                     = 400000u;
 
-  if (!imu.begin(Wire, cfg)) {
+  if (!imu.begin(M5.In_I2C, cfg)) {
     Serial.printf("[WIZ] IMU init failed: %s\n", imu.lastErrorString());
     Serial.printf("[WIZ] FIFO detail: %s\n", imu.fifo().lastErrorString());
     Serial.printf("[WIZ] FIFO init path: %s\n", imu.fifo().initPathString());
