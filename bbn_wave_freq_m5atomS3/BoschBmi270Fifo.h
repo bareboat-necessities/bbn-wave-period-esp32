@@ -41,6 +41,20 @@
   #error "__has_include is required for Bosch vendor header path detection."
 #endif
 
+#if defined(__has_include)
+  #if __has_include(<utility/imu/BMI270_config.inl>)
+    #define ATOMS3R_HAVE_M5_BMI270_CONFIG 1
+    #include <utility/imu/BMI270_config.inl>
+  #elif __has_include(<utilities/imu/BMI270_config.inl>)
+    #define ATOMS3R_HAVE_M5_BMI270_CONFIG 1
+    #include <utilities/imu/BMI270_config.inl>
+  #else
+    #define ATOMS3R_HAVE_M5_BMI270_CONFIG 0
+  #endif
+#else
+  #define ATOMS3R_HAVE_M5_BMI270_CONFIG 0
+#endif
+
 struct bmi2_dev;
 
 // Timing constants
@@ -467,15 +481,6 @@ private:
     return BMI2_CMD_REG_ADDR;
 #else
     return 0x7E;
-#endif
-  }
-
-  static constexpr uint8_t fifoFlushCmd_()
-  {
-#ifdef BMI2_FIFO_FLUSH_CMD
-    return BMI2_FIFO_FLUSH_CMD;
-#else
-    return 0xB0;
 #endif
   }
 
