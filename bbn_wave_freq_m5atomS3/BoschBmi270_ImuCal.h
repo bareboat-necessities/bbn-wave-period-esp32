@@ -281,7 +281,7 @@ private:
 
   template <typename TFifo>
   static bool fifoEndImpl_(TFifo& f, long) {
-#if defined(ATOMS3R_HAVE_BOSCH_SENSORAPI) && ATOMS3R_HAVE_BOSCH_SENSORAPI
+  #if defined(ATOMS3R_HAVE_BOSCH_SENSORAPI) && ATOMS3R_HAVE_BOSCH_SENSORAPI
     ::bmi2_dev* dev = rawBmiDevImpl_(f, 0);
     if (dev != nullptr) {
       bool all_ok = true;
@@ -289,10 +289,10 @@ private:
       if (bmi270_sensor_disable(sens, 2, dev) != BMI2_OK) {
         all_ok = false;
       }
-      (void)bmi2_flush_fifo(dev);
+      // Some vendored Bosch revisions do not expose bmi2_flush_fifo().
       return all_ok;
     }
-#endif
+  #endif
     return true;
   }
 
