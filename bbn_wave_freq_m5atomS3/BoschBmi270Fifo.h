@@ -611,17 +611,32 @@ private:
 
   bool initDeviceForFifo_()
   {
+    used_maximum_fifo_init_  = false;
+    fell_back_to_plain_init_ = false;
+    last_bosch_init_rslt_    = BMI2_OK;
+  
+  #if ATOMS3R_HAVE_BMI270_MAXIMUM_FIFO_INIT
+    used_maximum_fifo_init_ = true;
+    last_bosch_init_rslt_ = bmi270_maximum_fifo_init(&bmi_);
+    if (last_bosch_init_rslt_ == BMI2_OK) {
+      last_error_ = Error::NONE;
+      return true;
+    }
+    fell_back_to_plain_init_ = true;
+  #endif
+  
+  #if ATOMS3R_HAVE_M5_BMI270_CONFIG
     uint8_t chip_id = 0;
     if (!readReg8Raw_(regChipId_(), chip_id) || chip_id != 0x24u) {
       last_error_ = Error::INIT_WHOAMI_FAILED;
       return false;
     }
-
+  
     if (!writeReg8Raw_(regCmd_(), softResetCmd_())) {
       last_error_ = Error::INIT_SOFT_RESET_FAILED;
       return false;
     }
-
+  
     {
       uint8_t pwr_conf = 0;
       int retry = 16;
@@ -631,32 +646,37 @@ private:
           pwr_conf = 0;
         }
       } while (pwr_conf == 0u && --retry);
-
+  
       if (retry <= 0) {
         last_error_ = Error::INIT_PWR_CONF_TIMEOUT;
         return false;
       }
     }
-
+  
     if (!writeReg8Raw_(regPwrConf_(), 0x00u)) {
       last_error_ = Error::INIT_SOFT_RESET_FAILED;
       return false;
     }
-
+  
     delay(1);
-
+  
+    if (!writeReg8Raw_(regInitCtrl_(), 0x00u)) {
+      last_error_ = Error::INIT_CONFIG_UPLOAD_FAILED;
+      return false;
+    }
+  
     if (!uploadConfigBlobM5_()) {
       last_error_ = Error::INIT_CONFIG_UPLOAD_FAILED;
       return false;
     }
-
+  
     if (!writeReg8Raw_(regInitCtrl_(), 0x01u)) {
       last_error_ = Error::INIT_CONFIG_UPLOAD_FAILED;
       return false;
     }
-
+  
     (void)writeReg8Raw_(regIntMapData_(), 0xFFu);
-
+  
     {
       uint8_t internal_status = 0;
       int retry = 16;
@@ -666,15 +686,25 @@ private:
           internal_status = 0;
         }
       } while (internal_status == 0u && --retry);
-
+  
       if (retry <= 0) {
         last_error_ = Error::INIT_INTERNAL_STATUS_TIMEOUT;
         return false;
       }
     }
-
+  
     last_error_ = Error::NONE;
     return true;
+  #else
+    last_bosch_init_rslt_ = bmi270_init(&bmi_);
+    if (last_bosch_init_rslt_ != BMI2_OK) {
+      last_error_ = Error::INIT_FAILED;
+      return false;
+    }
+  
+    last_error_ = Error::NONE;
+    return true;
+  #endif
   }
 
   bool flushFifo_()
