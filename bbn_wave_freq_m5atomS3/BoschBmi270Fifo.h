@@ -569,9 +569,24 @@ private:
   }
 
 #if ATOMS3R_HAVE_BOSCH_SENSORAPI
+  template <typename T>
+  static auto sensTimeField_(const T& s, int) -> decltype(s.sens_time, uint32_t()) {
+    return static_cast<uint32_t>(s.sens_time);
+  }
+  
+  template <typename T>
+  static auto sensTimeField_(const T& s, long) -> decltype(s.virt_sens_time, uint32_t()) {
+    return static_cast<uint32_t>(s.virt_sens_time);
+  }
+  
+  template <typename T>
+  static uint32_t sensTimeField_(const T&, ...) {
+    return 0u;
+  }
+  
   static uint32_t sensTime24_(const bmi2_sens_axes_data& s)
   {
-    return static_cast<uint32_t>(s.sens_time) & BMI270_SENSORTIME_MASK;
+    return sensTimeField_(s, 0) & BMI270_SENSORTIME_MASK;
   }
 
   static bool streamHasUsableTime_(const bmi2_sens_axes_data* s, uint16_t n)
