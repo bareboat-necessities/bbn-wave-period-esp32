@@ -62,41 +62,27 @@ constexpr float FREQ_GUESS = 0.3f;
 enum class TrackerType { ARANOVSKIY = 0, KALMANF = 1, ZEROCROSS = 2 };
 #include "SeaStateFusionFilter.h"
 
-// Use your baseline MAG_DELAY_SEC if provided by headers; fallback otherwise.
 #ifndef MAG_DELAY_SEC
   #define MAG_DELAY_SEC 8.0f
 #endif
 
-// Loop timing
 static constexpr float    LOOP_HZ        = 100.0f;
 static constexpr uint32_t LOOP_PERIOD_US = static_cast<uint32_t>(1000000.0f / LOOP_HZ);
 
-// Display / serial rates
 static constexpr uint32_t UI_REFRESH_MS   = 100;
 static constexpr uint32_t DEBUG_SERIAL_MS = 150;
 static constexpr uint32_t NMEA_SERIAL_MS  = 100;
 
-// ROT bias removal (stillness-gated gyro bias estimator)
 static constexpr float ROT_BIAS_TAU_S       = 5.0f;
 static constexpr float ROT_STILL_G_TOL_FRAC = 0.12f;
 static constexpr float ROT_STILL_GYRO_RAD_S = 0.15f;
 
-// If |a| is close to 1 g, derive tilt from accelerometer to keep heading fully
-// independent from gyro sign/convention issues in quaternion propagation.
 static constexpr float HEADING_ACCEL_G_TOL_FRAC = 0.18f;
-
-// Mag gating
-static constexpr float MAG_MIN_DELTA_uT = 0.002f;
-
-// IMU stale telemetry
-static constexpr float IMU_STALE_EPS_ACC = 1e-8f;
-static constexpr float IMU_STALE_EPS_GYR = 1e-8f;
-static constexpr float IMU_STALE_EPS_MAG = 1e-8f;
+static constexpr float MAG_MIN_DELTA_uT         = 0.002f;
 
 using namespace atoms3r_ical;
 using Vector3f = Eigen::Vector3f;
 
-// helpers
 static inline float clampf_(float x, float lo, float hi) {
   return x < lo ? lo : (x > hi ? hi : x);
 }
@@ -117,14 +103,12 @@ static inline bool finite3_(const Vector3f& v) {
   return std::isfinite(v.x()) && std::isfinite(v.y()) && std::isfinite(v.z());
 }
 
-// Applies q * v * q_conj (q maps "from" -> "to")
 static inline Vector3f quatRotate_(const Eigen::Quaternionf& q, const Vector3f& v) {
   const Vector3f qv(q.x(), q.y(), q.z());
   const Vector3f t = 2.0f * qv.cross(v);
   return v + q.w() * t + qv.cross(t);
 }
 
-// Compute heading from down vector + magnetometer in BODY frame.
 static inline bool magneticHeadingFromDownAndMagBody_(
     const Vector3f& down_b_unit,
     const Vector3f& mag_b_uT,
@@ -158,7 +142,6 @@ static inline bool magneticHeadingFromDownAndMagBody_(
   return true;
 }
 
-// ----------------------------- App -----------------------------
 class FusionApp {
 public:
   FusionApp() = default;
@@ -169,22 +152,16 @@ public:
     delay(100);
 
     auto cfg = M5.config();
-    cfg.internal_imu = false;   // do NOT auto-init IMU
+    cfg.internal_imu = false;
     M5.begin(cfg);
 
-    // Ensure Wire uses the board's I2C pins (AtomS3R internal bus)
-    {
-      const int sda = M5.getPin(m5::pin_name_t::i2c_sda);
-      const int scl = M5.getPin(m5::pin_name_t::i2c_scl);
-      if (sda >= 0 && scl >= 0) {
-        Wire.begin(sda, scl);
-      } else {
-        Wire.begin();
-      }
-      Wire.setClock(400000);
-    }
+#if defined(PIN_WIRE_SDA) && defined(PIN_WIRE_SCL)
+    Wire.begin(PIN_WIRE_SDA, PIN_WIRE_SCL);
+#else
+    Wire.begin();
+#endif
+    Wire.setClock(400000);
 
-    // UI init
     ui_.begin();
     if (use_graphics_) {
       ui_.setReadRotation();
@@ -268,7 +245,7 @@ public:
   }
 
 private:
-  using UI     = atoms3r_ical::M5Ui;
+  using UI = atoms3r_ical::M5Ui;
   using Fusion = SeaStateFusion<TrackerType::KALMANF>;
 
   bool use_graphics_ = (SEA_STATE_UI_DEFAULT_GRAPHICS != 0);
@@ -296,7 +273,6 @@ private:
 
   Fusion fusion_{};
 
-  // Runtime mag state (BODY uT, mapped), updated by AUX poll
   uint32_t last_mag_poll_ms_    = 0;
   uint32_t last_mag_success_ms_ = 0;
   bool     have_mag_sample_     = false;
@@ -326,7 +302,7 @@ private:
   bool     rot_inited_    = false;
   float    rot_dpm_filt_  = 0.0f;
   bool     gyro_bias_ok_  = false;
-  Vector3f gyro_bias_ema_ = Vector3f::Zero();   // rad/s (BODY)
+  Vector3f gyro_bias_ema_ = Vector3f::Zero();
 
 private:
   BoschBmi270_ImuCal::Config makeImuConfig_() const {
@@ -373,8 +349,8 @@ private:
 
   bool runWizardFlow_(bool boot_mode) {
 #if SEA_STATE_ENABLE_WIZARD
-    // If runtime IMU is currently active, shut it down before handing the bus
-    // to the wizard runner.
+    (void)boot_mode;
+
     if (runtime_imu_.ok()) {
       (void)runtime_imu_.end();
     }
@@ -387,10 +363,6 @@ private:
       have_blob_ = true;
       runtime_.rebuildFromBlob(blob_);
       return true;
-    }
-
-    if (boot_mode) {
-      // boot path already prints a summary outside
     }
     return false;
 #else
@@ -418,8 +390,9 @@ private:
   }
 
   void pollRuntimeMag_() {
+#if defined(ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI) && ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI
     if (!runtime_imu_.magConfigured()) return;
-    if (!runtime_imu_.mag().ok())      return;
+    if (!runtime_imu_.mag().ok()) return;
 
     const uint32_t now_ms  = millis();
     const uint32_t poll_ms = magPollMs_();
@@ -433,19 +406,23 @@ private:
     Vector3f m_s;
     if (!runtime_imu_.mag().readMag_uT(m_s)) return;
 
-    // AtomS3R mapping: mag_body = (my, mx, -mz)
     const Vector3f m_body(m_s.y(), m_s.x(), -m_s.z());
 
-    const bool  have_prev = finite3_(mag_raw_uT_);
-    const float dm        = have_prev ? (m_body - mag_raw_uT_).norm() : INFINITY;
+    const bool have_prev = finite3_(mag_raw_uT_);
+    const float dm       = have_prev ? (m_body - mag_raw_uT_).norm() : INFINITY;
 
     if (!have_prev || dm >= MAG_MIN_DELTA_uT) {
-      mag_raw_uT_         = m_body;
+      mag_raw_uT_ = m_body;
       pending_mag_update_ = true;
     }
 
     have_mag_sample_     = true;
     last_mag_success_ms_ = now_ms;
+#else
+    have_mag_sample_ = false;
+    mag_raw_uT_.setConstant(NAN);
+    pending_mag_update_ = false;
+#endif
   }
 
   void resetFusion_() {
@@ -532,8 +509,7 @@ private:
     mag_fresh_           = false;
     mag_norm_uT_         = NAN;
 
-    stale_frame_count_  = 0;
-    last_skipped_total_ = 0;
+    stale_frame_count_ = 0;
   }
 
 #if SEA_STATE_ENABLE_WIZARD
@@ -558,7 +534,6 @@ private:
       ui_.notSavedNotice();
     }
 
-    // Wizard touched the device state either way. Restore runtime config.
     reinitBoschImu_();
     resetFusion_();
   }
@@ -583,9 +558,6 @@ private:
     dt_ = s.dt_s;
     constexpr float tempC = 25.0f;
 
-    // AtomS3R mapping for FIFO sensor axes -> BODY NED:
-    // acc_body = ( ay, ax, -az )
-    // gyr_body = ( gy, gx, -gz )
     const Vector3f a_s(s.ax, s.ay, s.az);
     const Vector3f w_s(s.gx, s.gy, s.gz);
 
