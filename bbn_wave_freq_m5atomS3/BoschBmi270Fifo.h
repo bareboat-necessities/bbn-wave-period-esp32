@@ -343,12 +343,21 @@ bool readTemperatureC(float& temp_c) {
     return false;
   }
 
-  uint16_t raw_temp = 0;
-  if (bmi2_get_temperature_data(&raw_temp, &bmi_) != BMI2_OK) {
+  uint8_t reg[2] = {0, 0};
+  if (bmi2_i2c_read_(0x22u, reg, 2, this) != BMI2_OK) {
     return false;
   }
 
-  temp_c = (static_cast<float>(static_cast<int16_t>(raw_temp)) / 512.0f) + 23.0f;
+  const int16_t raw = static_cast<int16_t>(
+      static_cast<uint16_t>(reg[0]) |
+      (static_cast<uint16_t>(reg[1]) << 8));
+
+  // Datasheet: 0x8000 = invalid
+  if (raw == static_cast<int16_t>(0x8000)) {
+    return false;
+  }
+
+  temp_c = static_cast<float>(raw) / 512.0f + 23.0f;
   return std::isfinite(temp_c);
 #endif
 }
