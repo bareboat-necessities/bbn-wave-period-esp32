@@ -12,16 +12,13 @@
 
   - Accel/Gyro: BMI270 FIFO via BoschBmi270Fifo
   - Mag: BMM150 via BMI270 AUX using BoschBmm150Aux manual AUX bridge
+  - Temp: BMI270 on-die temperature via direct register read
 
   Notes:
   - Reuses atoms3r_ical::ImuSample / Vector3f from AtomS3R_ImuCal.h.
   - sample_us is FIFO-time-derived, not read-time-derived.
   - out.mask intentionally reports accel+gyro only, matching AtomS3R_ImuCal.h.
   - Mag validity is communicated by finite out.m versus NaN, plus hasMag().
-
-  IMPORTANT:
-  - This AtomS3R path is M5.In_I2C-based.
-  - Call begin(M5.In_I2C, cfg), not begin(Wire, cfg).
 */
 
 #include <Arduino.h>
@@ -86,6 +83,9 @@ public:
     return mag_configured_ && have_valid_mag_ && !magCurrentlyStale_();
   }
 
+  bool haveValidTemperature() const { return have_valid_temp_; }
+  float lastTemperatureC() const { return last_tempC_; }
+
   Error lastError() const { return last_error_; }
 
   const char* lastErrorString() const {
@@ -139,11 +139,11 @@ public:
     }
 
     cfg_ = cfg;
-    i2c_ = &i2c;
 
     resetRuntimeState_();
     last_error_ = Error::NONE;
 
+    i2c_ = &i2c;
     if (!fifo_.begin(i2c, cfg_.bmi270_addr, cfg_.ag_hz, cfg_.i2c_hz)) {
       ok_ = false;
       last_error_ = Error::FIFO_BEGIN_FAILED;
@@ -246,10 +246,16 @@ public:
     maybePollMag_(sample_us64);
     updateMagFreshness_(sample_us64);
 
+    float temp_c = last_tempC_;
+    if (readTemperatureC_(temp_c)) {
+      last_tempC_ = temp_c;
+      have_valid_temp_ = true;
+    }
+
     out.a = a_b;
     out.w = w_b;
     out.m = magHealthy() ? last_mag_uT_ : nanVec_();
-    out.tempC = cfg_.tempC_default;
+    out.tempC = have_valid_temp_ ? last_tempC_ : cfg_.tempC_default;
     out.mask = kImuMaskAccelGyro;
     out.sample_us = static_cast<uint32_t>(sample_us64 & 0xFFFFFFFFull);
 
@@ -313,6 +319,37 @@ private:
 
   static uint64_t clampU64_(uint64_t v, uint64_t lo, uint64_t hi) {
     return (v < lo) ? lo : ((v > hi) ? hi : v);
+  }
+
+  static constexpr uint8_t regTemperature0_() { return 0x22u; }
+
+  bool readTemperatureC_(float& temp_c_out) {
+  #if defined(ATOMS3R_HAVE_BOSCH_SENSORAPI) && ATOMS3R_HAVE_BOSCH_SENSORAPI
+    ::bmi2_dev* dev = rawBmiDev_();
+    if (dev == nullptr) {
+      return false;
+    }
+
+    uint8_t buf[2] = {0, 0};
+    if (bmi2_get_regs(regTemperature0_(), buf, 2, dev) != BMI2_OK) {
+      return false;
+    }
+
+    const int16_t raw = static_cast<int16_t>(
+        static_cast<uint16_t>(buf[0]) |
+        (static_cast<uint16_t>(buf[1]) << 8));
+
+    // Bosch invalid sentinel.
+    if (raw == static_cast<int16_t>(0x8000)) {
+      return false;
+    }
+
+    temp_c_out = (static_cast<float>(raw) / 512.0f) + 23.0f;
+    return std::isfinite(temp_c_out);
+  #else
+    (void)temp_c_out;
+    return false;
+  #endif
   }
 
   float sanitizedMagOdrHz_() const {
@@ -497,11 +534,14 @@ private:
     last_mag_recover_attempt_us_ = 0ull;
 
     mag_consecutive_failures_ = 0u;
+
+    have_valid_temp_ = false;
+    last_tempC_ = NAN;
   }
 
 private:
   m5::I2C_Class* i2c_ = nullptr;
-  Config cfg_{};
+  Config   cfg_{};
 
   bool ok_ = false;
   bool mag_configured_ = false;
@@ -527,6 +567,9 @@ private:
   uint64_t last_mag_recover_attempt_us_ = 0ull;
 
   uint8_t  mag_consecutive_failures_ = 0u;
+
+  bool     have_valid_temp_ = false;
+  float    last_tempC_ = NAN;
 
   uint32_t read_total_         = 0u;
   uint32_t ag_read_fail_total_ = 0u;
