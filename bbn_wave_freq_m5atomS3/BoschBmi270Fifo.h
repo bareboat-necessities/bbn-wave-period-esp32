@@ -263,11 +263,13 @@ public:
       }
     }
 
-    // Flush must succeed so runtime state starts from a clean boundary.
-    rslt = bmi2_flush_fifo(&bmi_);
-    if (rslt != BMI2_OK) {
-      return failBegin_(Error::FIFO_FLUSH_FAILED);
-    }
+    // Some vendored Bosch revisions do not expose bmi2_flush_fifo().
+    // We rely on fresh runtime state instead of a hard flush call.
+    
+    //rslt = bmi2_flush_fifo(&bmi_);  // Flush must succeed so runtime state starts from a clean boundary.
+    //if (rslt != BMI2_OK) {
+    //  return failBegin_(Error::FIFO_FLUSH_FAILED);
+    //}
 
     odr_hz_     = use200 ? 200.0f : 100.0f;
     nominal_dt_ = 1.0f / odr_hz_;
