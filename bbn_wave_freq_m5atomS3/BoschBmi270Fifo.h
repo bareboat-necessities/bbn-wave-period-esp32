@@ -146,11 +146,21 @@ public:
 
   const char* initPathString() const {
     if (used_maximum_fifo_init_) {
-      return fell_back_to_plain_init_
-          ? "bmi270_maximum_fifo_init -> bmi270_init fallback"
-          : "bmi270_maximum_fifo_init";
+      if (fell_back_to_plain_init_) {
+  #if ATOMS3R_HAVE_M5_BMI270_CONFIG
+        return "bmi270_maximum_fifo_init -> M5 raw config upload fallback";
+  #else
+        return "bmi270_maximum_fifo_init -> bmi270_init fallback";
+  #endif
+      }
+      return "bmi270_maximum_fifo_init";
     }
+  
+  #if ATOMS3R_HAVE_M5_BMI270_CONFIG
+    return "M5 raw config upload";
+  #else
     return "bmi270_init";
+  #endif
   }
 
   void resetStatistics()
@@ -462,26 +472,28 @@ private:
 
   bool failBegin_(Error primary_err)
   {
-#if ATOMS3R_HAVE_BOSCH_SENSORAPI
+  #if ATOMS3R_HAVE_BOSCH_SENSORAPI
+    const bool  used_maximum_fifo_init  = used_maximum_fifo_init_;
+    const bool  fell_back_to_plain_init = fell_back_to_plain_init_;
+    const int8_t last_bosch_init_rslt   = last_bosch_init_rslt_;
+  
     last_error_ = primary_err;
-
+  
     Error cleanup_err = Error::NONE;
     (void)teardownDevice_(&cleanup_err, true);
-#endif
+  
     clearSessionState_();
+  
+    used_maximum_fifo_init_  = used_maximum_fifo_init;
+    fell_back_to_plain_init_ = fell_back_to_plain_init;
+    last_bosch_init_rslt_    = last_bosch_init_rslt;
+  #else
+    clearSessionState_();
+  #endif
+  
     ok_ = false;
     last_error_ = primary_err;
     return false;
-  }
-
-#if ATOMS3R_HAVE_BOSCH_SENSORAPI
-  static constexpr uint8_t cmdRegAddr_()
-  {
-#ifdef BMI2_CMD_REG_ADDR
-    return BMI2_CMD_REG_ADDR;
-#else
-    return 0x7E;
-#endif
   }
 
   static constexpr uint8_t regChipId_() {
