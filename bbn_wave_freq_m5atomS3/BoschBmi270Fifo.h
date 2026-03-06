@@ -332,6 +332,27 @@ public:
 #endif
   }
 
+bool readTemperatureC(float& temp_c) {
+#if !ATOMS3R_HAVE_BOSCH_SENSORAPI
+  (void)temp_c;
+  last_error_ = Error::NOT_BUILT;
+  return false;
+#else
+  if (!ok_) {
+    last_error_ = Error::NOT_OK;
+    return false;
+  }
+
+  uint16_t raw_temp = 0;
+  if (bmi2_get_temperature_data(&raw_temp, &bmi_) != BMI2_OK) {
+    return false;
+  }
+
+  temp_c = (static_cast<float>(static_cast<int16_t>(raw_temp)) / 512.0f) + 23.0f;
+  return std::isfinite(temp_c);
+#endif
+}
+
   bool readOneAG(BoschAGSample& out) {
     return readAG(&out, 1) == 1;
   }
