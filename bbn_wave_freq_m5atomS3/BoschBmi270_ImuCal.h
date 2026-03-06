@@ -27,6 +27,7 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
+#include <type_traits>
 
 #include "BoschBmi270Fifo.h"
 #include "BoschBmm150Aux.h"
@@ -42,7 +43,7 @@ public:
 
     bool     enable_mag_aux             = true;
     uint8_t  mag_bmm150_addr            = 0x10;
-    float    mag_aux_odr_hz             = 25.0f;    // manual AUX bridge service rate
+    float    mag_aux_odr_hz             = 25.0f;   // manual AUX bridge service rate
     uint16_t mag_startup_settle_ms      = 3;
     bool     mag_verify_first_read      = true;
 
@@ -77,7 +78,6 @@ public:
 
   bool ok() const { return ok_; }
 
-  // "hasMag" means currently fresh/usable magnetometer output is available.
   bool hasMag() const { return magHealthy(); }
   bool magConfigured() const { return mag_configured_; }
   bool haveValidMagSample() const { return magHealthy(); }
@@ -127,7 +127,11 @@ public:
   const Vector3f& lastGoodMag_uT() const { return last_mag_uT_; }
   bool haveLastGoodMag() const { return have_last_good_mag_; }
 
-  bool begin(TwoWire& wire, const Config& cfg = Config()) {
+  bool begin(TwoWire& wire) {
+    return begin(wire, Config{});
+  }
+
+  bool begin(TwoWire& wire, const Config& cfg) {
     if (ok_ || mag_configured_) {
       if (!end()) {
         return false;
@@ -156,7 +160,7 @@ public:
       mcfg.startup_settle_ms = cfg_.mag_startup_settle_ms;
       mcfg.verify_first_read = cfg_.mag_verify_first_read;
 
-      mag_configured_ = mag_.begin(fifo_.rawDev(), mcfg);
+      mag_configured_ = mag_.begin(rawBmiDev_(), mcfg);
       if (!mag_configured_) {
         last_error_ = Error::MAG_BEGIN_FAILED;
       }
@@ -196,18 +200,12 @@ public:
     }
 #endif
 
-#if defined(ATOMS3R_HAVE_BOSCH_SENSORAPI) && ATOMS3R_HAVE_BOSCH_SENSORAPI
-    if (fifo_.rawDev() != nullptr) {
-      const uint8_t sens[2] = { BMI2_ACCEL, BMI2_GYRO };
-      if (bmi270_sensor_disable(sens, 2, fifo_.rawDev()) != BMI2_OK) {
-        all_ok = false;
-        if (first_err == Error::NONE) {
-          first_err = Error::END_AG_FAILED;
-        }
+    if (!endFifo_()) {
+      all_ok = false;
+      if (first_err == Error::NONE) {
+        first_err = Error::END_AG_FAILED;
       }
-      (void)bmi2_flush_fifo(fifo_.rawDev());
     }
-#endif
 
     ok_ = false;
     mag_configured_ = false;
@@ -256,7 +254,6 @@ public:
     out.mask = kImuMaskAccelGyro;
     out.sample_us = static_cast<uint32_t>(sample_us64 & 0xFFFFFFFFull);
 
-    // Clear non-fatal mag status once mag becomes healthy again.
     if (magHealthy() &&
         (last_error_ == Error::MAG_READ_FAILED ||
          last_error_ == Error::MAG_STALE ||
@@ -268,6 +265,46 @@ public:
   }
 
 private:
+  template <typename TFifo>
+  static auto rawBmiDevImpl_(TFifo& f, int) -> decltype(f.rawDevUnsafe()) {
+    return f.rawDevUnsafe();
+  }
+
+  template <typename TFifo>
+  static auto rawBmiDevImpl_(TFifo& f, long) -> decltype(f.rawDev()) {
+    return f.rawDev();
+  }
+
+  bmi2_dev* rawBmiDev_() {
+    return rawBmiDevImpl_(fifo_, 0);
+  }
+
+  template <typename TFifo>
+  static auto fifoEndImpl_(TFifo& f, int) -> decltype(f.end()) {
+    return f.end();
+  }
+
+  template <typename TFifo>
+  static bool fifoEndImpl_(TFifo& f, long) {
+#if defined(ATOMS3R_HAVE_BOSCH_SENSORAPI) && ATOMS3R_HAVE_BOSCH_SENSORAPI
+    bmi2_dev* dev = rawBmiDevImpl_(f, 0);
+    if (dev != nullptr) {
+      bool all_ok = true;
+      const uint8_t sens[2] = { BMI2_ACCEL, BMI2_GYRO };
+      if (bmi270_sensor_disable(sens, 2, dev) != BMI2_OK) {
+        all_ok = false;
+      }
+      (void)bmi2_flush_fifo(dev);
+      return all_ok;
+    }
+#endif
+    return true;
+  }
+
+  bool endFifo_() {
+    return fifoEndImpl_(fifo_, 0);
+  }
+
   static Vector3f nanVec_() {
     return Vector3f::Constant(std::numeric_limits<float>::quiet_NaN());
   }
@@ -420,7 +457,7 @@ private:
 
   bool recoverMag_() {
 #if defined(ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI) && ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI
-    if (!ok_ || fifo_.rawDev() == nullptr) {
+    if (!ok_ || rawBmiDev_() == nullptr) {
       return false;
     }
 
@@ -434,7 +471,7 @@ private:
     mcfg.startup_settle_ms = cfg_.mag_startup_settle_ms;
     mcfg.verify_first_read = cfg_.mag_verify_first_read;
 
-    mag_configured_ = mag_.begin(fifo_.rawDev(), mcfg);
+    mag_configured_ = mag_.begin(rawBmiDev_(), mcfg);
     if (!mag_configured_) {
       have_valid_mag_ = false;
       return false;
@@ -487,9 +524,9 @@ private:
   uint64_t sample_clock_us_     = 0ull;
   double   sample_clock_frac_us_ = 0.0;
 
-  bool     have_mag_poll_time_         = false;
-  uint64_t last_mag_poll_us_           = 0ull;
-  uint64_t last_mag_sample_us_         = 0ull;
+  bool     have_mag_poll_time_          = false;
+  uint64_t last_mag_poll_us_            = 0ull;
+  uint64_t last_mag_sample_us_          = 0ull;
   uint64_t last_mag_recover_attempt_us_ = 0ull;
 
   uint8_t  mag_consecutive_failures_ = 0u;
