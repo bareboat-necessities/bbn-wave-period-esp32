@@ -46,12 +46,9 @@ public:
     uint16_t mag_startup_settle_ms      = 3;
     bool     mag_verify_first_read      = true;
 
-    // Mag is considered stale once older than:
-    // max(mag_stale_min_us, mag_stale_factor * poll_period).
     uint32_t mag_stale_min_us           = 75000u;
     uint8_t  mag_stale_factor           = 3u;
 
-    // Best-effort mag recovery after repeated failures.
     bool     enable_mag_recovery        = true;
     uint8_t  mag_recover_after_failures = 6u;
     uint32_t mag_recover_cooldown_us    = 1000000u;
@@ -236,7 +233,6 @@ public:
 
     const uint64_t sample_us64 = advanceSampleClockUs_(ag.dt_s);
 
-    // Sensor frame -> AtomS3R BODY NED
     const Vector3f a_s(ag.ax, ag.ay, ag.az);
     const Vector3f w_s(ag.gx, ag.gy, ag.gz);
 
@@ -269,11 +265,6 @@ private:
     return f.rawDevUnsafe();
   }
 
-  template <typename TFifo>
-  static auto rawBmiDevImpl_(TFifo& f, int) -> decltype(f.rawDevUnsafe()) {
-    return f.rawDevUnsafe();
-  }
-  
   template <typename TFifo>
   static auto rawBmiDevImpl_(TFifo& f, long) -> decltype(const_cast< ::bmi2_dev* >(f.rawDev())) {
     return const_cast< ::bmi2_dev* >(f.rawDev());
@@ -395,7 +386,6 @@ private:
 
       Vector3f m_s;
       if (mag_.readMag_uT(m_s) && finite3_(m_s)) {
-        // Sensor frame -> AtomS3R BODY NED
         last_mag_uT_ = Vector3f(m_s.y(), m_s.x(), -m_s.z());
 
         have_last_good_mag_ = true;
