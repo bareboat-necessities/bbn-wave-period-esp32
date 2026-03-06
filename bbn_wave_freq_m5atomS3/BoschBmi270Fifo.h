@@ -170,44 +170,48 @@ public:
     last_shutdown_error_     = Error::NONE;
   }
 
-  bool begin(m5::I2C_Class& i2c,
-             uint8_t bmi270_addr = 0x68,
-             float odr_hz = 100.0f,
-             uint32_t i2c_hz = 400000) {
+bool begin(m5::I2C_Class& i2c,
+           uint8_t bmi270_addr = 0x68,
+           float odr_hz = 100.0f,
+           uint32_t i2c_hz = 400000) {
 #if !ATOMS3R_HAVE_BOSCH_SENSORAPI
-    clearSessionState_();
-    i2c_             = &i2c;
-    bmi_addr_        = bmi270_addr;
-    requested_odr_hz_= odr_hz;
-    i2c_hz_          = i2c_hz;
-    ok_              = false;
-    last_error_      = Error::NOT_BUILT;
-    return false;
+  clearSessionState_();
+  i2c_              = &i2c;
+  bmi_addr_         = bmi270_addr;
+  requested_odr_hz_ = odr_hz;
+  i2c_hz_           = i2c_hz;
+  ok_               = false;
+  last_error_       = Error::NOT_BUILT;
+  return false;
 #else
-    if ((ok_ || device_initialized_) && !end()) {
-      return false;
-    }
+  if ((ok_ || device_initialized_) && !end()) {
+    return false;
+  }
 
-    clearSessionState_();
+  clearSessionState_();
 
-    i2c_              = &i2c;
-    bmi_addr_         = bmi270_addr;
-    requested_odr_hz_ = odr_hz;
-    i2c_hz_           = i2c_hz;
-    last_error_       = Error::NONE;
+  i2c_              = &i2c;
+  bmi_addr_         = bmi270_addr;
+  requested_odr_hz_ = odr_hz;
+  i2c_hz_           = i2c_hz;
+  last_error_       = Error::NONE;
 
-    std::memset(&bmi_, 0, sizeof(bmi_));
-    bmi_.intf           = BMI2_I2C_INTF;
-    bmi_.read           = &BoschBmi270Fifo::bmi2_i2c_read_;
-    bmi_.write          = &BoschBmi270Fifo::bmi2_i2c_write_;
-    bmi_.delay_us       = &BoschBmi270Fifo::bmi2_delay_us_;
-    bmi_.read_write_len = I2C_CHUNK;
-    bmi_.intf_ptr       = this;
+  // AtomS3R internal IMU bus: SYS_SCL/SYS_SDA = GPIO45/GPIO0
+  i2c_->begin((i2c_port_t)I2C_NUM_0, 45, 0);
+  delay(10);
 
-    if (!initDeviceForFifo_()) {
-      return failBegin_(last_error_);
-    }
-    device_initialized_ = true;
+  std::memset(&bmi_, 0, sizeof(bmi_));
+  bmi_.intf           = BMI2_I2C_INTF;
+  bmi_.read           = &BoschBmi270Fifo::bmi2_i2c_read_;
+  bmi_.write          = &BoschBmi270Fifo::bmi2_i2c_write_;
+  bmi_.delay_us       = &BoschBmi270Fifo::bmi2_delay_us_;
+  bmi_.read_write_len = I2C_CHUNK;
+  bmi_.intf_ptr       = this;
+
+  if (!initDeviceForFifo_()) {
+    return failBegin_(last_error_);
+  }
+  device_initialized_ = true;
 
     const bool use200 = (odr_hz > 150.0f);
 
@@ -601,102 +605,79 @@ private:
   #endif
   }
 
-  bool initDeviceForFifo_() {
-    used_maximum_fifo_init_  = false;
-    fell_back_to_plain_init_ = false;
-    last_bosch_init_rslt_    = BMI2_OK;
+bool initDeviceForFifo_() {
+  used_maximum_fifo_init_  = false;
+  fell_back_to_plain_init_ = false;
+  last_bosch_init_rslt_    = BMI2_OK;
 
-  #if ATOMS3R_HAVE_BMI270_MAXIMUM_FIFO_INIT
-    used_maximum_fifo_init_ = true;
-    last_bosch_init_rslt_ = bmi270_maximum_fifo_init(&bmi_);
-    if (last_bosch_init_rslt_ == BMI2_OK) {
-      last_error_ = Error::NONE;
-      return true;
-    }
-    fell_back_to_plain_init_ = true;
-  #endif
-
-  #if ATOMS3R_HAVE_M5_BMI270_CONFIG
-    uint8_t chip_id = 0;
-    if (!readReg8Raw_(regChipId_(), chip_id) || chip_id != 0x24u) {
-      last_error_ = Error::INIT_WHOAMI_FAILED;
-      return false;
-    }
-
-    if (!writeReg8Raw_(regCmd_(), softResetCmd_())) {
-      last_error_ = Error::INIT_SOFT_RESET_FAILED;
-      return false;
-    }
-
-    {
-      uint8_t pwr_conf = 0;
-      int retry = 16;
-      do {
-        delay(1);
-        if (!readReg8Raw_(regPwrConf_(), pwr_conf)) {
-          pwr_conf = 0;
-        }
-      } while (pwr_conf == 0u && --retry);
-
-      if (retry <= 0) {
-        last_error_ = Error::INIT_PWR_CONF_TIMEOUT;
-        return false;
-      }
-    }
-
-    if (!writeReg8Raw_(regPwrConf_(), 0x00u)) {
-      last_error_ = Error::INIT_SOFT_RESET_FAILED;
-      return false;
-    }
-
-    delay(1);
-
-    if (!writeReg8Raw_(regInitCtrl_(), 0x00u)) {
-      last_error_ = Error::INIT_CONFIG_UPLOAD_FAILED;
-      return false;
-    }
-
-    if (!uploadConfigBlobM5_()) {
-      last_error_ = Error::INIT_CONFIG_UPLOAD_FAILED;
-      return false;
-    }
-
-    if (!writeReg8Raw_(regInitCtrl_(), 0x01u)) {
-      last_error_ = Error::INIT_CONFIG_UPLOAD_FAILED;
-      return false;
-    }
-
-    (void)writeReg8Raw_(regIntMapData_(), 0xFFu);
-
-    {
-      uint8_t internal_status = 0;
-      int retry = 16;
-      do {
-        delay(1);
-        if (!readReg8Raw_(regInternalStatus_(), internal_status)) {
-          internal_status = 0;
-        }
-      } while (internal_status == 0u && --retry);
-
-      if (retry <= 0) {
-        last_error_ = Error::INIT_INTERNAL_STATUS_TIMEOUT;
-        return false;
-      }
-    }
-
-    last_error_ = Error::NONE;
-    return true;
-  #else
-    last_bosch_init_rslt_ = bmi270_init(&bmi_);
-    if (last_bosch_init_rslt_ != BMI2_OK) {
-      last_error_ = Error::INIT_FAILED;
-      return false;
-    }
-
-    last_error_ = Error::NONE;
-    return true;
-  #endif
+  uint8_t chip_id = 0;
+  if (!readReg8Raw_(regChipId_(), chip_id) || chip_id != 0x24u) {
+    last_error_ = Error::INIT_WHOAMI_FAILED;
+    return false;
   }
+
+  if (!writeReg8Raw_(regCmd_(), softResetCmd_())) {
+    last_error_ = Error::INIT_SOFT_RESET_FAILED;
+    return false;
+  }
+
+  {
+    uint8_t pwr_conf = 0;
+    int retry = 16;
+    do {
+      delay(1);
+      if (!readReg8Raw_(regPwrConf_(), pwr_conf)) {
+        pwr_conf = 0;
+      }
+    } while (pwr_conf == 0u && --retry);
+
+    if (retry <= 0) {
+      last_error_ = Error::INIT_PWR_CONF_TIMEOUT;
+      return false;
+    }
+  }
+
+  if (!writeReg8Raw_(regPwrConf_(), 0x00u)) {
+    last_error_ = Error::INIT_SOFT_RESET_FAILED;
+    return false;
+  }
+
+  delay(1);
+
+  if (!uploadConfigBlobM5_()) {
+    last_error_ = Error::INIT_CONFIG_UPLOAD_FAILED;
+    return false;
+  }
+
+  if (!writeReg8Raw_(regInitCtrl_(), 0x01u)) {
+    last_error_ = Error::INIT_CONFIG_UPLOAD_FAILED;
+    return false;
+  }
+
+  if (!writeReg8Raw_(regIntMapData_(), 0xFFu)) {
+    last_error_ = Error::INIT_CONFIG_UPLOAD_FAILED;
+    return false;
+  }
+
+  {
+    uint8_t internal_status = 0;
+    int retry = 16;
+    do {
+      delay(1);
+      if (!readReg8Raw_(regInternalStatus_(), internal_status)) {
+        internal_status = 0;
+      }
+    } while (internal_status == 0u && --retry);
+
+    if (retry <= 0) {
+      last_error_ = Error::INIT_INTERNAL_STATUS_TIMEOUT;
+      return false;
+    }
+  }
+
+  last_error_ = Error::NONE;
+  return true;
+}
 
   bool flushFifo_() {
     return writeReg8Raw_(regCmd_(), fifoFlushCmd_());
