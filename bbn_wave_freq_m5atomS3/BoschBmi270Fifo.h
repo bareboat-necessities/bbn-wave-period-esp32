@@ -111,7 +111,7 @@ public:
   const char* lastShutdownErrorString() const { return errorString_(last_shutdown_error_); }
 
   bool usedMaximumFifoInit() const { return used_maximum_fifo_init_; }
-  bool fellBackToPlainInit() const { return false; } // kept only for compatibility with existing callers
+  bool fellBackToPlainInit() const { return false; }
   int8_t lastBoschInitResult() const { return last_bosch_init_rslt_; }
 
   const char* initPathString() const {
@@ -161,9 +161,8 @@ public:
     bmi_.read            = &BoschBmi270Fifo::bmi2_i2c_read_;
     bmi_.write           = &BoschBmi270Fifo::bmi2_i2c_write_;
     bmi_.delay_us        = &BoschBmi270Fifo::bmi2_delay_us_;
-    bmi_.chip_id         = bmi_addr_;          // plain bmi270_init path uses I2C addr here
     bmi_.config_file_ptr = nullptr;
-    bmi_.read_write_len  = I2C_CHUNK;
+    bmi_.read_write_len  = REG_IO_CHUNK;
     bmi_.intf_ptr        = this;
 
     used_maximum_fifo_init_ = false;
@@ -248,7 +247,7 @@ public:
     }
     fifo_configured_ = true;
 
-    rslt = bmi2_set_fifo_wm(FIFO_READ_BURST_MAX, &bmi_);
+    rslt = bmi2_set_fifo_wm(FIFO_WATERMARK_BYTES, &bmi_);
     if (rslt != BMI2_OK) {
       watermark_set_ok_ = false;
       last_error_ = Error::FIFO_WM_FAILED;
@@ -416,17 +415,16 @@ public:
   }
 
 private:
-  static constexpr uint16_t I2C_CHUNK             = 30;
-  // FIFO read must fit in a single I2C transaction (see bmi2_i2c_read_ below).
-  // Keep it at the same chunk size used for safe register reads so Wire buffers
-  // on small stacks do not overflow and return zero-filled payloads.
-  static constexpr uint16_t FIFO_READ_BURST_MAX   = I2C_CHUNK;
-  static constexpr int      MAX_EXTRACT           = 128;
-  static constexpr int      PENDING_CAP           = MAX_EXTRACT;
-  static constexpr size_t   FIFO_BUF_CAP          = 2048u + 256u;
-  static constexpr uint32_t PAIR_TIME_SLACK_TICKS = 32u;
-  static constexpr uint32_t MAX_REASONABLE_DT_US  = 250000u;
-  static constexpr uint8_t  RECOVERY_THRESHOLD    = 3u;
+  static constexpr uint16_t REG_IO_CHUNK            = 32;
+  static constexpr uint16_t FIFO_WATERMARK_BYTES    = 104;   // ~8 AG header frames
+  static constexpr uint16_t FIFO_MIN_READ_BYTES     = 13;    // one AG header frame
+  static constexpr uint16_t FIFO_READ_BURST_MAX     = 1024;  // big enough to avoid tiny truncated reads
+  static constexpr int      MAX_EXTRACT             = 128;
+  static constexpr int      PENDING_CAP             = MAX_EXTRACT;
+  static constexpr size_t   FIFO_BUF_CAP            = 2048u + 256u;
+  static constexpr uint32_t PAIR_TIME_SLACK_TICKS   = 32u;
+  static constexpr uint32_t MAX_REASONABLE_DT_US    = 250000u;
+  static constexpr uint8_t  RECOVERY_THRESHOLD      = 3u;
 
   static constexpr float kPi = 3.14159265358979323846f;
   static constexpr float kG0 = 9.80665f;
@@ -609,6 +607,10 @@ private:
     return timeBefore24_(a, b) ? b : a;
   }
 
+  static bool axesAllZero_(const bmi2_sens_axes_data& s) {
+    return s.x == 0 && s.y == 0 && s.z == 0;
+  }
+
   void noteReadError_(Error err) {
     last_fill_had_error_ = true;
     ++fifo_read_errors_total_;
@@ -665,6 +667,11 @@ private:
                          const bmi2_sens_axes_data& g,
                          uint32_t st24) {
     if (pending_count_ >= PENDING_CAP) return false;
+
+    if (axesAllZero_(a) && axesAllZero_(g)) {
+      ++unpaired_total_;
+      return true;
+    }
 
     const int idx = (pending_head_ + pending_count_) % PENDING_CAP;
     BoschAGSample& out = pending_[idx];
@@ -799,15 +806,18 @@ private:
       return false;
     }
 
-    if (fifo_len == 0u) {
+    if (fifo_len < FIFO_MIN_READ_BYTES) {
       last_fill_had_error_ = false;
       return false;
     }
 
-    uint32_t req = static_cast<uint32_t>(fifo_len) + static_cast<uint32_t>(bmi_.dummy_byte);
+    uint32_t req = static_cast<uint32_t>(fifo_len);
     req = std::min<uint32_t>(req, FIFO_READ_BURST_MAX);
-    if (req > static_cast<uint32_t>(sizeof(fifo_buf_))) {
-      req = static_cast<uint32_t>(sizeof(fifo_buf_));
+    req = std::min<uint32_t>(req, static_cast<uint32_t>(sizeof(fifo_buf_)));
+
+    if (req < FIFO_MIN_READ_BYTES) {
+      last_fill_had_error_ = false;
+      return false;
     }
 
     std::memset(&fifo_, 0, sizeof(fifo_));
@@ -816,6 +826,11 @@ private:
 
     if (bmi2_read_fifo_data(&fifo_, &bmi_) != BMI2_OK) {
       noteReadError_(Error::FIFO_READ_FAILED);
+      return false;
+    }
+
+    if (fifo_.length < FIFO_MIN_READ_BYTES) {
+      last_fill_had_error_ = false;
       return false;
     }
 
@@ -867,10 +882,6 @@ private:
       return BMI2_E_COM_FAIL;
     }
 
-    // FIFO register reads must stay in one contiguous bus transaction.
-    // Re-starting reads from BMI2_FIFO_DATA_ADDR can replay bytes from the
-    // beginning of the FIFO window on some stacks, which then looks like
-    // repeated/zeroed samples after bmi2_extract_* parsing.
     if (reg_addr == BMI2_FIFO_DATA_ADDR) {
       if (!self->i2c_->readRegister(
               self->bmi_addr_,
@@ -885,7 +896,7 @@ private:
 
     uint32_t off = 0;
     while (off < len) {
-      const uint16_t n = static_cast<uint16_t>(std::min<uint32_t>(I2C_CHUNK, len - off));
+      const uint16_t n = static_cast<uint16_t>(std::min<uint32_t>(REG_IO_CHUNK, len - off));
       const uint8_t addr = static_cast<uint8_t>(reg_addr + off);
 
       if (!self->i2c_->readRegister(
@@ -911,7 +922,7 @@ private:
 
     uint32_t off = 0;
     while (off < len) {
-      const uint16_t n = static_cast<uint16_t>(std::min<uint32_t>(I2C_CHUNK, len - off));
+      const uint16_t n = static_cast<uint16_t>(std::min<uint32_t>(REG_IO_CHUNK, len - off));
       const uint8_t addr = static_cast<uint8_t>(reg_addr + off);
 
       if (!self->i2c_->writeRegister(
