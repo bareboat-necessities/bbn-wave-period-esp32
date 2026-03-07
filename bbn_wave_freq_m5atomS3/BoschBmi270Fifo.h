@@ -417,9 +417,10 @@ public:
 
 private:
   static constexpr uint16_t I2C_CHUNK             = 30;
-  // Keep FIFO burst requests conservative: oversized reads can come back as
-  // all-zero payloads on some Wire stacks once internal buffers overflow.
-  static constexpr uint16_t FIFO_READ_BURST_MAX   = 120;
+  // FIFO read must fit in a single I2C transaction (see bmi2_i2c_read_ below).
+  // Keep it at the same chunk size used for safe register reads so Wire buffers
+  // on small stacks do not overflow and return zero-filled payloads.
+  static constexpr uint16_t FIFO_READ_BURST_MAX   = I2C_CHUNK;
   static constexpr int      MAX_EXTRACT           = 128;
   static constexpr int      PENDING_CAP           = MAX_EXTRACT;
   static constexpr size_t   FIFO_BUF_CAP          = 2048u + 256u;
