@@ -862,13 +862,26 @@ private:
       return BMI2_E_COM_FAIL;
     }
 
+    // FIFO register reads must stay in one contiguous bus transaction.
+    // Re-starting reads from BMI2_FIFO_DATA_ADDR can replay bytes from the
+    // beginning of the FIFO window on some stacks, which then looks like
+    // repeated/zeroed samples after bmi2_extract_* parsing.
+    if (reg_addr == BMI2_FIFO_DATA_ADDR) {
+      if (!self->i2c_->readRegister(
+              self->bmi_addr_,
+              reg_addr,
+              reg_data,
+              static_cast<uint16_t>(len),
+              self->i2c_hz_)) {
+        return BMI2_E_COM_FAIL;
+      }
+      return BMI2_OK;
+    }
+
     uint32_t off = 0;
     while (off < len) {
       const uint16_t n = static_cast<uint16_t>(std::min<uint32_t>(I2C_CHUNK, len - off));
-
-      const uint8_t addr = (reg_addr == BMI2_FIFO_DATA_ADDR)
-                         ? reg_addr
-                         : static_cast<uint8_t>(reg_addr + off);
+      const uint8_t addr = static_cast<uint8_t>(reg_addr + off);
 
       if (!self->i2c_->readRegister(
               self->bmi_addr_,
