@@ -15,7 +15,8 @@
 #if defined(__has_include)
   #if __has_include(<utilities/BMI270-Sensor-API/bmi2.h>) && \
       __has_include(<utilities/BMI270-Sensor-API/bmi270.h>) && \
-      __has_include(<utilities/BMM150-Sensor-API/bmm150.h>)
+      __has_include(<utilities/BMM150-Sensor-API/bmm150.h>) && \
+      __has_include(<utilities/BMM150-Sensor-API/bmm150_defs.h>)
     #include <utilities/BMI270-Sensor-API/bmi2.h>
     #include <utilities/BMI270-Sensor-API/bmi2_defs.h>
     #include <utilities/BMI270-Sensor-API/bmi270.h>
@@ -24,7 +25,8 @@
     #define ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI 1
   #elif __has_include(<utility/BMI270-Sensor-API/bmi2.h>) && \
         __has_include(<utility/BMI270-Sensor-API/bmi270.h>) && \
-        __has_include(<utility/BMM150-Sensor-API/bmm150.h>)
+        __has_include(<utility/BMM150-Sensor-API/bmm150.h>) && \
+        __has_include(<utility/BMM150-Sensor-API/bmm150_defs.h>)
     #include <utility/BMI270-Sensor-API/bmi2.h>
     #include <utility/BMI270-Sensor-API/bmi2_defs.h>
     #include <utility/BMI270-Sensor-API/bmi270.h>
@@ -32,7 +34,7 @@
     #include <utility/BMM150-Sensor-API/bmm150_defs.h>
     #define ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI 1
   #else
-    #error "Arduino_BMI270_BMM150 is present, but BMM150 vendor headers were not found under utility/ or utilities/."
+    #error "Arduino_BMI270_BMM150 is present, but Bosch vendor headers were not found under utility/ or utilities/."
   #endif
 #else
   #error "__has_include is required for Bosch vendor header path detection."
@@ -54,14 +56,19 @@ class BoschBmm150Aux {
 public:
   struct Config {
     uint8_t  bmm_addr = BMM150_DEFAULT_I2C_ADDRESS; // usually 0x10
-    float    aux_odr_hz = 100.0f;                   // BMI270 AUX service rate
+    float    aux_odr_hz = 25.0f;                    // BMI270 AUX service rate
     uint8_t  preset_mode = BMM150_PRESETMODE_REGULAR;
-    uint16_t startup_settle_ms = 120;               // safe for 10 Hz presets
+    uint16_t startup_settle_ms = 200;
     bool     verify_first_read = true;
 
-    // If true and caller polls too fast, return previous good sample.
-    // If false, readMag_uT() waits for the next fresh DRDY event.
+    // If caller polls faster than the configured mag rate:
+    //  - true  => return last good finite sample
+    //  - false => wait for next sample period
     bool     return_last_on_fast_poll = false;
+
+    // On read failure, output last good sample if available, else zeros.
+    // Function still returns false.
+    bool     return_last_good_on_error = true;
 
     // Board remap:
     //   +1,+2,+3 = +X,+Y,+Z
@@ -85,12 +92,16 @@ public:
     CHIP_ID_READ_FAILED,
     CHIP_ID_MISMATCH,
 
-    BMM_INIT_FAILED,
-    BMM_SET_PRESET_FAILED,
-    BMM_SET_OPMODE_FAILED,
+    BMM_POWER_ON_FAILED,
+    BMM_TRIM_READ_FAILED,
+    BMM_CONFIG_FAILED,
     BMM_TEST_READ_FAILED,
 
-    MAG_READ_FAILED,
+    AUX_READ_FAILED,
+    AUX_WRITE_FAILED,
+
+    RAW_MAG_INVALID,
+    COMP_INVALID,
     NONFINITE_MAG,
     ZERO_MAG,
 
@@ -132,31 +143,22 @@ public:
         ++init_fail_total_;
         return false;
       }
-    } else {
-      resetSessionState_();
     }
 
-    cfg_ = cfg;
-    bmi_dev_ = bmi_dev;
-    session_attached_ = (bmi_dev_ != nullptr);
+    clearSessionData_();
     last_error_ = Error::NONE;
     last_end_error_ = Error::NONE;
 
-    std::memset(&saved_aux_cfg_, 0, sizeof(saved_aux_cfg_));
-    std::memset(&bmm_dev_, 0, sizeof(bmm_dev_));
-    std::memset(&bmm_settings_, 0, sizeof(bmm_settings_));
-    saved_aux_cfg_valid_ = false;
-    saved_aux_was_enabled_ = false;
-    ok_ = false;
-    have_last_good_ = false;
-    last_good_uT_ = Vector3f::Zero();
-    last_read_ms_ = 0;
-    effective_mag_hz_ = 10.0f;
+    cfg_ = cfg;
+    sanitizeAxisMap_();
+
+    bmi_dev_ = bmi_dev;
+    session_attached_ = (bmi_dev_ != nullptr);
 
     if (!bmi_dev_) {
       ++init_fail_total_;
       last_error_ = Error::NULL_BMI_DEV;
-      detachSession_();
+      clearSessionData_();
       return false;
     }
 
@@ -164,7 +166,7 @@ public:
     if (bmi270_get_sensor_config(&saved_aux_cfg_, 1, bmi_dev_) != BMI2_OK) {
       ++init_fail_total_;
       last_error_ = Error::BMI_GET_AUX_CFG_FAILED;
-      detachSession_();
+      clearSessionData_();
       return false;
     }
     saved_aux_cfg_valid_ = true;
@@ -186,7 +188,7 @@ public:
     }
 
     {
-      const uint8_t sens = BMI2_AUX;
+      uint8_t sens = BMI2_AUX;
       if (bmi2_sensor_enable(&sens, 1, bmi_dev_) != BMI2_OK) {
         ++init_fail_total_;
         last_error_ = Error::BMI_AUX_ENABLE_FAILED;
@@ -195,7 +197,6 @@ public:
       }
     }
 
-    // Keep AUX in MANUAL mode; BMM150 API calls go through indirect reads/writes.
     bmi2_sens_config sc = saved_aux_cfg_;
     sc.type = BMI2_AUX;
     sc.cfg.aux.odr             = auxOdrFromHz_(cfg_.aux_odr_hz);
@@ -203,7 +204,7 @@ public:
     sc.cfg.aux.i2c_device_addr = cfg_.bmm_addr;
     sc.cfg.aux.fcu_write_en    = BMI2_ENABLE;
     sc.cfg.aux.man_rd_burst    = manualBurstLen_();
-    sc.cfg.aux.read_addr       = dataStartReg_();
+    sc.cfg.aux.read_addr       = kRegDataXLSB;
     sc.cfg.aux.manual_en       = BMI2_ENABLE;
 
     if (bmi270_set_sensor_config(&sc, 1, bmi_dev_) != BMI2_OK) {
@@ -220,50 +221,44 @@ public:
       bestEffortRollback_();
       return false;
     }
-    if (chip_id != expectedChipId_()) {
+    if (chip_id != kExpectedChipId) {
       ++init_fail_total_;
       last_error_ = Error::CHIP_ID_MISMATCH;
       bestEffortRollback_();
       return false;
     }
 
-    std::memset(&bmm_dev_, 0, sizeof(bmm_dev_));
-    bmm_dev_.intf     = BMM150_I2C_INTF;
-    bmm_dev_.intf_ptr = this;
-    bmm_dev_.read     = &BoschBmm150Aux::bmm_read_;
-    bmm_dev_.write    = &BoschBmm150Aux::bmm_write_;
-    bmm_dev_.delay_us = &BoschBmm150Aux::bmm_delay_us_;
-
-    if (bmm150_init(&bmm_dev_) != BMM150_OK) {
+    if (!powerOn_()) {
       ++init_fail_total_;
-      last_error_ = Error::BMM_INIT_FAILED;
+      last_error_ = Error::BMM_POWER_ON_FAILED;
       bestEffortRollback_();
       return false;
     }
 
-    std::memset(&bmm_settings_, 0, sizeof(bmm_settings_));
-    bmm_settings_.preset_mode = cfg_.preset_mode;
-
-    if (bmm150_set_presetmode(&bmm_settings_, &bmm_dev_) != BMM150_OK) {
+    if (!readTrimData_()) {
       ++init_fail_total_;
-      last_error_ = Error::BMM_SET_PRESET_FAILED;
+      last_error_ = Error::BMM_TRIM_READ_FAILED;
       bestEffortRollback_();
       return false;
     }
 
-    // Critical: preset alone does not put the part into measuring mode.
-    bmm_settings_.pwr_mode = normalModeValue_();
-    if (bmm150_set_op_mode(&bmm_settings_, &bmm_dev_) != BMM150_OK) {
+    if (!configurePresetAndMode_()) {
       ++init_fail_total_;
-      last_error_ = Error::BMM_SET_OPMODE_FAILED;
+      last_error_ = Error::BMM_CONFIG_FAILED;
       bestEffortRollback_();
       return false;
     }
-
-    effective_mag_hz_ = presetModeHz_(cfg_.preset_mode);
 
     if (cfg_.startup_settle_ms > 0u) {
       delay(cfg_.startup_settle_ms);
+    }
+
+    // Discard a couple of initial samples.
+    {
+      RawSample raw{};
+      (void)readRawSample_(raw);
+      delay(minReadIntervalMs_());
+      (void)readRawSample_(raw);
     }
 
     if (cfg_.verify_first_read) {
@@ -271,12 +266,14 @@ public:
       bool got_valid = false;
       const uint32_t wait_ms = minReadIntervalMs_();
 
-      for (int attempt = 0; attempt < 4; ++attempt) {
+      for (int i = 0; i < 6; ++i) {
+        if (i > 0) {
+          delay(wait_ms);
+        }
         if (readMagInternal_(tmp, false)) {
           got_valid = true;
           break;
         }
-        delay(wait_ms);
       }
 
       if (!got_valid) {
@@ -294,7 +291,7 @@ public:
 
   bool end() {
     if (!session_attached_ || !bmi_dev_) {
-      resetSessionState_();
+      clearSessionData_();
       last_error_ = Error::NONE;
       last_end_error_ = Error::NONE;
       return true;
@@ -308,7 +305,7 @@ public:
         restore_ok = false;
         first_restore_error = Error::BMI_RESTORE_AUX_CFG_FAILED;
       } else if (!saved_aux_was_enabled_) {
-        const uint8_t sens = BMI2_AUX;
+        uint8_t sens = BMI2_AUX;
         if (bmi2_sensor_disable(&sens, 1, bmi_dev_) != BMI2_OK) {
           restore_ok = false;
           first_restore_error = Error::BMI_AUX_DISABLE_FAILED;
@@ -324,7 +321,7 @@ public:
       return false;
     }
 
-    detachSession_();
+    clearSessionData_();
     last_error_ = Error::NONE;
     last_end_error_ = Error::NONE;
     return true;
@@ -332,6 +329,7 @@ public:
 
   bool readMag_uT(Vector3f& m_uT_out) {
     if (!ok_) {
+      safeFailureOutput_(m_uT_out);
       last_error_ = Error::NOT_INITIALIZED;
       ++read_fail_total_;
       return false;
@@ -348,6 +346,54 @@ public:
   }
 
 private:
+  struct TrimData {
+    int8_t   dig_x1   = 0;
+    int8_t   dig_y1   = 0;
+    int8_t   dig_x2   = 0;
+    int8_t   dig_y2   = 0;
+    uint16_t dig_z1   = 0;
+    int16_t  dig_z2   = 0;
+    int16_t  dig_z3   = 0;
+    int16_t  dig_z4   = 0;
+    uint8_t  dig_xy1  = 0;
+    int8_t   dig_xy2  = 0;
+    uint16_t dig_xyz1 = 0;
+    bool     valid    = false;
+  };
+
+  struct RawSample {
+    int16_t  x = 0;
+    int16_t  y = 0;
+    int16_t  z = 0;
+    uint16_t rhall = 0;
+  };
+
+  static constexpr uint8_t kExpectedChipId = 0x32u;
+
+  static constexpr uint8_t kRegChipId       = 0x40u;
+  static constexpr uint8_t kRegDataXLSB     = 0x42u;
+  static constexpr uint8_t kRegPowerCtrl    = 0x4Bu;
+  static constexpr uint8_t kRegOpCtrl       = 0x4Cu;
+  static constexpr uint8_t kRegRepXY        = 0x51u;
+  static constexpr uint8_t kRegRepZ         = 0x52u;
+
+  static constexpr uint8_t kRegDigX1        = 0x5Du;
+  static constexpr uint8_t kRegDigY1        = 0x5Eu;
+  static constexpr uint8_t kRegDigZ4Lsb     = 0x62u;
+  static constexpr uint8_t kRegDigZ2Lsb     = 0x68u;
+  static constexpr uint8_t kRegDigZ1Lsb     = 0x6Au;
+  static constexpr uint8_t kRegDigXYZ1Lsb   = 0x6Cu;
+  static constexpr uint8_t kRegDigZ3Lsb     = 0x6Eu;
+  static constexpr uint8_t kRegDigXY2       = 0x70u;
+  static constexpr uint8_t kRegDigXY1       = 0x71u;
+  static constexpr uint8_t kRegDigX2        = 0x64u;
+  static constexpr uint8_t kRegDigY2        = 0x65u;
+
+  static constexpr uint8_t kPowerOnBit      = 0x01u;
+  static constexpr uint8_t kOpModeNormal    = 0x00u;
+  static constexpr uint8_t kOpModeBitsMask  = 0x06u;
+  static constexpr uint8_t kOdrBitsMask     = 0x38u;
+
   static const char* errorString_(Error e) {
     switch (e) {
       case Error::NONE:                              return "none";
@@ -361,53 +407,20 @@ private:
       case Error::BMI_SET_AUX_CFG_FAILED:            return "bmi270_set_sensor_config(BMI2_AUX) failed";
       case Error::CHIP_ID_READ_FAILED:               return "BMM150 chip-id read failed";
       case Error::CHIP_ID_MISMATCH:                  return "BMM150 chip-id mismatch";
-      case Error::BMM_INIT_FAILED:                   return "bmm150_init failed";
-      case Error::BMM_SET_PRESET_FAILED:             return "bmm150_set_presetmode failed";
-      case Error::BMM_SET_OPMODE_FAILED:             return "bmm150_set_op_mode failed";
+      case Error::BMM_POWER_ON_FAILED:               return "BMM150 power-on failed";
+      case Error::BMM_TRIM_READ_FAILED:              return "BMM150 trim read failed";
+      case Error::BMM_CONFIG_FAILED:                 return "BMM150 config failed";
       case Error::BMM_TEST_READ_FAILED:              return "initial BMM150 read failed";
-      case Error::MAG_READ_FAILED:                   return "bmm150_read_mag_data failed";
+      case Error::AUX_READ_FAILED:                   return "BMI270 AUX read failed";
+      case Error::AUX_WRITE_FAILED:                  return "BMI270 AUX write failed";
+      case Error::RAW_MAG_INVALID:                   return "raw BMM150 sample invalid";
+      case Error::COMP_INVALID:                      return "BMM150 compensated output invalid";
       case Error::NONFINITE_MAG:                     return "non-finite magnetometer output";
       case Error::ZERO_MAG:                          return "all-zero magnetometer sample";
       case Error::BMI_RESTORE_AUX_CFG_FAILED:        return "failed to restore prior BMI270 AUX config";
       case Error::BMI_AUX_DISABLE_FAILED:            return "failed to disable BMI270 AUX after restore";
       default:                                       return "unknown";
     }
-  }
-
-  static constexpr uint8_t expectedChipId_() { return 0x32u; }
-
-  static constexpr uint8_t chipIdReg_() {
-    #if defined(BMM150_REG_CHIP_ID)
-      return BMM150_REG_CHIP_ID;
-    #elif defined(BMM150_CHIP_ID_ADDR)
-      return BMM150_CHIP_ID_ADDR;
-    #else
-      return 0x40u;
-    #endif
-  }
-
-  static constexpr uint8_t dataStartReg_() {
-    #if defined(BMM150_REG_DATA_X_LSB)
-      return BMM150_REG_DATA_X_LSB;
-    #elif defined(BMM150_DATA_X_LSB)
-      return BMM150_DATA_X_LSB;
-    #else
-      return 0x42u;
-    #endif
-  }
-
-  // Datasheet: data-ready is register 0x48 bit 0.
-  static constexpr uint8_t dataReadyReg_() { return 0x48u; }
-  static constexpr uint8_t dataReadyMask_() { return 0x01u; }
-
-  static constexpr uint8_t normalModeValue_() {
-    #if defined(BMM150_POWERMODE_NORMAL)
-      return BMM150_POWERMODE_NORMAL;
-    #elif defined(BMM150_NORMAL_MODE)
-      return BMM150_NORMAL_MODE;
-    #else
-      return 0x00u;
-    #endif
   }
 
   static uint8_t manualBurstLen_() {
@@ -424,7 +437,7 @@ private:
 
   static uint8_t auxOdrFromHz_(float hz) {
     if (!(hz > 0.0f) || !std::isfinite(hz)) {
-      hz = 100.0f;
+      hz = 25.0f;
     }
 
     #if defined(BMI2_AUX_ODR_200HZ)
@@ -453,6 +466,8 @@ private:
     #endif
     #if defined(BMI2_AUX_ODR_0_78HZ)
       return BMI2_AUX_ODR_0_78HZ;
+    #elif defined(BMI2_AUX_ODR_25HZ)
+      return BMI2_AUX_ODR_25HZ;
     #elif defined(BMI2_AUX_ODR_100HZ)
       return BMI2_AUX_ODR_100HZ;
     #else
@@ -460,15 +475,43 @@ private:
     #endif
   }
 
-  static float presetModeHz_(uint8_t preset_mode) {
+  static uint8_t presetRepXY_(uint8_t preset_mode) {
     switch (preset_mode) {
-      case BMM150_PRESETMODE_HIGHACCURACY:
-        return 20.0f;
+      case BMM150_PRESETMODE_LOWPOWER:      return 0x01u;
+      case BMM150_PRESETMODE_REGULAR:       return 0x04u;
+      case BMM150_PRESETMODE_ENHANCED:      return 0x07u;
+      case BMM150_PRESETMODE_HIGHACCURACY:  return 0x17u;
+      default:                              return 0x04u;
+    }
+  }
+
+  static uint8_t presetRepZ_(uint8_t preset_mode) {
+    switch (preset_mode) {
+      case BMM150_PRESETMODE_LOWPOWER:      return 0x02u;
+      case BMM150_PRESETMODE_REGULAR:       return 0x0Eu;
+      case BMM150_PRESETMODE_ENHANCED:      return 0x1Au;
+      case BMM150_PRESETMODE_HIGHACCURACY:  return 0x52u;
+      default:                              return 0x0Eu;
+    }
+  }
+
+  static uint8_t presetOdrCode_(uint8_t preset_mode) {
+    switch (preset_mode) {
+      case BMM150_PRESETMODE_HIGHACCURACY:  return 0x05u; // 20 Hz
       case BMM150_PRESETMODE_LOWPOWER:
       case BMM150_PRESETMODE_REGULAR:
       case BMM150_PRESETMODE_ENHANCED:
-      default:
-        return 10.0f;
+      default:                              return 0x00u; // 10 Hz
+    }
+  }
+
+  static float presetModeHz_(uint8_t preset_mode) {
+    switch (preset_mode) {
+      case BMM150_PRESETMODE_HIGHACCURACY:  return 20.0f;
+      case BMM150_PRESETMODE_LOWPOWER:
+      case BMM150_PRESETMODE_REGULAR:
+      case BMM150_PRESETMODE_ENHANCED:
+      default:                              return 10.0f;
     }
   }
 
@@ -490,12 +533,16 @@ private:
   #endif
   }
 
+  static bool finite3_(float x, float y, float z) {
+    return std::isfinite(x) && std::isfinite(y) && std::isfinite(z);
+  }
+
   static bool allZero3_(float x, float y, float z) {
     return x == 0.0f && y == 0.0f && z == 0.0f;
   }
 
   static bool allZero3_(const Vector3f& v) {
-    return v.x() == 0.0f && v.y() == 0.0f && v.z() == 0.0f;
+    return allZero3_(v.x(), v.y(), v.z());
   }
 
   static float pickAxis_(int8_t code, const Vector3f& v) {
@@ -510,6 +557,19 @@ private:
     }
   }
 
+  void sanitizeAxisMap_() {
+    for (int i = 0; i < 3; ++i) {
+      const int8_t c = cfg_.axis_map[i];
+      const bool ok = (c == +1 || c == -1 || c == +2 || c == -2 || c == +3 || c == -3);
+      if (!ok) {
+        cfg_.axis_map[0] = +1;
+        cfg_.axis_map[1] = +2;
+        cfg_.axis_map[2] = +3;
+        return;
+      }
+    }
+  }
+
   Vector3f applyAxisMap_(const Vector3f& raw) const {
     return Vector3f(
       pickAxis_(cfg_.axis_map[0], raw),
@@ -518,94 +578,257 @@ private:
     );
   }
 
-  static BMM150_INTF_RET_TYPE bmm_read_(uint8_t reg,
-                                        uint8_t* data,
-                                        uint32_t len,
-                                        void* intf_ptr) {
-    auto* self = reinterpret_cast<BoschBmm150Aux*>(intf_ptr);
-    if (!self || !self->bmi_dev_ || !data || len == 0u) {
-      return static_cast<BMM150_INTF_RET_TYPE>(-1);
+  void safeFailureOutput_(Vector3f& out) const {
+    if (cfg_.return_last_good_on_error && have_last_good_) {
+      out = last_good_uT_;
+    } else {
+      out = Vector3f::Zero();
     }
-
-    const int8_t r = bmi2_read_aux_man_mode(reg, data, len, self->bmi_dev_);
-    return static_cast<BMM150_INTF_RET_TYPE>(r);
   }
 
-  static BMM150_INTF_RET_TYPE bmm_write_(uint8_t reg,
-                                         const uint8_t* data,
-                                         uint32_t len,
-                                         void* intf_ptr) {
-    auto* self = reinterpret_cast<BoschBmm150Aux*>(intf_ptr);
-    if (!self || !self->bmi_dev_ || !data || len == 0u) {
-      return static_cast<BMM150_INTF_RET_TYPE>(-1);
+  bool auxRead_(uint8_t reg, uint8_t* data, uint32_t len) {
+    if (!bmi_dev_ || !data || len == 0u) {
+      last_error_ = Error::AUX_READ_FAILED;
+      return false;
     }
-
-    const int8_t r = bmi2_write_aux_man_mode(reg, data, len, self->bmi_dev_);
-    return static_cast<BMM150_INTF_RET_TYPE>(r);
+    const int8_t r = bmi2_read_aux_man_mode(reg, data, len, bmi_dev_);
+    if (r != BMI2_OK) {
+      last_error_ = Error::AUX_READ_FAILED;
+      return false;
+    }
+    return true;
   }
 
-  static void bmm_delay_us_(uint32_t us, void*) {
-    delayMicroseconds(us);
-  }
-
-  static bool finite3_(float x, float y, float z) {
-    return std::isfinite(x) && std::isfinite(y) && std::isfinite(z);
+  bool auxWrite_(uint8_t reg, uint8_t value) {
+    if (!bmi_dev_) {
+      last_error_ = Error::AUX_WRITE_FAILED;
+      return false;
+    }
+    const int8_t r = bmi2_write_aux_man_mode(reg, &value, 1, bmi_dev_);
+    if (r != BMI2_OK) {
+      last_error_ = Error::AUX_WRITE_FAILED;
+      return false;
+    }
+    return true;
   }
 
   bool readChipIdRaw_(uint8_t& chip_id_out) {
     uint8_t id = 0;
-    if (bmm_read_(chipIdReg_(), &id, 1, this) != 0) {
+    if (!auxRead_(kRegChipId, &id, 1)) {
       return false;
     }
     chip_id_out = id;
     return true;
   }
 
-  bool waitForDataReady_(uint32_t timeout_ms) {
-    const uint32_t start_ms = millis();
-    uint8_t status = 0;
-
-    do {
-      if (bmm_read_(dataReadyReg_(), &status, 1, this) == 0) {
-        if ((status & dataReadyMask_()) != 0u) {
-          return true;
-        }
-      }
-      delay(2);
-    } while (static_cast<uint32_t>(millis() - start_ms) < timeout_ms);
-
-    return false;
+  bool powerOn_() {
+    uint8_t pwr = 0;
+    if (!auxRead_(kRegPowerCtrl, &pwr, 1)) {
+      return false;
+    }
+    pwr |= kPowerOnBit;
+    if (!auxWrite_(kRegPowerCtrl, pwr)) {
+      return false;
+    }
+    delay(10);
+    return true;
   }
 
-  bool readMagOnce_(Vector3f& m_uT_out) {
-    bmm150_mag_data md{};
-    if (bmm150_read_mag_data(&md, &bmm_dev_) != BMM150_OK) {
-      last_error_ = Error::MAG_READ_FAILED;
+  bool configurePresetAndMode_() {
+    if (!auxWrite_(kRegRepXY, presetRepXY_(cfg_.preset_mode))) {
+      return false;
+    }
+    if (!auxWrite_(kRegRepZ, presetRepZ_(cfg_.preset_mode))) {
       return false;
     }
 
-    const float mx = static_cast<float>(md.x);
-    const float my = static_cast<float>(md.y);
-    const float mz = static_cast<float>(md.z);
+    uint8_t op = 0;
+    if (!auxRead_(kRegOpCtrl, &op, 1)) {
+      return false;
+    }
 
-    if (!finite3_(mx, my, mz)) {
+    op &= static_cast<uint8_t>(~(kOpModeBitsMask | kOdrBitsMask));
+    op |= static_cast<uint8_t>((presetOdrCode_(cfg_.preset_mode) << 3) & kOdrBitsMask);
+    op |= kOpModeNormal;
+
+    if (!auxWrite_(kRegOpCtrl, op)) {
+      return false;
+    }
+
+    delay(5);
+    effective_mag_hz_ = presetModeHz_(cfg_.preset_mode);
+    return true;
+  }
+
+  static int16_t s16le_(const uint8_t* p) {
+    return static_cast<int16_t>(
+      static_cast<uint16_t>(p[0]) |
+      (static_cast<uint16_t>(p[1]) << 8)
+    );
+  }
+
+  static uint16_t u16le_(const uint8_t* p) {
+    return static_cast<uint16_t>(
+      static_cast<uint16_t>(p[0]) |
+      (static_cast<uint16_t>(p[1]) << 8)
+    );
+  }
+
+  bool readTrimData_() {
+    uint8_t v = 0;
+    uint8_t b[2] = {0, 0};
+
+    if (!auxRead_(kRegDigX1, &v, 1)) return false;
+    trim_.dig_x1 = static_cast<int8_t>(v);
+
+    if (!auxRead_(kRegDigY1, &v, 1)) return false;
+    trim_.dig_y1 = static_cast<int8_t>(v);
+
+    if (!auxRead_(kRegDigX2, &v, 1)) return false;
+    trim_.dig_x2 = static_cast<int8_t>(v);
+
+    if (!auxRead_(kRegDigY2, &v, 1)) return false;
+    trim_.dig_y2 = static_cast<int8_t>(v);
+
+    if (!auxRead_(kRegDigZ4Lsb, b, 2)) return false;
+    trim_.dig_z4 = s16le_(b);
+
+    if (!auxRead_(kRegDigZ2Lsb, b, 2)) return false;
+    trim_.dig_z2 = s16le_(b);
+
+    if (!auxRead_(kRegDigZ1Lsb, b, 2)) return false;
+    trim_.dig_z1 = u16le_(b);
+
+    if (!auxRead_(kRegDigXYZ1Lsb, b, 2)) return false;
+    trim_.dig_xyz1 = u16le_(b);
+
+    if (!auxRead_(kRegDigZ3Lsb, b, 2)) return false;
+    trim_.dig_z3 = s16le_(b);
+
+    if (!auxRead_(kRegDigXY2, &v, 1)) return false;
+    trim_.dig_xy2 = static_cast<int8_t>(v);
+
+    if (!auxRead_(kRegDigXY1, &v, 1)) return false;
+    trim_.dig_xy1 = v;
+
+    trim_.valid = (trim_.dig_xyz1 != 0u) && (trim_.dig_z1 != 0u);
+    return trim_.valid;
+  }
+
+  static int16_t signExtend13_(uint16_t v) {
+    if (v & 0x1000u) {
+      v |= 0xE000u;
+    }
+    return static_cast<int16_t>(v);
+  }
+
+  static int16_t signExtend15_(uint16_t v) {
+    if (v & 0x4000u) {
+      v |= 0x8000u;
+    }
+    return static_cast<int16_t>(v);
+  }
+
+  bool readRawSample_(RawSample& s) {
+    uint8_t buf[8] = {};
+    if (!auxRead_(kRegDataXLSB, buf, 8)) {
+      return false;
+    }
+
+    const uint16_t x_u = static_cast<uint16_t>(
+      (static_cast<uint16_t>(buf[1]) << 5) |
+      (static_cast<uint16_t>(buf[0]) >> 3)
+    );
+    const uint16_t y_u = static_cast<uint16_t>(
+      (static_cast<uint16_t>(buf[3]) << 5) |
+      (static_cast<uint16_t>(buf[2]) >> 3)
+    );
+    const uint16_t z_u = static_cast<uint16_t>(
+      (static_cast<uint16_t>(buf[5]) << 7) |
+      (static_cast<uint16_t>(buf[4]) >> 1)
+    );
+    const uint16_t rh_u = static_cast<uint16_t>(
+      (static_cast<uint16_t>(buf[7]) << 6) |
+      (static_cast<uint16_t>(buf[6]) >> 2)
+    );
+
+    s.x = signExtend13_(x_u);
+    s.y = signExtend13_(y_u);
+    s.z = signExtend15_(z_u);
+    s.rhall = rh_u;
+
+    // Bosch overflow sentinels / invalid hall.
+    if (s.rhall == 0u || s.rhall == 0x3FFFu || s.x == -4096 || s.y == -4096 || s.z == -16384) {
+      last_error_ = Error::RAW_MAG_INVALID;
+      return false;
+    }
+
+    // Reject all-zero raw sample too.
+    if (s.x == 0 && s.y == 0 && s.z == 0) {
+      last_error_ = Error::RAW_MAG_INVALID;
+      return false;
+    }
+
+    return true;
+  }
+
+  bool compensateRawTo_uT_(const RawSample& s, Vector3f& out_uT) {
+    if (!trim_.valid || trim_.dig_xyz1 == 0u || trim_.dig_z1 == 0u || s.rhall == 0u) {
+      last_error_ = Error::COMP_INVALID;
+      return false;
+    }
+
+    const float rhall = static_cast<float>(s.rhall);
+    const float dig_xyz1 = static_cast<float>(trim_.dig_xyz1);
+
+    // X compensation (Bosch formula, guarded)
+    const float x0 = ((dig_xyz1 * 16384.0f) / rhall) - 16384.0f;
+    const float x1 = (static_cast<float>(trim_.dig_xy2) * (x0 * x0 / 268435456.0f));
+    const float x2 = x0 * (static_cast<float>(trim_.dig_xy1) / 16384.0f);
+    const float x3 = static_cast<float>(trim_.dig_x2) + 160.0f;
+    const float x = ((((static_cast<float>(s.x) * ((x1 + x2 + 256.0f) * x3)) / 8192.0f) +
+                     (static_cast<float>(trim_.dig_x1) * 8.0f)) / 16.0f);
+
+    // Y compensation
+    const float y0 = ((dig_xyz1 * 16384.0f) / rhall) - 16384.0f;
+    const float y1 = (static_cast<float>(trim_.dig_xy2) * (y0 * y0 / 268435456.0f));
+    const float y2 = y0 * (static_cast<float>(trim_.dig_xy1) / 16384.0f);
+    const float y3 = static_cast<float>(trim_.dig_y2) + 160.0f;
+    const float y = ((((static_cast<float>(s.y) * ((y1 + y2 + 256.0f) * y3)) / 8192.0f) +
+                     (static_cast<float>(trim_.dig_y1) * 8.0f)) / 16.0f);
+
+    // Z compensation
+    const float z_denom = ((static_cast<float>(trim_.dig_z2)) +
+                          ((static_cast<float>(trim_.dig_z1) * rhall) / 32768.0f)) * 4.0f;
+    if (z_denom == 0.0f || !std::isfinite(z_denom)) {
+      last_error_ = Error::COMP_INVALID;
+      return false;
+    }
+
+    const float z_num =
+      ((static_cast<float>(s.z) - static_cast<float>(trim_.dig_z4)) * 131072.0f) -
+      (static_cast<float>(trim_.dig_z3) * (rhall - dig_xyz1));
+    const float z = (z_num / z_denom) / 16.0f;
+
+    if (!finite3_(x, y, z)) {
       last_error_ = Error::NONFINITE_MAG;
       return false;
     }
 
-    if (allZero3_(mx, my, mz)) {
+    Vector3f raw_uT(x, y, z);
+    raw_uT = applyAxisMap_(raw_uT);
+
+    if (!finite3_(raw_uT.x(), raw_uT.y(), raw_uT.z())) {
+      last_error_ = Error::NONFINITE_MAG;
+      return false;
+    }
+
+    if (allZero3_(raw_uT)) {
       last_error_ = Error::ZERO_MAG;
       return false;
     }
 
-    const Vector3f raw_uT(mx, my, mz);
-    m_uT_out = applyAxisMap_(raw_uT);
-
-    if (allZero3_(m_uT_out)) {
-      last_error_ = Error::ZERO_MAG;
-      return false;
-    }
-
+    out_uT = raw_uT;
     return true;
   }
 
@@ -625,59 +848,51 @@ private:
           }
           return true;
         }
+
         delay(min_ms - elapsed);
         now_ms = millis();
       }
     }
 
-    // Wait for a fresh DRDY event before reading the burst.
-    if (!waitForDataReady_(min_ms + 20u)) {
-      if (cfg_.return_last_on_fast_poll && have_last_good_) {
-        m_uT_out = last_good_uT_;
-        ++possible_duplicate_total_;
-        last_error_ = Error::NONE;
-        if (count_stats) {
-          ++read_ok_total_;
-        }
-        return true;
-      }
+    RawSample raw{};
+    Vector3f  out = Vector3f::Zero();
 
-      last_error_ = Error::MAG_READ_FAILED;
+    bool success = false;
+
+    // Try a few times before giving up.
+    for (int attempt = 0; attempt < 4; ++attempt) {
+      if (attempt == 1) delay(2);
+      if (attempt == 2) delay(5);
+      if (attempt == 3) delay(min_ms);
+
+      if (!readRawSample_(raw)) {
+        continue;
+      }
+      if (!compensateRawTo_uT_(raw, out)) {
+        continue;
+      }
+      success = true;
+      break;
+    }
+
+    if (!success) {
+      safeFailureOutput_(m_uT_out);
       if (count_stats) {
         ++read_fail_total_;
       }
       return false;
     }
 
-    if (!readMagOnce_(m_uT_out)) {
-      if (count_stats) {
-        ++read_fail_total_;
-      }
-      return false;
-    }
-
-    // One retry if exact duplicate and caller asked for fresh data, not cached data.
     if (have_last_good_ &&
         !cfg_.return_last_on_fast_poll &&
-        m_uT_out.x() == last_good_uT_.x() &&
-        m_uT_out.y() == last_good_uT_.y() &&
-        m_uT_out.z() == last_good_uT_.z()) {
-
-      if (waitForDataReady_(min_ms + 20u)) {
-        Vector3f retry = Vector3f::Zero();
-        if (readMagOnce_(retry)) {
-          m_uT_out = retry;
-        }
-      }
-
-      if (m_uT_out.x() == last_good_uT_.x() &&
-          m_uT_out.y() == last_good_uT_.y() &&
-          m_uT_out.z() == last_good_uT_.z()) {
-        ++possible_duplicate_total_;
-      }
+        out.x() == last_good_uT_.x() &&
+        out.y() == last_good_uT_.y() &&
+        out.z() == last_good_uT_.z()) {
+      ++possible_duplicate_total_;
     }
 
-    last_good_uT_ = m_uT_out;
+    m_uT_out = out;
+    last_good_uT_ = out;
     have_last_good_ = true;
     last_read_ms_ = now_ms;
     last_error_ = Error::NONE;
@@ -689,12 +904,9 @@ private:
     return true;
   }
 
-  void resetSessionState_() {
+  void clearSessionData_() {
     ok_ = false;
     session_attached_ = false;
-    last_error_ = Error::NONE;
-    last_end_error_ = Error::NONE;
-
     cfg_ = Config{};
     bmi_dev_ = nullptr;
 
@@ -702,8 +914,7 @@ private:
     saved_aux_was_enabled_ = false;
     std::memset(&saved_aux_cfg_, 0, sizeof(saved_aux_cfg_));
 
-    std::memset(&bmm_dev_, 0, sizeof(bmm_dev_));
-    std::memset(&bmm_settings_, 0, sizeof(bmm_settings_));
+    trim_ = TrimData{};
 
     have_last_good_ = false;
     last_good_uT_ = Vector3f::Zero();
@@ -711,18 +922,15 @@ private:
     effective_mag_hz_ = 10.0f;
   }
 
-  void detachSession_() {
-    resetSessionState_();
-  }
-
   void bestEffortRollback_() {
+    const Error preserved_error = last_error_;
     bool restore_ok = true;
 
     if (bmi_dev_ && saved_aux_cfg_valid_) {
       if (bmi270_set_sensor_config(&saved_aux_cfg_, 1, bmi_dev_) != BMI2_OK) {
         restore_ok = false;
       } else if (!saved_aux_was_enabled_) {
-        const uint8_t sens = BMI2_AUX;
+        uint8_t sens = BMI2_AUX;
         if (bmi2_sensor_disable(&sens, 1, bmi_dev_) != BMI2_OK) {
           restore_ok = false;
         }
@@ -731,11 +939,10 @@ private:
 
     if (!restore_ok) {
       ++rollback_fail_total_;
-      ok_ = false;
-      return;
     }
 
-    detachSession_();
+    clearSessionData_();
+    last_error_ = preserved_error;
   }
 
 private:
@@ -751,8 +958,7 @@ private:
   bool saved_aux_cfg_valid_ = false;
   bool saved_aux_was_enabled_ = false;
 
-  struct bmm150_dev      bmm_dev_{};
-  struct bmm150_settings bmm_settings_{};
+  TrimData trim_{};
 
   uint32_t init_fail_total_ = 0;
   uint32_t read_ok_total_ = 0;
@@ -777,11 +983,12 @@ class BoschBmm150Aux {
 public:
   struct Config {
     uint8_t  bmm_addr = 0x10;
-    float    aux_odr_hz = 100.0f;
+    float    aux_odr_hz = 25.0f;
     uint8_t  preset_mode = 0;
-    uint16_t startup_settle_ms = 120;
+    uint16_t startup_settle_ms = 200;
     bool     verify_first_read = true;
     bool     return_last_on_fast_poll = false;
+    bool     return_last_good_on_error = true;
     int8_t   axis_map[3] = { +1, +2, +3 };
   };
 
