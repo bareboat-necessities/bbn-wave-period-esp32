@@ -53,7 +53,7 @@ struct BoschAGSample {
   float ax = 0.0f, ay = 0.0f, az = 0.0f; // m/s^2
   float gx = 0.0f, gy = 0.0f, gz = 0.0f; // rad/s
 
-  // Exact when Bosch gives per-sample sensortime; otherwise synthetic monotonic time.
+  // If timestamp_exact=false, sensortime24 is a synthetic monotonic 24-bit tick.
   uint32_t sensortime24 = 0;
   bool     timestamp_exact = false;
 };
@@ -169,7 +169,6 @@ public:
     last_error_       = Error::NONE;
 
     std::memset(&bmi_, 0, sizeof(bmi_));
-    bmi_.chip_id         = bmi_addr_; // matches known-good Arduino/Bosch init path on I2C
     bmi_.intf            = BMI2_I2C_INTF;
     bmi_.read            = &BoschBmi270Fifo::bmi2_i2c_read_;
     bmi_.write           = &BoschBmi270Fifo::bmi2_i2c_write_;
@@ -216,9 +215,6 @@ public:
     cfg[1].cfg.gyr.bwp         = BMI2_GYR_NORMAL_MODE;
     cfg[1].cfg.gyr.noise_perf  = BMI2_POWER_OPT_MODE;
     cfg[1].cfg.gyr.filter_perf = BMI2_PERF_OPT_MODE;
-#ifdef BMI2_GYR_OIS_2000
-    cfg[1].cfg.gyr.ois_range   = BMI2_GYR_OIS_2000;
-#endif
 
     rslt = bmi270_set_sensor_config(cfg, 2, &bmi_);
     if (rslt != BMI2_OK) {
@@ -237,7 +233,6 @@ public:
       return failBegin_(Error::DISABLE_APS_FAILED);
     }
     aps_disabled_ = true;
-    bmi_.aps_status = BMI2_DISABLE;
 
     rslt = bmi2_set_fifo_config(BMI2_FIFO_ALL_EN, BMI2_DISABLE, &bmi_);
     if (rslt != BMI2_OK) {
@@ -264,6 +259,7 @@ public:
     }
     fifo_configured_ = true;
 
+    // Keep low watermark for low-latency polling.
     rslt = bmi2_set_fifo_wm(FIFO_WATERMARK_BYTES, &bmi_);
     if (rslt != BMI2_OK) {
       watermark_set_ok_ = false;
@@ -279,9 +275,9 @@ public:
       return failBegin_(Error::FIFO_FLUSH_FAILED);
     }
 
-    odr_hz_       = use200 ? 200.0f : 100.0f;
-    nominal_dt_   = 1.0f / odr_hz_;
-    nominal_ticks_= computeNominalTicks_(nominal_dt_);
+    odr_hz_        = use200 ? 200.0f : 100.0f;
+    nominal_dt_    = 1.0f / odr_hz_;
+    nominal_ticks_ = computeNominalTicks_(nominal_dt_);
 
     clearReadPipelineState_();
 
@@ -383,7 +379,6 @@ public:
 #endif
   }
 
-  // Waits briefly for one fresh frame if needed, then returns exactly one sample.
   bool readOneAG(BoschAGSample& out) {
 #if !ATOMS3R_HAVE_BOSCH_SENSORAPI
     (void)out;
@@ -418,7 +413,6 @@ public:
 #endif
   }
 
-  // Returns newest sample and drops backlog.
   bool readLatestAG(BoschAGSample& out) {
 #if !ATOMS3R_HAVE_BOSCH_SENSORAPI
     (void)out;
@@ -500,15 +494,16 @@ public:
   }
 
 private:
-  static constexpr uint16_t REG_IO_CHUNK            = 32;
-  static constexpr uint16_t FIFO_WATERMARK_BYTES    = 39;    // known-good, low-latency enough
-  static constexpr uint16_t FIFO_MIN_READ_BYTES     = 13;    // one accel+gyro header frame
-  static constexpr int      MAX_EXTRACT             = 128;
-  static constexpr int      PENDING_CAP             = MAX_EXTRACT;
-  static constexpr size_t   FIFO_BUF_CAP            = 2048u + 64u; // big enough to avoid partial-frame repeats
-  static constexpr uint32_t PAIR_TIME_SLACK_TICKS   = 32u;
-  static constexpr uint32_t MAX_REASONABLE_DT_US    = 250000u;
-  static constexpr uint8_t  RECOVERY_THRESHOLD      = 3u;
+  static constexpr uint16_t REG_IO_CHUNK          = 32;
+  static constexpr uint16_t FIFO_WATERMARK_BYTES  = 13;   // one AG frame worth of latency
+  static constexpr uint16_t FIFO_MIN_READ_BYTES   = 13;
+  static constexpr uint16_t FIFO_READ_BURST_MAX   = 39;   // keep the known-good tiny raw burst
+  static constexpr int      MAX_EXTRACT           = 128;
+  static constexpr int      PENDING_CAP           = MAX_EXTRACT;
+  static constexpr size_t   FIFO_BUF_CAP          = 256u;
+  static constexpr uint32_t PAIR_TIME_SLACK_TICKS = 32u;
+  static constexpr uint32_t MAX_REASONABLE_DT_US  = 250000u;
+  static constexpr uint8_t  RECOVERY_THRESHOLD    = 3u;
 
   static constexpr float kPi = 3.14159265358979323846f;
   static constexpr float kG0 = 9.80665f;
@@ -542,10 +537,6 @@ private:
     const float ticks_f = dt_s / BMI270_SENSORTIME_TICK_S;
     const long ticks_l = lroundf(ticks_f);
     return (ticks_l > 0) ? static_cast<uint32_t>(ticks_l) : 1u;
-  }
-
-  static uint32_t sub24_(uint32_t a, uint32_t b) {
-    return (a - b) & BMI270_SENSORTIME_MASK;
   }
 
   bool failBegin_(Error primary_err) {
@@ -704,9 +695,9 @@ private:
     pending_head_  = 0;
     pending_count_ = 0;
 
-    have_sens_time_ = false;
-    last_sens_time_ = 0;
-    synth_sens_time_= 0;
+    have_time_anchor_       = false;
+    last_emitted_time24_    = 0;
+    next_synth_time24_      = 0;
 
     consecutive_read_errors_ = 0;
     last_fill_had_error_     = false;
@@ -807,22 +798,15 @@ private:
     }
   }
 
-  float computeDtFromExactSensTime_(uint32_t st24) {
-    if (st24 == 0u) {
-      ++bad_timing_total_;
+  float dtFromTickDelta_(uint32_t curr24) {
+    if (!have_time_anchor_) {
+      have_time_anchor_ = true;
+      last_emitted_time24_ = curr24 & BMI270_SENSORTIME_MASK;
       return nominal_dt_;
     }
 
-    if (!have_sens_time_) {
-      have_sens_time_ = true;
-      last_sens_time_ = st24;
-      synth_sens_time_= st24;
-      return nominal_dt_;
-    }
-
-    const uint32_t d_ticks = (st24 - last_sens_time_) & BMI270_SENSORTIME_MASK;
-    last_sens_time_ = st24;
-    synth_sens_time_= st24;
+    const uint32_t d_ticks = (curr24 - last_emitted_time24_) & BMI270_SENSORTIME_MASK;
+    last_emitted_time24_ = curr24 & BMI270_SENSORTIME_MASK;
 
     float dt_s = static_cast<float>(d_ticks) * BMI270_SENSORTIME_TICK_S;
 
@@ -830,31 +814,35 @@ private:
       ++bad_timing_total_;
       return nominal_dt_;
     }
-
     if (dt_s < 0.25f * nominal_dt_) {
       ++bad_timing_total_;
       return nominal_dt_;
     }
-
     if (dt_s > (static_cast<float>(MAX_REASONABLE_DT_US) * 1.0e-6f)) {
       ++bad_timing_total_;
-      dt_s = static_cast<float>(MAX_REASONABLE_DT_US) * 1.0e-6f;
+      return nominal_dt_;
     }
-
     return dt_s;
   }
 
-  void seedSyntheticBurstTime_(uint16_t n_frames) {
+  void seedSyntheticTimes_(uint16_t n_frames) {
     if (n_frames == 0u) return;
 
     if (last_fifo_sensor_time24_ != 0u) {
-      // Use FIFO control-frame sensortime as end anchor for the burst.
-      synth_sens_time_ = sub24_(last_fifo_sensor_time24_, static_cast<uint32_t>(n_frames - 1u) * nominal_ticks_);
-    } else if (have_sens_time_) {
-      synth_sens_time_ = (last_sens_time_ + nominal_ticks_) & BMI270_SENSORTIME_MASK;
+      // End-anchor when a sensortime control frame was observed.
+      const uint32_t first = (last_fifo_sensor_time24_ - static_cast<uint32_t>(n_frames - 1u) * nominal_ticks_) & BMI270_SENSORTIME_MASK;
+      next_synth_time24_ = first;
+    } else if (have_time_anchor_) {
+      next_synth_time24_ = (last_emitted_time24_ + nominal_ticks_) & BMI270_SENSORTIME_MASK;
     } else {
-      synth_sens_time_ = 0u;
+      next_synth_time24_ = nominal_ticks_ & BMI270_SENSORTIME_MASK;
     }
+  }
+
+  uint32_t nextSyntheticTime24_() {
+    const uint32_t t = next_synth_time24_ & BMI270_SENSORTIME_MASK;
+    next_synth_time24_ = (t + nominal_ticks_) & BMI270_SENSORTIME_MASK;
+    return t;
   }
 
   bool pushPairedSample_(const bmi2_sens_axes_data& a,
@@ -885,19 +873,11 @@ private:
     if (st24_exact != 0u) {
       out.sensortime24   = st24_exact & BMI270_SENSORTIME_MASK;
       out.timestamp_exact = true;
-      out.dt_s           = computeDtFromExactSensTime_(st24_exact);
+      out.dt_s           = dtFromTickDelta_(out.sensortime24);
     } else {
-      if (!have_sens_time_ && synth_sens_time_ == 0u) {
-        // First synthetic sample.
-        synth_sens_time_ = nominal_ticks_ & BMI270_SENSORTIME_MASK;
-      }
-      out.sensortime24   = synth_sens_time_ & BMI270_SENSORTIME_MASK;
+      out.sensortime24   = nextSyntheticTime24_();
       out.timestamp_exact = false;
-      out.dt_s           = nominal_dt_;
-
-      have_sens_time_    = true;
-      last_sens_time_    = out.sensortime24;
-      synth_sens_time_   = (out.sensortime24 + nominal_ticks_) & BMI270_SENSORTIME_MASK;
+      out.dt_s           = dtFromTickDelta_(out.sensortime24);
     }
 
     ++pending_count_;
@@ -906,7 +886,7 @@ private:
 
   bool pairByIndex_(uint16_t a_len, uint16_t g_len) {
     const uint16_t n = (a_len < g_len) ? a_len : g_len;
-    seedSyntheticBurstTime_(n);
+    seedSyntheticTimes_(n);
 
     for (uint16_t i = 0; i < n; ++i) {
       const uint32_t ta = sensTime24_(accel_[i]);
@@ -945,7 +925,7 @@ private:
       return false;
     }
 
-    seedSyntheticBurstTime_(a_len);
+    seedSyntheticTimes_(a_len);
 
     for (uint16_t i = 0; i < a_len; ++i) {
       const uint32_t ta = sensTime24_(accel_[i]);
@@ -967,9 +947,8 @@ private:
   }
 
   void pairByMergedTime_(uint16_t a_len, uint16_t g_len) {
-    // Count a rough upper bound for seeding synthetic timestamps.
     const uint16_t n = (a_len < g_len) ? a_len : g_len;
-    seedSyntheticBurstTime_(n);
+    seedSyntheticTimes_(n);
 
     uint16_t ia = 0;
     uint16_t ig = 0;
@@ -1037,11 +1016,18 @@ private:
       return false;
     }
 
+    // Keep the same small, known-good FIFO burst size that actually worked on this stack.
     uint32_t req = static_cast<uint32_t>(fifo_len);
-    if (req > static_cast<uint32_t>(sizeof(fifo_buf_))) {
-      req = static_cast<uint32_t>(sizeof(fifo_buf_));
-      // Very unlikely under normal polling; if this ever happens the host is falling badly behind.
-      // We still read what we can, but a too-small buffer can re-expose Bosch partial-frame repetition.
+    req = std::min<uint32_t>(req, FIFO_READ_BURST_MAX);
+    req = std::min<uint32_t>(req, static_cast<uint32_t>(sizeof(fifo_buf_)));
+    if (req < FIFO_MIN_READ_BYTES) {
+      req = FIFO_MIN_READ_BYTES;
+    }
+
+    // Keep burst aligned to the known-good AG frame quantum so we do not cut regular frames.
+    req = (req / FIFO_MIN_READ_BYTES) * FIFO_MIN_READ_BYTES;
+    if (req < FIFO_MIN_READ_BYTES) {
+      req = FIFO_MIN_READ_BYTES;
     }
 
     last_fifo_req_ = static_cast<uint16_t>(req);
@@ -1155,7 +1141,6 @@ private:
       return BMI2_E_COM_FAIL;
     }
 
-    // FIFO must be a single contiguous register-window read.
     if (reg_addr == BMI2_FIFO_DATA_ADDR) {
       return self->i2cReadRegRaw_(reg_addr, reg_data, len);
     }
@@ -1266,9 +1251,9 @@ private:
   float    nominal_dt_       = 0.01f;
   uint32_t nominal_ticks_    = 256u;
 
-  bool     have_sens_time_   = false;
-  uint32_t last_sens_time_   = 0;
-  uint32_t synth_sens_time_  = 0;
+  bool     have_time_anchor_    = false;
+  uint32_t last_emitted_time24_ = 0;
+  uint32_t next_synth_time24_   = 0;
 
   uint32_t skipped_total_           = 0;
   uint32_t unpaired_total_          = 0;
