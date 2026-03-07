@@ -52,6 +52,10 @@ struct BoschAGSample {
   float dt_s = 0.0f;
   float ax = 0.0f, ay = 0.0f, az = 0.0f; // m/s^2
   float gx = 0.0f, gy = 0.0f, gz = 0.0f; // rad/s
+
+  // Optional metadata; existing callers can ignore these.
+  uint32_t sensortime24 = 0;   // BMI270 24-bit sensortime tick for this sample
+  bool timestamp_exact = false; // true when anchored from FIFO sensortime frame
 };
 
 class BoschBmi270Fifo {
@@ -101,6 +105,13 @@ public:
   uint32_t recoveryFailuresTotal() const { return recovery_fail_total_; }
   uint32_t shutdownFailuresTotal() const { return shutdown_fail_total_; }
   uint32_t consecutiveReadErrors() const { return consecutive_read_errors_; }
+
+  uint16_t lastFifoLen() const { return last_fifo_len_; }
+  uint16_t lastFifoReadLen() const { return last_fifo_read_len_; }
+  uint16_t lastAccelFrames() const { return last_accel_frames_; }
+  uint16_t lastGyroFrames() const { return last_gyro_frames_; }
+  uint32_t lastFifoSensorTime24() const { return last_fifo_sensor_time24_; }
+  bool lastBurstHadExactTimestamps() const { return last_burst_exact_timestamps_; }
 
   Error lastError() const { return last_error_; }
   Error lastRecoveryError() const { return last_recovery_error_; }
@@ -161,8 +172,9 @@ public:
     bmi_.read            = &BoschBmi270Fifo::bmi2_i2c_read_;
     bmi_.write           = &BoschBmi270Fifo::bmi2_i2c_write_;
     bmi_.delay_us        = &BoschBmi270Fifo::bmi2_delay_us_;
+    bmi_.chip_id         = bmi_addr_;       // matches Arduino BMI270_BMM150 usage
     bmi_.config_file_ptr = nullptr;
-    bmi_.read_write_len  = REG_IO_CHUNK;
+    bmi_.read_write_len  = REG_IO_CHUNK;    // register reads/writes only
     bmi_.intf_ptr        = this;
 
     used_maximum_fifo_init_ = false;
@@ -203,6 +215,9 @@ public:
     cfg[1].cfg.gyr.bwp         = BMI2_GYR_NORMAL_MODE;
     cfg[1].cfg.gyr.noise_perf  = BMI2_POWER_OPT_MODE;
     cfg[1].cfg.gyr.filter_perf = BMI2_PERF_OPT_MODE;
+#ifdef BMI2_GYR_OIS_2000
+    cfg[1].cfg.gyr.ois_range   = BMI2_GYR_OIS_2000;
+#endif
 
     rslt = bmi270_set_sensor_config(cfg, 2, &bmi_);
     if (rslt != BMI2_OK) {
@@ -221,6 +236,7 @@ public:
       return failBegin_(Error::DISABLE_APS_FAILED);
     }
     aps_disabled_ = true;
+    bmi_.aps_status = BMI2_DISABLE;
 
     rslt = bmi2_set_fifo_config(BMI2_FIFO_ALL_EN, BMI2_DISABLE, &bmi_);
     if (rslt != BMI2_OK) {
@@ -264,6 +280,7 @@ public:
 
     odr_hz_     = use200 ? 200.0f : 100.0f;
     nominal_dt_ = 1.0f / odr_hz_;
+    ticks_per_sample_ = computeTicksPerSample_(nominal_dt_);
 
     clearReadPipelineState_();
 
@@ -347,7 +364,7 @@ public:
     }
 
     uint8_t reg[2] = {0, 0};
-    if (i2cReadRegRaw_(0x22u, reg, 2) != BMI2_OK) {
+    if (bmi2_i2c_read_(0x22u, reg, 2, this) != BMI2_OK) {
       last_error_ = Error::FIFO_READ_FAILED;
       return false;
     }
@@ -366,7 +383,37 @@ public:
   }
 
   bool readOneAG(BoschAGSample& out) {
-    return readAG(&out, 1) == 1;
+#if !ATOMS3R_HAVE_BOSCH_SENSORAPI
+    (void)out;
+    last_error_ = Error::NOT_BUILT;
+    return false;
+#else
+    if (!ok_) {
+      last_error_ = Error::NOT_OK;
+      return false;
+    }
+
+    if (pending_count_ == 0) {
+      if (!fillPendingFromFifo_()) {
+        if (last_fill_had_error_ && consecutive_read_errors_ >= RECOVERY_THRESHOLD) {
+          if (!recover() || !fillPendingFromFifo_()) {
+            return false;
+          }
+        } else {
+          return false;
+        }
+      }
+    }
+
+    bool got = false;
+    while (pending_count_ > 0) {
+      out = pending_[pending_head_];
+      pending_head_ = (pending_head_ + 1) % PENDING_CAP;
+      --pending_count_;
+      got = true;
+    }
+    return got;
+#endif
   }
 
   int readAG(BoschAGSample* out, int max_out) {
@@ -416,16 +463,13 @@ public:
   }
 
 private:
-  static constexpr uint16_t REG_IO_CHUNK            = 32;
-  static constexpr uint16_t FIFO_WATERMARK_BYTES    = 39;   // 3 x ~13-byte AG header frames
-  static constexpr uint16_t FIFO_MIN_READ_BYTES     = 13;   // one AG header frame
-  static constexpr uint16_t FIFO_READ_BURST_MAX     = 39;   // keep safely below short I2C watchdog
-  static constexpr int      MAX_EXTRACT             = 128;
-  static constexpr int      PENDING_CAP             = MAX_EXTRACT;
-  static constexpr size_t   FIFO_BUF_CAP            = 256u;
-  static constexpr uint32_t PAIR_TIME_SLACK_TICKS   = 32u;
-  static constexpr uint32_t MAX_REASONABLE_DT_US    = 250000u;
-  static constexpr uint8_t  RECOVERY_THRESHOLD      = 3u;
+  static constexpr uint16_t REG_IO_CHUNK          = 30;    // matches official Arduino BMI270 library
+  static constexpr uint16_t FIFO_WATERMARK_BYTES  = 104;   // ~8 AG header frames
+  static constexpr int      MAX_EXTRACT           = 128;
+  static constexpr int      PENDING_CAP           = MAX_EXTRACT;
+  static constexpr size_t   FIFO_BUF_CAP          = 2048u + 64u;
+  static constexpr uint32_t MAX_REASONABLE_DT_US  = 250000u;
+  static constexpr uint8_t  RECOVERY_THRESHOLD    = 3u;
 
   static constexpr float kPi = 3.14159265358979323846f;
   static constexpr float kG0 = 9.80665f;
@@ -447,12 +491,26 @@ private:
       case Error::FIFO_WM_FAILED:        return "bmi2_set_fifo_wm failed";
       case Error::FIFO_FLUSH_FAILED:     return "FIFO flush command failed";
       case Error::FIFO_LEN_FAILED:       return "bmi2_get_fifo_length failed";
-      case Error::FIFO_READ_FAILED:      return "FIFO read failed";
+      case Error::FIFO_READ_FAILED:      return "bmi2_read_fifo_data failed";
       case Error::EXTRACT_FAILED:        return "bmi2_extract_accel/gyro failed";
       case Error::RECOVERY_FAILED:       return "driver recovery failed";
       case Error::NOT_OK:                return "driver not initialized";
       default:                           return "unknown";
     }
+  }
+
+  static uint32_t computeTicksPerSample_(float dt_s) {
+    const float ticks_f = dt_s / BMI270_SENSORTIME_TICK_S;
+    const long ticks_l = lroundf(ticks_f);
+    return (ticks_l > 0) ? static_cast<uint32_t>(ticks_l) : 1u;
+  }
+
+  static uint32_t diffTicks24_(uint32_t newer, uint32_t older) {
+    return (newer - older) & BMI270_SENSORTIME_MASK;
+  }
+
+  static uint32_t subTicks24_(uint32_t t, uint32_t dticks) {
+    return (t - dticks) & BMI270_SENSORTIME_MASK;
   }
 
   bool failBegin_(Error primary_err) {
@@ -494,76 +552,9 @@ private:
   #endif
   }
 
-  bool i2cBeginWrite_(uint8_t reg_addr) const {
-    if (i2c_ == nullptr) return false;
-    if (!i2c_->start(bmi_addr_, false, i2c_hz_)) return false;
-    if (!i2c_->write(reg_addr)) {
-      (void)i2c_->stop();
-      return false;
-    }
-    return true;
-  }
-
-  int8_t i2cReadRegRaw_(uint8_t reg_addr, uint8_t* reg_data, uint32_t len) const {
-    if (i2c_ == nullptr || reg_data == nullptr || len == 0) {
-      return BMI2_E_COM_FAIL;
-    }
-
-    if (!i2c_->start(bmi_addr_, false, i2c_hz_)) {
-      return BMI2_E_COM_FAIL;
-    }
-
-    if (!i2c_->write(reg_addr)) {
-      (void)i2c_->stop();
-      return BMI2_E_COM_FAIL;
-    }
-
-    if (!i2c_->restart(bmi_addr_, true, i2c_hz_)) {
-      (void)i2c_->stop();
-      return BMI2_E_COM_FAIL;
-    }
-
-    if (!i2c_->read(reg_data, static_cast<size_t>(len), true)) {
-      (void)i2c_->stop();
-      return BMI2_E_COM_FAIL;
-    }
-
-    if (!i2c_->stop()) {
-      return BMI2_E_COM_FAIL;
-    }
-
-    return BMI2_OK;
-  }
-
-  int8_t i2cWriteRegRaw_(uint8_t reg_addr, const uint8_t* reg_data, uint32_t len) const {
-    if (i2c_ == nullptr || reg_data == nullptr || len == 0) {
-      return BMI2_E_COM_FAIL;
-    }
-
-    if (!i2c_->start(bmi_addr_, false, i2c_hz_)) {
-      return BMI2_E_COM_FAIL;
-    }
-
-    if (!i2c_->write(reg_addr)) {
-      (void)i2c_->stop();
-      return BMI2_E_COM_FAIL;
-    }
-
-    if (!i2c_->write(reg_data, static_cast<size_t>(len))) {
-      (void)i2c_->stop();
-      return BMI2_E_COM_FAIL;
-    }
-
-    if (!i2c_->stop()) {
-      return BMI2_E_COM_FAIL;
-    }
-
-    return BMI2_OK;
-  }
-
   bool flushFifo_() {
     uint8_t cmd = fifoFlushCmd_();
-    const bool ok = (i2cWriteRegRaw_(regCmd_(), &cmd, 1) == BMI2_OK);
+    const bool ok = (bmi2_i2c_write_(regCmd_(), &cmd, 1, this) == BMI2_OK);
     if (ok) {
       delayMicroseconds(1000);
     }
@@ -621,77 +612,29 @@ private:
     pending_head_  = 0;
     pending_count_ = 0;
 
-    have_sens_time_ = false;
-    last_sens_time_ = 0;
-
     consecutive_read_errors_ = 0;
     last_fill_had_error_     = false;
+
+    have_last_sample_time_   = false;
+    last_sample_time24_      = 0;
+    ticks_per_sample_        = computeTicksPerSample_(nominal_dt_);
+
+    last_fifo_len_               = 0;
+    last_fifo_read_len_          = 0;
+    last_accel_frames_           = 0;
+    last_gyro_frames_            = 0;
+    last_fifo_sensor_time24_     = 0;
+    last_burst_exact_timestamps_ = false;
 
     std::memset(&fifo_, 0, sizeof(fifo_));
     std::memset(accel_, 0, sizeof(accel_));
     std::memset(gyro_,  0, sizeof(gyro_));
     std::memset(pending_, 0, sizeof(pending_));
     std::memset(fifo_buf_, 0, sizeof(fifo_buf_));
-
-    last_fifo_len_   = 0;
-    last_fifo_req_   = 0;
-    last_fifo_got_   = 0;
-    last_accel_len_  = 0;
-    last_gyro_len_   = 0;
-  }
-
-  template <typename T>
-  static auto sensTimeField_(const T& s, int) -> decltype(s.sens_time, uint32_t()) {
-    return static_cast<uint32_t>(s.sens_time);
-  }
-
-  template <typename T>
-  static auto sensTimeField_(const T& s, long) -> decltype(s.virt_sens_time, uint32_t()) {
-    return static_cast<uint32_t>(s.virt_sens_time);
-  }
-
-  template <typename T>
-  static uint32_t sensTimeField_(const T&, ...) {
-    return 0u;
-  }
-
-  static uint32_t sensTime24_(const bmi2_sens_axes_data& s) {
-    return sensTimeField_(s, 0) & BMI270_SENSORTIME_MASK;
-  }
-
-  static bool streamHasUsableTime_(const bmi2_sens_axes_data* s, uint16_t n) {
-    for (uint16_t i = 0; i < n; ++i) {
-      if (sensTime24_(s[i]) != 0u) return true;
-    }
-    return false;
-  }
-
-  static uint32_t absTickDiff24_(uint32_t a, uint32_t b) {
-    const uint32_t d1 = (a - b) & BMI270_SENSORTIME_MASK;
-    const uint32_t d2 = (b - a) & BMI270_SENSORTIME_MASK;
-    return (d1 < d2) ? d1 : d2;
-  }
-
-  static bool timeBefore24_(uint32_t a, uint32_t b) {
-    return (a != b) && (((b - a) & BMI270_SENSORTIME_MASK) < 0x00800000u);
-  }
-
-  static uint32_t chooseLaterTime24_(uint32_t a, uint32_t b) {
-    if (a == 0u) return b;
-    if (b == 0u) return a;
-    return timeBefore24_(a, b) ? b : a;
   }
 
   static bool axesAllZero_(const bmi2_sens_axes_data& s) {
     return s.x == 0 && s.y == 0 && s.z == 0;
-  }
-
-  bool fifoBufferLooksBlank_(uint16_t n) const {
-    if (n == 0) return true;
-    for (uint16_t i = 0; i < n; ++i) {
-      if (fifo_buf_[i] != 0) return false;
-    }
-    return true;
   }
 
   void noteReadError_(Error err) {
@@ -711,45 +654,41 @@ private:
     }
   }
 
-  float computeDtFromSensTime_(uint32_t st24) {
-    if (st24 == 0u) {
+  float computeDtFromAbsoluteTime_(uint32_t st24, bool exact) {
+    if (!exact) {
+      have_last_sample_time_ = false;
       ++bad_timing_total_;
       return nominal_dt_;
     }
 
-    if (!have_sens_time_) {
-      have_sens_time_ = true;
-      last_sens_time_ = st24;
+    if (!have_last_sample_time_) {
+      have_last_sample_time_ = true;
+      last_sample_time24_ = st24;
       return nominal_dt_;
     }
 
-    const uint32_t d_ticks = (st24 - last_sens_time_) & BMI270_SENSORTIME_MASK;
-    last_sens_time_ = st24;
+    const uint32_t d_ticks = diffTicks24_(st24, last_sample_time24_);
+    last_sample_time24_ = st24;
 
     float dt_s = static_cast<float>(d_ticks) * BMI270_SENSORTIME_TICK_S;
-
     if (!(dt_s > 0.0f)) {
       ++bad_timing_total_;
       return nominal_dt_;
     }
-
-    if (dt_s < 0.25f * nominal_dt_) {
+    if (dt_s > (static_cast<float>(MAX_REASONABLE_DT_US) * 1.0e-6f)) {
       ++bad_timing_total_;
       return nominal_dt_;
     }
-
-    if (dt_s > (static_cast<float>(MAX_REASONABLE_DT_US) * 1.0e-6f)) {
-      ++bad_timing_total_;
-      dt_s = static_cast<float>(MAX_REASONABLE_DT_US) * 1.0e-6f;
-    }
-
     return dt_s;
   }
 
-  bool pushPairedSample_(const bmi2_sens_axes_data& a,
-                         const bmi2_sens_axes_data& g,
-                         uint32_t st24) {
-    if (pending_count_ >= PENDING_CAP) return false;
+  bool pushSample_(const bmi2_sens_axes_data& a,
+                   const bmi2_sens_axes_data& g,
+                   uint32_t st24,
+                   bool exact_time) {
+    if (pending_count_ >= PENDING_CAP) {
+      return false;
+    }
 
     if (axesAllZero_(a) && axesAllZero_(g)) {
       ++unpaired_total_;
@@ -771,104 +710,12 @@ private:
     out.gy = static_cast<float>(g.y) * (gyr_range_dps * dps_to_rps) / 32768.0f;
     out.gz = static_cast<float>(g.z) * (gyr_range_dps * dps_to_rps) / 32768.0f;
 
-    out.dt_s = computeDtFromSensTime_(st24);
+    out.sensortime24 = exact_time ? (st24 & BMI270_SENSORTIME_MASK) : 0u;
+    out.timestamp_exact = exact_time;
+    out.dt_s = computeDtFromAbsoluteTime_(st24, exact_time);
 
     ++pending_count_;
     return true;
-  }
-
-  bool pairByIndex_(uint16_t a_len, uint16_t g_len) {
-    const uint16_t n = (a_len < g_len) ? a_len : g_len;
-    for (uint16_t i = 0; i < n; ++i) {
-      const uint32_t ta = sensTime24_(accel_[i]);
-      const uint32_t tg = sensTime24_(gyro_[i]);
-      const uint32_t st = chooseLaterTime24_(ta, tg);
-      if (!pushPairedSample_(accel_[i], gyro_[i], st)) {
-        return true;
-      }
-    }
-
-    if (a_len > n) unpaired_total_ += static_cast<uint32_t>(a_len - n);
-    if (g_len > n) unpaired_total_ += static_cast<uint32_t>(g_len - n);
-
-    return n > 0u;
-  }
-
-  bool pairLockstep_(uint16_t a_len, uint16_t g_len) {
-    if (a_len != g_len) return false;
-
-    int compared = 0;
-    int good     = 0;
-
-    for (uint16_t i = 0; i < a_len; ++i) {
-      const uint32_t ta = sensTime24_(accel_[i]);
-      const uint32_t tg = sensTime24_(gyro_[i]);
-
-      if (ta != 0u && tg != 0u) {
-        ++compared;
-        if (absTickDiff24_(ta, tg) <= PAIR_TIME_SLACK_TICKS) {
-          ++good;
-        }
-      }
-    }
-
-    if (compared > 0 && (good * 10 < compared * 9)) {
-      return false;
-    }
-
-    for (uint16_t i = 0; i < a_len; ++i) {
-      const uint32_t ta = sensTime24_(accel_[i]);
-      const uint32_t tg = sensTime24_(gyro_[i]);
-
-      if (ta != 0u && tg != 0u && absTickDiff24_(ta, tg) > PAIR_TIME_SLACK_TICKS) {
-        unpaired_total_ += 2u;
-        ++bad_timing_total_;
-        continue;
-      }
-
-      const uint32_t st24 = chooseLaterTime24_(ta, tg);
-      if (!pushPairedSample_(accel_[i], gyro_[i], st24)) {
-        return true;
-      }
-    }
-
-    return true;
-  }
-
-  void pairByMergedTime_(uint16_t a_len, uint16_t g_len) {
-    uint16_t ia = 0;
-    uint16_t ig = 0;
-
-    while (ia < a_len && ig < g_len && pending_count_ < PENDING_CAP) {
-      const uint32_t ta = sensTime24_(accel_[ia]);
-      const uint32_t tg = sensTime24_(gyro_[ig]);
-
-      if (ta == 0u || tg == 0u) {
-        if (ta == 0u) { ++ia; ++unpaired_total_; ++bad_timing_total_; }
-        if (tg == 0u) { ++ig; ++unpaired_total_; ++bad_timing_total_; }
-        continue;
-      }
-
-      const uint32_t d = absTickDiff24_(ta, tg);
-      if (d <= PAIR_TIME_SLACK_TICKS) {
-        const uint32_t st24 = chooseLaterTime24_(ta, tg);
-        (void)pushPairedSample_(accel_[ia], gyro_[ig], st24);
-        ++ia;
-        ++ig;
-        continue;
-      }
-
-      if (timeBefore24_(ta, tg)) {
-        ++ia;
-        ++unpaired_total_;
-      } else {
-        ++ig;
-        ++unpaired_total_;
-      }
-    }
-
-    unpaired_total_ += static_cast<uint32_t>(a_len - ia);
-    unpaired_total_ += static_cast<uint32_t>(g_len - ig);
   }
 
   bool fillPendingFromFifo_() {
@@ -890,22 +737,22 @@ private:
     }
 
     last_fifo_len_ = fifo_len;
+    last_fifo_read_len_ = 0;
+    last_accel_frames_ = 0;
+    last_gyro_frames_ = 0;
+    last_fifo_sensor_time24_ = 0;
+    last_burst_exact_timestamps_ = false;
 
-    if (fifo_len < FIFO_MIN_READ_BYTES) {
+    if (fifo_len == 0u) {
       last_fill_had_error_ = false;
       return false;
     }
 
     uint32_t req = static_cast<uint32_t>(fifo_len);
-    req = std::min<uint32_t>(req, FIFO_READ_BURST_MAX);
-    req = std::min<uint32_t>(req, static_cast<uint32_t>(sizeof(fifo_buf_)));
-    if (req < FIFO_MIN_READ_BYTES) {
-      req = FIFO_MIN_READ_BYTES;
+    if (req > static_cast<uint32_t>(sizeof(fifo_buf_))) {
+      req = static_cast<uint32_t>(sizeof(fifo_buf_));
     }
 
-    last_fifo_req_ = static_cast<uint16_t>(req);
-
-    std::memset(fifo_buf_, 0, static_cast<size_t>(req));
     std::memset(&fifo_, 0, sizeof(fifo_));
     fifo_.data   = fifo_buf_;
     fifo_.length = static_cast<uint16_t>(req);
@@ -915,17 +762,8 @@ private:
       return false;
     }
 
-    last_fifo_got_ = fifo_.length;
-
-    if (fifo_.length < FIFO_MIN_READ_BYTES) {
-      last_fill_had_error_ = false;
-      return false;
-    }
-
-    if (fifoBufferLooksBlank_(fifo_.length)) {
-      noteReadError_(Error::FIFO_READ_FAILED);
-      return false;
-    }
+    last_fifo_read_len_ = fifo_.length;
+    last_fifo_sensor_time24_ = fifo_.sensor_time & BMI270_SENSORTIME_MASK;
 
     skipped_total_ += fifo_.skipped_frame_count;
 
@@ -941,11 +779,11 @@ private:
     const int8_t ra = bmi2_extract_accel(accel_, &a_len, &fifo_acc, &bmi_);
     const int8_t rg = bmi2_extract_gyro (gyro_,  &g_len, &fifo_gyr, &bmi_);
 
-    last_accel_len_ = a_len;
-    last_gyro_len_  = g_len;
-
     if (ra != BMI2_OK) a_len = 0;
     if (rg != BMI2_OK) g_len = 0;
+
+    last_accel_frames_ = a_len;
+    last_gyro_frames_  = g_len;
 
     if (ra != BMI2_OK || rg != BMI2_OK) {
       noteReadError_(Error::EXTRACT_FAILED);
@@ -957,36 +795,73 @@ private:
       return false;
     }
 
-    const bool a_has_time = streamHasUsableTime_(accel_, a_len);
-    const bool g_has_time = streamHasUsableTime_(gyro_,  g_len);
+    const uint16_t n = (a_len < g_len) ? a_len : g_len;
+    if (n == 0u) {
+      if (a_len > 0u) unpaired_total_ += a_len;
+      if (g_len > 0u) unpaired_total_ += g_len;
+      last_fill_had_error_ = false;
+      return false;
+    }
 
-    bool paired_any = false;
+    const bool fifo_drained_this_read =
+        (static_cast<uint32_t>(fifo_len) <= static_cast<uint32_t>(sizeof(fifo_buf_)));
 
-    if (!a_has_time || !g_has_time) {
-      paired_any = pairByIndex_(a_len, g_len);
-    } else if (pairLockstep_(a_len, g_len)) {
-      paired_any = (pending_count_ > 0);
+    const bool exact_burst_time =
+        fifo_drained_this_read &&
+        ((fifo_.sensor_time & BMI270_SENSORTIME_MASK) != 0u);
+
+    last_burst_exact_timestamps_ = exact_burst_time;
+
+    if (fifo_.skipped_frame_count > 0u) {
+      have_last_sample_time_ = false;
+    }
+
+    if (exact_burst_time) {
+      uint32_t t = fifo_.sensor_time & BMI270_SENSORTIME_MASK;
+      const uint32_t first_time = subTicks24_(t, static_cast<uint32_t>(n - 1u) * ticks_per_sample_);
+      for (uint16_t i = 0; i < n && pending_count_ < PENDING_CAP; ++i) {
+        const uint32_t st = (first_time + static_cast<uint32_t>(i) * ticks_per_sample_) & BMI270_SENSORTIME_MASK;
+        if (!pushSample_(accel_[i], gyro_[i], st, true)) {
+          break;
+        }
+      }
     } else {
-      pairByMergedTime_(a_len, g_len);
-      paired_any = (pending_count_ > 0);
+      for (uint16_t i = 0; i < n && pending_count_ < PENDING_CAP; ++i) {
+        if (!pushSample_(accel_[i], gyro_[i], 0u, false)) {
+          break;
+        }
+      }
     }
 
-    if (paired_any || !last_fill_had_error_) {
+    if (a_len > n) unpaired_total_ += static_cast<uint32_t>(a_len - n);
+    if (g_len > n) unpaired_total_ += static_cast<uint32_t>(g_len - n);
+
+    if (pending_count_ > 0) {
       noteReadSuccess_();
+      return true;
     }
 
-    return pending_count_ > 0;
+    last_fill_had_error_ = false;
+    return false;
   }
 
   static int8_t bmi2_i2c_read_(uint8_t reg_addr, uint8_t* reg_data, uint32_t len, void* intf_ptr) {
     auto* self = static_cast<BoschBmi270Fifo*>(intf_ptr);
-    if (self == nullptr || reg_data == nullptr || len == 0) {
+    if (self == nullptr || self->i2c_ == nullptr || reg_data == nullptr || len == 0) {
       return BMI2_E_COM_FAIL;
     }
 
-    // FIFO must be read as one contiguous transaction.
+    // FIFO must be read as one contiguous register-window read.
     if (reg_addr == BMI2_FIFO_DATA_ADDR) {
-      return self->i2cReadRegRaw_(reg_addr, reg_data, len);
+      if (!self->i2c_->readRegister(
+              self->bmi_addr_,
+              reg_addr,
+              reg_data,
+              static_cast<uint16_t>(len),
+              self->i2c_hz_)) {
+        return BMI2_E_COM_FAIL;
+      }
+      return BMI2_OK;
     }
 
     uint32_t off = 0;
@@ -994,7 +869,12 @@ private:
       const uint16_t n = static_cast<uint16_t>(std::min<uint32_t>(REG_IO_CHUNK, len - off));
       const uint8_t addr = static_cast<uint8_t>(reg_addr + off);
 
-      if (self->i2cReadRegRaw_(addr, reg_data + off, n) != BMI2_OK) {
+      if (!self->i2c_->readRegister(
+              self->bmi_addr_,
+              addr,
+              reg_data + off,
+              n,
+              self->i2c_hz_)) {
         return BMI2_E_COM_FAIL;
       }
 
@@ -1006,7 +886,7 @@ private:
 
   static int8_t bmi2_i2c_write_(uint8_t reg_addr, const uint8_t* reg_data, uint32_t len, void* intf_ptr) {
     auto* self = static_cast<BoschBmi270Fifo*>(intf_ptr);
-    if (self == nullptr || reg_data == nullptr || len == 0) {
+    if (self == nullptr || self->i2c_ == nullptr || reg_data == nullptr || len == 0) {
       return BMI2_E_COM_FAIL;
     }
 
@@ -1015,7 +895,12 @@ private:
       const uint16_t n = static_cast<uint16_t>(std::min<uint32_t>(REG_IO_CHUNK, len - off));
       const uint8_t addr = static_cast<uint8_t>(reg_addr + off);
 
-      if (self->i2cWriteRegRaw_(addr, reg_data + off, n) != BMI2_OK) {
+      if (!self->i2c_->writeRegister(
+              self->bmi_addr_,
+              addr,
+              reg_data + off,
+              n,
+              self->i2c_hz_)) {
         return BMI2_E_COM_FAIL;
       }
 
@@ -1090,11 +975,12 @@ private:
   float    requested_odr_hz_ = 100.0f;
   uint32_t i2c_hz_           = 400000u;
 
-  float odr_hz_     = 100.0f;
-  float nominal_dt_ = 0.01f;
+  float    odr_hz_           = 100.0f;
+  float    nominal_dt_       = 0.01f;
+  uint32_t ticks_per_sample_ = 256u;
 
-  bool     have_sens_time_ = false;
-  uint32_t last_sens_time_ = 0;
+  bool     have_last_sample_time_ = false;
+  uint32_t last_sample_time24_    = 0;
 
   uint32_t skipped_total_           = 0;
   uint32_t unpaired_total_          = 0;
@@ -1112,6 +998,13 @@ private:
   bool   used_maximum_fifo_init_ = false;
   int8_t last_bosch_init_rslt_   = 0;
 
+  uint16_t last_fifo_len_               = 0;
+  uint16_t last_fifo_read_len_          = 0;
+  uint16_t last_accel_frames_           = 0;
+  uint16_t last_gyro_frames_            = 0;
+  uint32_t last_fifo_sensor_time24_     = 0;
+  bool     last_burst_exact_timestamps_ = false;
+
 #if ATOMS3R_HAVE_BOSCH_SENSORAPI
   bmi2_dev            bmi_{};
   bmi2_fifo_frame     fifo_{};
@@ -1123,11 +1016,4 @@ private:
   BoschAGSample pending_[PENDING_CAP]{};
   int pending_head_  = 0;
   int pending_count_ = 0;
-
-  // optional debug state
-  uint16_t last_fifo_len_  = 0;
-  uint16_t last_fifo_req_  = 0;
-  uint16_t last_fifo_got_  = 0;
-  uint16_t last_accel_len_ = 0;
-  uint16_t last_gyro_len_  = 0;
 };
