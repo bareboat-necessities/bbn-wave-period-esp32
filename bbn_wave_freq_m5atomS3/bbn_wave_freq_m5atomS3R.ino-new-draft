@@ -161,7 +161,7 @@ public:
     M5.begin(cfg);
 
     // AtomS3R internal IMU I2C bus
-    M5.In_I2C.begin(0, 45, 400000);
+    M5.In_I2C.begin(45, 0, 400000);
 
     ui_.begin();
     if (use_graphics_) {
