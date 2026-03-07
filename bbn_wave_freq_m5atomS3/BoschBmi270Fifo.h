@@ -53,8 +53,7 @@ struct BoschAGSample {
   float ax = 0.0f, ay = 0.0f, az = 0.0f; // m/s^2
   float gx = 0.0f, gy = 0.0f, gz = 0.0f; // rad/s
 
-  // Exact per-sample sensortime when available from Bosch extraction.
-  // If timestamp_exact == false, sensortime24 is 0 and dt_s falls back to nominal_dt_.
+  // Exact when Bosch gives per-sample sensortime; otherwise synthetic monotonic time.
   uint32_t sensortime24 = 0;
   bool     timestamp_exact = false;
 };
@@ -123,7 +122,6 @@ public:
     return used_maximum_fifo_init_ ? "bmi270_maximum_fifo_init" : "bmi270_init";
   }
 
-  // Debug/telemetry for the last FIFO burst
   uint16_t lastFifoLen() const { return last_fifo_len_; }
   uint16_t lastFifoReq() const { return last_fifo_req_; }
   uint16_t lastFifoGot() const { return last_fifo_got_; }
@@ -171,6 +169,7 @@ public:
     last_error_       = Error::NONE;
 
     std::memset(&bmi_, 0, sizeof(bmi_));
+    bmi_.chip_id         = bmi_addr_; // matches known-good Arduino/Bosch init path on I2C
     bmi_.intf            = BMI2_I2C_INTF;
     bmi_.read            = &BoschBmi270Fifo::bmi2_i2c_read_;
     bmi_.write           = &BoschBmi270Fifo::bmi2_i2c_write_;
@@ -217,6 +216,9 @@ public:
     cfg[1].cfg.gyr.bwp         = BMI2_GYR_NORMAL_MODE;
     cfg[1].cfg.gyr.noise_perf  = BMI2_POWER_OPT_MODE;
     cfg[1].cfg.gyr.filter_perf = BMI2_PERF_OPT_MODE;
+#ifdef BMI2_GYR_OIS_2000
+    cfg[1].cfg.gyr.ois_range   = BMI2_GYR_OIS_2000;
+#endif
 
     rslt = bmi270_set_sensor_config(cfg, 2, &bmi_);
     if (rslt != BMI2_OK) {
@@ -235,6 +237,7 @@ public:
       return failBegin_(Error::DISABLE_APS_FAILED);
     }
     aps_disabled_ = true;
+    bmi_.aps_status = BMI2_DISABLE;
 
     rslt = bmi2_set_fifo_config(BMI2_FIFO_ALL_EN, BMI2_DISABLE, &bmi_);
     if (rslt != BMI2_OK) {
@@ -276,8 +279,9 @@ public:
       return failBegin_(Error::FIFO_FLUSH_FAILED);
     }
 
-    odr_hz_     = use200 ? 200.0f : 100.0f;
-    nominal_dt_ = 1.0f / odr_hz_;
+    odr_hz_       = use200 ? 200.0f : 100.0f;
+    nominal_dt_   = 1.0f / odr_hz_;
+    nominal_ticks_= computeNominalTicks_(nominal_dt_);
 
     clearReadPipelineState_();
 
@@ -379,8 +383,74 @@ public:
 #endif
   }
 
+  // Waits briefly for one fresh frame if needed, then returns exactly one sample.
   bool readOneAG(BoschAGSample& out) {
-    return readAG(&out, 1) == 1;
+#if !ATOMS3R_HAVE_BOSCH_SENSORAPI
+    (void)out;
+    last_error_ = Error::NOT_BUILT;
+    return false;
+#else
+    if (!ok_) {
+      last_error_ = Error::NOT_OK;
+      return false;
+    }
+
+    if (pending_count_ == 0) {
+      if (!waitAndFillPendingFromFifo_()) {
+        if (last_fill_had_error_ && consecutive_read_errors_ >= RECOVERY_THRESHOLD) {
+          if (!recover() || !waitAndFillPendingFromFifo_()) {
+            return false;
+          }
+        } else {
+          return false;
+        }
+      }
+    }
+
+    if (pending_count_ <= 0) {
+      return false;
+    }
+
+    out = pending_[pending_head_];
+    pending_head_ = (pending_head_ + 1) % PENDING_CAP;
+    --pending_count_;
+    return true;
+#endif
+  }
+
+  // Returns newest sample and drops backlog.
+  bool readLatestAG(BoschAGSample& out) {
+#if !ATOMS3R_HAVE_BOSCH_SENSORAPI
+    (void)out;
+    last_error_ = Error::NOT_BUILT;
+    return false;
+#else
+    if (!ok_) {
+      last_error_ = Error::NOT_OK;
+      return false;
+    }
+
+    if (pending_count_ == 0) {
+      if (!waitAndFillPendingFromFifo_()) {
+        if (last_fill_had_error_ && consecutive_read_errors_ >= RECOVERY_THRESHOLD) {
+          if (!recover() || !waitAndFillPendingFromFifo_()) {
+            return false;
+          }
+        } else {
+          return false;
+        }
+      }
+    }
+
+    bool got = false;
+    while (pending_count_ > 0) {
+      out = pending_[pending_head_];
+      pending_head_ = (pending_head_ + 1) % PENDING_CAP;
+      --pending_count_;
+      got = true;
+    }
+    return got;
+#endif
   }
 
   int readAG(BoschAGSample* out, int max_out) {
@@ -403,10 +473,10 @@ public:
 
     while (produced < max_out) {
       if (pending_count_ == 0) {
-        if (!fillPendingFromFifo_()) {
+        if (!waitAndFillPendingFromFifo_()) {
           if (last_fill_had_error_ && consecutive_read_errors_ >= RECOVERY_THRESHOLD) {
             if (recover()) {
-              if (!fillPendingFromFifo_()) {
+              if (!waitAndFillPendingFromFifo_()) {
                 break;
               }
             } else {
@@ -431,12 +501,11 @@ public:
 
 private:
   static constexpr uint16_t REG_IO_CHUNK            = 32;
-  static constexpr uint16_t FIFO_WATERMARK_BYTES    = 39;   // 3 x ~13-byte AG header frames
-  static constexpr uint16_t FIFO_MIN_READ_BYTES     = 13;   // one AG header frame
-  static constexpr uint16_t FIFO_READ_BURST_MAX     = 39;   // keep safely below short I2C watchdog
+  static constexpr uint16_t FIFO_WATERMARK_BYTES    = 39;    // known-good, low-latency enough
+  static constexpr uint16_t FIFO_MIN_READ_BYTES     = 13;    // one accel+gyro header frame
   static constexpr int      MAX_EXTRACT             = 128;
   static constexpr int      PENDING_CAP             = MAX_EXTRACT;
-  static constexpr size_t   FIFO_BUF_CAP            = 256u;
+  static constexpr size_t   FIFO_BUF_CAP            = 2048u + 64u; // big enough to avoid partial-frame repeats
   static constexpr uint32_t PAIR_TIME_SLACK_TICKS   = 32u;
   static constexpr uint32_t MAX_REASONABLE_DT_US    = 250000u;
   static constexpr uint8_t  RECOVERY_THRESHOLD      = 3u;
@@ -467,6 +536,16 @@ private:
       case Error::NOT_OK:                return "driver not initialized";
       default:                           return "unknown";
     }
+  }
+
+  static uint32_t computeNominalTicks_(float dt_s) {
+    const float ticks_f = dt_s / BMI270_SENSORTIME_TICK_S;
+    const long ticks_l = lroundf(ticks_f);
+    return (ticks_l > 0) ? static_cast<uint32_t>(ticks_l) : 1u;
+  }
+
+  static uint32_t sub24_(uint32_t a, uint32_t b) {
+    return (a - b) & BMI270_SENSORTIME_MASK;
   }
 
   bool failBegin_(Error primary_err) {
@@ -506,16 +585,6 @@ private:
   #else
     return 0xB0u;
   #endif
-  }
-
-  bool i2cBeginWrite_(uint8_t reg_addr) const {
-    if (i2c_ == nullptr) return false;
-    if (!i2c_->start(bmi_addr_, false, i2c_hz_)) return false;
-    if (!i2c_->write(reg_addr)) {
-      (void)i2c_->stop();
-      return false;
-    }
-    return true;
   }
 
   int8_t i2cReadRegRaw_(uint8_t reg_addr, uint8_t* reg_data, uint32_t len) const {
@@ -637,6 +706,7 @@ private:
 
     have_sens_time_ = false;
     last_sens_time_ = 0;
+    synth_sens_time_= 0;
 
     consecutive_read_errors_ = 0;
     last_fill_had_error_     = false;
@@ -737,9 +807,8 @@ private:
     }
   }
 
-  float computeDtFromSensTime_(uint32_t st24) {
+  float computeDtFromExactSensTime_(uint32_t st24) {
     if (st24 == 0u) {
-      have_sens_time_ = false;
       ++bad_timing_total_;
       return nominal_dt_;
     }
@@ -747,11 +816,13 @@ private:
     if (!have_sens_time_) {
       have_sens_time_ = true;
       last_sens_time_ = st24;
+      synth_sens_time_= st24;
       return nominal_dt_;
     }
 
     const uint32_t d_ticks = (st24 - last_sens_time_) & BMI270_SENSORTIME_MASK;
     last_sens_time_ = st24;
+    synth_sens_time_= st24;
 
     float dt_s = static_cast<float>(d_ticks) * BMI270_SENSORTIME_TICK_S;
 
@@ -773,9 +844,22 @@ private:
     return dt_s;
   }
 
+  void seedSyntheticBurstTime_(uint16_t n_frames) {
+    if (n_frames == 0u) return;
+
+    if (last_fifo_sensor_time24_ != 0u) {
+      // Use FIFO control-frame sensortime as end anchor for the burst.
+      synth_sens_time_ = sub24_(last_fifo_sensor_time24_, static_cast<uint32_t>(n_frames - 1u) * nominal_ticks_);
+    } else if (have_sens_time_) {
+      synth_sens_time_ = (last_sens_time_ + nominal_ticks_) & BMI270_SENSORTIME_MASK;
+    } else {
+      synth_sens_time_ = 0u;
+    }
+  }
+
   bool pushPairedSample_(const bmi2_sens_axes_data& a,
                          const bmi2_sens_axes_data& g,
-                         uint32_t st24) {
+                         uint32_t st24_exact) {
     if (pending_count_ >= PENDING_CAP) return false;
 
     if (axesAllZero_(a) && axesAllZero_(g)) {
@@ -798,9 +882,23 @@ private:
     out.gy = static_cast<float>(g.y) * (gyr_range_dps * dps_to_rps) / 32768.0f;
     out.gz = static_cast<float>(g.z) * (gyr_range_dps * dps_to_rps) / 32768.0f;
 
-    out.sensortime24   = st24 & BMI270_SENSORTIME_MASK;
-    out.timestamp_exact = (st24 != 0u);
-    out.dt_s           = computeDtFromSensTime_(st24);
+    if (st24_exact != 0u) {
+      out.sensortime24   = st24_exact & BMI270_SENSORTIME_MASK;
+      out.timestamp_exact = true;
+      out.dt_s           = computeDtFromExactSensTime_(st24_exact);
+    } else {
+      if (!have_sens_time_ && synth_sens_time_ == 0u) {
+        // First synthetic sample.
+        synth_sens_time_ = nominal_ticks_ & BMI270_SENSORTIME_MASK;
+      }
+      out.sensortime24   = synth_sens_time_ & BMI270_SENSORTIME_MASK;
+      out.timestamp_exact = false;
+      out.dt_s           = nominal_dt_;
+
+      have_sens_time_    = true;
+      last_sens_time_    = out.sensortime24;
+      synth_sens_time_   = (out.sensortime24 + nominal_ticks_) & BMI270_SENSORTIME_MASK;
+    }
 
     ++pending_count_;
     return true;
@@ -808,6 +906,8 @@ private:
 
   bool pairByIndex_(uint16_t a_len, uint16_t g_len) {
     const uint16_t n = (a_len < g_len) ? a_len : g_len;
+    seedSyntheticBurstTime_(n);
+
     for (uint16_t i = 0; i < n; ++i) {
       const uint32_t ta = sensTime24_(accel_[i]);
       const uint32_t tg = sensTime24_(gyro_[i]);
@@ -845,6 +945,8 @@ private:
       return false;
     }
 
+    seedSyntheticBurstTime_(a_len);
+
     for (uint16_t i = 0; i < a_len; ++i) {
       const uint32_t ta = sensTime24_(accel_[i]);
       const uint32_t tg = sensTime24_(gyro_[i]);
@@ -865,6 +967,10 @@ private:
   }
 
   void pairByMergedTime_(uint16_t a_len, uint16_t g_len) {
+    // Count a rough upper bound for seeding synthetic timestamps.
+    const uint16_t n = (a_len < g_len) ? a_len : g_len;
+    seedSyntheticBurstTime_(n);
+
     uint16_t ia = 0;
     uint16_t ig = 0;
 
@@ -919,6 +1025,10 @@ private:
     }
 
     last_fifo_len_               = fifo_len;
+    last_fifo_req_               = 0;
+    last_fifo_got_               = 0;
+    last_accel_len_              = 0;
+    last_gyro_len_               = 0;
     last_fifo_sensor_time24_     = 0;
     last_burst_exact_timestamps_ = false;
 
@@ -928,10 +1038,10 @@ private:
     }
 
     uint32_t req = static_cast<uint32_t>(fifo_len);
-    req = std::min<uint32_t>(req, FIFO_READ_BURST_MAX);
-    req = std::min<uint32_t>(req, static_cast<uint32_t>(sizeof(fifo_buf_)));
-    if (req < FIFO_MIN_READ_BYTES) {
-      req = FIFO_MIN_READ_BYTES;
+    if (req > static_cast<uint32_t>(sizeof(fifo_buf_))) {
+      req = static_cast<uint32_t>(sizeof(fifo_buf_));
+      // Very unlikely under normal polling; if this ever happens the host is falling badly behind.
+      // We still read what we can, but a too-small buffer can re-expose Bosch partial-frame repetition.
     }
 
     last_fifo_req_ = static_cast<uint16_t>(req);
@@ -1011,13 +1121,41 @@ private:
     return pending_count_ > 0;
   }
 
+  bool waitAndFillPendingFromFifo_() {
+    if (pending_count_ > 0) return true;
+
+    const uint32_t wait_us = computeReadWaitUs_();
+    const uint32_t t0 = micros();
+
+    do {
+      if (fillPendingFromFifo_()) {
+        return true;
+      }
+      if (last_fill_had_error_) {
+        return false;
+      }
+      delayMicroseconds(300);
+    } while (static_cast<uint32_t>(micros() - t0) < wait_us);
+
+    return fillPendingFromFifo_();
+  }
+
+  uint32_t computeReadWaitUs_() const {
+    float wait_s = nominal_dt_ * 1.5f;
+    if (!(wait_s > 0.0f)) wait_s = 0.015f;
+    uint32_t us = static_cast<uint32_t>(wait_s * 1.0e6f);
+    if (us < 3000u)  us = 3000u;
+    if (us > 25000u) us = 25000u;
+    return us;
+  }
+
   static int8_t bmi2_i2c_read_(uint8_t reg_addr, uint8_t* reg_data, uint32_t len, void* intf_ptr) {
     auto* self = static_cast<BoschBmi270Fifo*>(intf_ptr);
     if (self == nullptr || reg_data == nullptr || len == 0) {
       return BMI2_E_COM_FAIL;
     }
 
-    // FIFO must be read as one contiguous transaction.
+    // FIFO must be a single contiguous register-window read.
     if (reg_addr == BMI2_FIFO_DATA_ADDR) {
       return self->i2cReadRegRaw_(reg_addr, reg_data, len);
     }
@@ -1077,8 +1215,9 @@ private:
     used_maximum_fifo_init_ = false;
     last_bosch_init_rslt_   = 0;
 
-    odr_hz_     = 100.0f;
-    nominal_dt_ = 0.01f;
+    odr_hz_        = 100.0f;
+    nominal_dt_    = 0.01f;
+    nominal_ticks_ = computeNominalTicks_(nominal_dt_);
 
 #if ATOMS3R_HAVE_BOSCH_SENSORAPI
     std::memset(&bmi_, 0, sizeof(bmi_));
@@ -1123,11 +1262,13 @@ private:
   float    requested_odr_hz_ = 100.0f;
   uint32_t i2c_hz_           = 400000u;
 
-  float odr_hz_     = 100.0f;
-  float nominal_dt_ = 0.01f;
+  float    odr_hz_           = 100.0f;
+  float    nominal_dt_       = 0.01f;
+  uint32_t nominal_ticks_    = 256u;
 
-  bool     have_sens_time_ = false;
-  uint32_t last_sens_time_ = 0;
+  bool     have_sens_time_   = false;
+  uint32_t last_sens_time_   = 0;
+  uint32_t synth_sens_time_  = 0;
 
   uint32_t skipped_total_           = 0;
   uint32_t unpaired_total_          = 0;
@@ -1157,7 +1298,6 @@ private:
   int pending_head_  = 0;
   int pending_count_ = 0;
 
-  // debug/telemetry state
   uint16_t last_fifo_len_               = 0;
   uint16_t last_fifo_req_               = 0;
   uint16_t last_fifo_got_               = 0;
