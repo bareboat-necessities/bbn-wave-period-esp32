@@ -377,9 +377,45 @@ public:
 #endif
   }
 
-  // Returns the newest available sample from the current FIFO burst and
-  // discards older queued samples. Use readAG() if you need every sample.
+  // Returns exactly one queued sample.
+  // Use readLatestAG() if you explicitly want to discard older queued samples.
   bool readOneAG(BoschAGSample& out) {
+#if !ATOMS3R_HAVE_BOSCH_SENSORAPI
+    (void)out;
+    last_error_ = Error::NOT_BUILT;
+    return false;
+#else
+    if (!ok_) {
+      last_error_ = Error::NOT_OK;
+      return false;
+    }
+
+    if (pending_count_ == 0) {
+      if (!fillPendingFromFifo_()) {
+        if (last_fill_had_error_ && consecutive_read_errors_ >= RECOVERY_THRESHOLD) {
+          if (!recover() || !fillPendingFromFifo_()) {
+            return false;
+          }
+        } else {
+          return false;
+        }
+      }
+    }
+
+    if (pending_count_ <= 0) {
+      return false;
+    }
+
+    out = pending_[pending_head_];
+    pending_head_ = (pending_head_ + 1) % PENDING_CAP;
+    --pending_count_;
+    return true;
+#endif
+  }
+
+  // Returns the newest available sample from the current FIFO burst and
+  // discards older queued samples.
+  bool readLatestAG(BoschAGSample& out) {
 #if !ATOMS3R_HAVE_BOSCH_SENSORAPI
     (void)out;
     last_error_ = Error::NOT_BUILT;
