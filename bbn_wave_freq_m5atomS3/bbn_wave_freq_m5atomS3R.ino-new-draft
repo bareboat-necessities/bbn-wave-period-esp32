@@ -161,11 +161,7 @@ public:
     M5.begin(cfg);
 
     // AtomS3R internal IMU I2C bus
-    Wire.end();
-    delay(10);
-    Wire.begin(45, 0);   // SDA=45, SCL=0
-    Wire.setClock(400000);
-    delay(10);
+    M5.In_I2C.begin(0, 45, 400000);
 
     ui_.begin();
     if (use_graphics_) {
