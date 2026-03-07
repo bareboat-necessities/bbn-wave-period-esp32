@@ -424,6 +424,7 @@ private:
   static constexpr uint32_t PAIR_TIME_SLACK_TICKS = 32u;
   static constexpr uint32_t MAX_REASONABLE_DT_US  = 250000u;
   static constexpr uint8_t  RECOVERY_THRESHOLD    = 3u;
+  static constexpr uint8_t  BMI270_REG_SENSORTIME = 0x18u;
 
   static constexpr float kPi = 3.14159265358979323846f;
   static constexpr float kG0 = 9.80665f;
@@ -548,8 +549,11 @@ private:
     pending_head_  = 0;
     pending_count_ = 0;
 
-    have_sens_time_ = false;
-    last_sens_time_ = 0;
+    have_sens_time_           = false;
+    last_sens_time_           = 0;
+    pairing_fifo_time_hint_   = 0;
+    pairing_pairs_total_hint_ = 0;
+    pairing_pairs_pushed_     = 0;
 
     consecutive_read_errors_ = 0;
     last_fill_had_error_     = false;
@@ -579,6 +583,20 @@ private:
     return sensTimeField_(s, 0) & BMI270_SENSORTIME_MASK;
   }
 
+  template <typename T>
+  static auto fifoSensorTimeField_(const T& f, int) -> decltype(f.sensor_time, uint32_t()) {
+    return static_cast<uint32_t>(f.sensor_time);
+  }
+
+  template <typename T>
+  static uint32_t fifoSensorTimeField_(const T&, ...) {
+    return 0u;
+  }
+
+  static uint32_t fifoSensorTime24_(const bmi2_fifo_frame& f) {
+    return fifoSensorTimeField_(f, 0) & BMI270_SENSORTIME_MASK;
+  }
+
   static bool streamHasUsableTime_(const bmi2_sens_axes_data* s, uint16_t n) {
     for (uint16_t i = 0; i < n; ++i) {
       if (sensTime24_(s[i]) != 0u) return true;
@@ -600,6 +618,57 @@ private:
     if (a == 0u) return b;
     if (b == 0u) return a;
     return timeBefore24_(a, b) ? b : a;
+  }
+
+  uint32_t nominalTickStep_() const {
+    const float ticks_f = nominal_dt_ / BMI270_SENSORTIME_TICK_S;
+    const uint32_t ticks = static_cast<uint32_t>(ticks_f + 0.5f);
+    return (ticks == 0u) ? 1u : ticks;
+  }
+
+  uint32_t readSensorTimeReg24_() {
+    uint8_t t[3] = {0, 0, 0};
+    if (bmi2_i2c_read_(BMI270_REG_SENSORTIME, t, 3, this) != BMI2_OK) {
+      return 0u;
+    }
+    const uint32_t st =
+      static_cast<uint32_t>(t[0]) |
+      (static_cast<uint32_t>(t[1]) << 8) |
+      (static_cast<uint32_t>(t[2]) << 16);
+    return st & BMI270_SENSORTIME_MASK;
+  }
+
+  uint32_t ensureUsableTime24_(uint32_t st24) {
+    st24 &= BMI270_SENSORTIME_MASK;
+    if (st24 != 0u) {
+      return st24;
+    }
+
+    const uint32_t tick_step = nominalTickStep_();
+
+    if (pairing_fifo_time_hint_ != 0u && pairing_pairs_total_hint_ > 0u) {
+      uint32_t remaining = 0;
+      if (pairing_pairs_pushed_ + 1u < pairing_pairs_total_hint_) {
+        remaining = pairing_pairs_total_hint_ - pairing_pairs_pushed_ - 1u;
+      }
+      st24 = (pairing_fifo_time_hint_ - (remaining * tick_step)) & BMI270_SENSORTIME_MASK;
+    }
+
+    if (st24 == 0u) {
+      if (have_sens_time_) {
+        st24 = (last_sens_time_ + tick_step) & BMI270_SENSORTIME_MASK;
+      } else {
+        st24 = tick_step & BMI270_SENSORTIME_MASK;
+      }
+    }
+
+    return (st24 == 0u) ? 1u : st24;
+  }
+
+  void beginPairingWindow_(uint16_t pair_total_hint, uint32_t fifo_time_hint) {
+    pairing_pairs_total_hint_ = pair_total_hint;
+    pairing_pairs_pushed_     = 0;
+    pairing_fifo_time_hint_   = fifo_time_hint & BMI270_SENSORTIME_MASK;
   }
 
   void noteReadError_(Error err) {
@@ -674,7 +743,9 @@ private:
     out.gy = static_cast<float>(g.y) * (gyr_range_dps * dps_to_rps) / 32768.0f;
     out.gz = static_cast<float>(g.z) * (gyr_range_dps * dps_to_rps) / 32768.0f;
 
-    out.dt_s = computeDtFromSensTime_(st24);
+    out.dt_s = computeDtFromSensTime_(ensureUsableTime24_(st24));
+
+    ++pairing_pairs_pushed_;
 
     ++pending_count_;
     return true;
@@ -834,6 +905,13 @@ private:
 
     const bool a_has_time = streamHasUsableTime_(accel_, a_len);
     const bool g_has_time = streamHasUsableTime_(gyro_,  g_len);
+    const uint16_t pair_total_hint = (a_len < g_len) ? a_len : g_len;
+
+    uint32_t fifo_time_hint = fifoSensorTime24_(fifo_);
+    if (fifo_time_hint == 0u) {
+      fifo_time_hint = readSensorTimeReg24_();
+    }
+    beginPairingWindow_(pair_total_hint, fifo_time_hint);
 
     bool paired_any = false;
 
@@ -953,6 +1031,9 @@ private:
 
   bool     have_sens_time_ = false;
   uint32_t last_sens_time_ = 0;
+  uint32_t pairing_fifo_time_hint_   = 0;
+  uint16_t pairing_pairs_total_hint_ = 0;
+  uint16_t pairing_pairs_pushed_     = 0;
 
   uint32_t skipped_total_           = 0;
   uint32_t unpaired_total_          = 0;
