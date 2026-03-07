@@ -161,22 +161,26 @@ public:
     bmi_.read           = &BoschBmi270Fifo::bmi2_i2c_read_;
     bmi_.write          = &BoschBmi270Fifo::bmi2_i2c_write_;
     bmi_.delay_us       = &BoschBmi270Fifo::bmi2_delay_us_;
-    bmi_.read_write_len = I2C_CHUNK;
+    bmi_.chip_id        = bmi_addr_;
+    bmi_.config_file_ptr = nullptr;
+    bmi_.read_write_len = 30;   // safer; matches official Arduino BMI270 lib
     bmi_.intf_ptr       = this;
-
-  #if ATOMS3R_HAVE_BMI270_MAXIMUM_FIFO_INIT
-    used_maximum_fifo_init_ = true;
-    last_bosch_init_rslt_   = bmi270_maximum_fifo_init(&bmi_);
-    if (last_bosch_init_rslt_ != BMI2_OK) {
-      return failBegin_(Error::INIT_FAILED);
-    }
-  #else
+    
+    // Default to plain init first on AtomS3R.
+    // Only try maximum_fifo_init as a secondary fallback.
     used_maximum_fifo_init_ = false;
     last_bosch_init_rslt_   = bmi270_init(&bmi_);
+    
+    #if ATOMS3R_HAVE_BMI270_MAXIMUM_FIFO_INIT
+    if (last_bosch_init_rslt_ != BMI2_OK) {
+      used_maximum_fifo_init_ = true;
+      last_bosch_init_rslt_   = bmi270_maximum_fifo_init(&bmi_);
+    }
+    #endif
+    
     if (last_bosch_init_rslt_ != BMI2_OK) {
       return failBegin_(Error::INIT_FAILED);
     }
-  #endif
     device_initialized_ = true;
 
     const bool use200 = (odr_hz > 150.0f);
@@ -851,46 +855,32 @@ private:
 
   static int8_t bmi2_i2c_read_(uint8_t reg_addr, uint8_t* reg_data, uint32_t len, void* intf_ptr) {
     auto* self = static_cast<BoschBmi270Fifo*>(intf_ptr);
-    if (self == nullptr || self->i2c_ == nullptr || reg_data == nullptr) {
-      return static_cast<int8_t>(-1);
+    if (self == nullptr || self->i2c_ == nullptr || reg_data == nullptr || len == 0 || len > 30) {
+      return BMI2_E_COM_FAIL;
     }
-
-    uint32_t off = 0;
-    while (off < len) {
-      const uint16_t n = static_cast<uint16_t>(std::min<uint32_t>(I2C_CHUNK, len - off));
-      const uint8_t addr = (reg_addr == BMI2_FIFO_DATA_ADDR)
-                         ? reg_addr
-                         : static_cast<uint8_t>(reg_addr + off);
-
-      if (!self->i2c_->readRegister(self->bmi_addr_, addr, reg_data + off, n, self->i2c_hz_)) {
-        return static_cast<int8_t>(-1);
-      }
-
-      off += n;
-    }
-
-    return BMI2_OK;
+    return self->i2c_->readRegister(
+             self->bmi_addr_,
+             reg_addr,
+             reg_data,
+             static_cast<uint16_t>(len),
+             self->i2c_hz_)
+           ? BMI2_OK
+           : BMI2_E_COM_FAIL;
   }
-
+  
   static int8_t bmi2_i2c_write_(uint8_t reg_addr, const uint8_t* reg_data, uint32_t len, void* intf_ptr) {
     auto* self = static_cast<BoschBmi270Fifo*>(intf_ptr);
-    if (self == nullptr || self->i2c_ == nullptr || reg_data == nullptr) {
-      return static_cast<int8_t>(-1);
+    if (self == nullptr || self->i2c_ == nullptr || reg_data == nullptr || len == 0 || len > 30) {
+      return BMI2_E_COM_FAIL;
     }
-
-    uint32_t off = 0;
-    while (off < len) {
-      const uint16_t n = static_cast<uint16_t>(std::min<uint32_t>(I2C_CHUNK, len - off));
-      const uint8_t addr = static_cast<uint8_t>(reg_addr + off);
-
-      if (!self->i2c_->writeRegister(self->bmi_addr_, addr, reg_data + off, n, self->i2c_hz_)) {
-        return static_cast<int8_t>(-1);
-      }
-
-      off += n;
-    }
-
-    return BMI2_OK;
+    return self->i2c_->writeRegister(
+             self->bmi_addr_,
+             reg_addr,
+             reg_data,
+             static_cast<uint16_t>(len),
+             self->i2c_hz_)
+           ? BMI2_OK
+           : BMI2_E_COM_FAIL;
   }
 
   static void bmi2_delay_us_(uint32_t period, void*) {
