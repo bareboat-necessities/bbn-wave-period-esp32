@@ -56,21 +56,19 @@ public:
     uint8_t  bmm_addr = BMM150_DEFAULT_I2C_ADDRESS; // usually 0x10
 
     // Manual AUX bridge service ODR inside BMI270.
-    // Keep this high enough that manual reads do not feel "stuck".
     float    aux_odr_hz = 100.0f;
 
     uint8_t  preset_mode = BMM150_PRESETMODE_REGULAR;
 
     // Regular/low-power/enhanced are 10 Hz. High-accuracy is 20 Hz.
-    // 120 ms guarantees at least one fresh sample for 10 Hz modes.
     uint16_t startup_settle_ms = 120;
 
     // Perform checked mag reads during begin().
     bool     verify_first_read = true;
 
-    // If polled faster than the effective BMM150 output cadence,
-    // return the previous good sample instead of hammering AUX.
-    bool     return_last_on_fast_poll = true;
+    // If true, fast polling returns the last good sample.
+    // If false, readMag_uT() waits until the next expected fresh sample slot.
+    bool     return_last_on_fast_poll = false;
 
     // Board remap:
     //   +1,+2,+3 = +X,+Y,+Z
@@ -190,6 +188,7 @@ public:
       bestEffortRollback_();
       return false;
     }
+    bmi_dev_->aps_status = BMI2_DISABLE;
 
     if (!setAuxPullup2k_()) {
       ++init_fail_total_;
@@ -208,7 +207,6 @@ public:
       }
     }
 
-    // Preserve existing AUX config and override only the fields we own.
     bmi2_sens_config sc = saved_aux_cfg_;
     sc.type = BMI2_AUX;
     sc.cfg.aux.odr             = auxOdrFromHz_(cfg_.aux_odr_hz);
@@ -256,7 +254,6 @@ public:
 
     std::memset(&bmm_settings_, 0, sizeof(bmm_settings_));
 
-    // Enter normal mode first.
     bmm_settings_.pwr_mode = normalModeValue_();
     if (bmm150_set_op_mode(&bmm_settings_, &bmm_dev_) != BMM150_OK) {
       ++init_fail_total_;
@@ -265,7 +262,6 @@ public:
       return false;
     }
 
-    // Then apply preset mode.
     bmm_settings_.preset_mode = cfg_.preset_mode;
     if (bmm150_set_presetmode(&bmm_settings_, &bmm_dev_) != BMM150_OK) {
       ++init_fail_total_;
@@ -577,18 +573,25 @@ private:
   }
 
   bool readMagInternal_(Vector3f& m_uT_out, bool count_stats) {
-    const uint32_t now_ms = millis();
+    uint32_t now_ms = millis();
 
-    if (cfg_.return_last_on_fast_poll && have_last_good_) {
+    if (have_last_good_) {
       const uint32_t min_ms = minReadIntervalMs_();
-      if ((uint32_t)(now_ms - last_read_ms_) < min_ms) {
-        m_uT_out = last_good_uT_;
-        ++possible_duplicate_total_;
-        last_error_ = Error::NONE;
-        if (count_stats) {
-          ++read_ok_total_;
+      const uint32_t elapsed = static_cast<uint32_t>(now_ms - last_read_ms_);
+
+      if (elapsed < min_ms) {
+        if (cfg_.return_last_on_fast_poll) {
+          m_uT_out = last_good_uT_;
+          ++possible_duplicate_total_;
+          last_error_ = Error::NONE;
+          if (count_stats) {
+            ++read_ok_total_;
+          }
+          return true;
         }
-        return true;
+
+        delay(min_ms - elapsed);
+        now_ms = millis();
       }
     }
 
@@ -614,16 +617,6 @@ private:
     }
 
     if (allZero3_(mx, my, mz)) {
-      if (have_last_good_) {
-        m_uT_out = last_good_uT_;
-        ++possible_duplicate_total_;
-        last_error_ = Error::NONE;
-        if (count_stats) {
-          ++read_ok_total_;
-        }
-        return true;
-      }
-
       last_error_ = Error::ZERO_MAG;
       if (count_stats) {
         ++read_fail_total_;
@@ -635,16 +628,6 @@ private:
     m_uT_out = applyAxisMap_(raw_uT);
 
     if (allZero3_(m_uT_out)) {
-      if (have_last_good_) {
-        m_uT_out = last_good_uT_;
-        ++possible_duplicate_total_;
-        last_error_ = Error::NONE;
-        if (count_stats) {
-          ++read_ok_total_;
-        }
-        return true;
-      }
-
       last_error_ = Error::ZERO_MAG;
       if (count_stats) {
         ++read_fail_total_;
@@ -764,7 +747,7 @@ public:
     uint8_t  preset_mode = 0;
     uint16_t startup_settle_ms = 120;
     bool     verify_first_read = true;
-    bool     return_last_on_fast_poll = true;
+    bool     return_last_on_fast_poll = false;
     int8_t   axis_map[3] = { +1, +2, +3 };
   };
 
