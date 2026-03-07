@@ -248,7 +248,7 @@ public:
     }
     fifo_configured_ = true;
 
-    rslt = bmi2_set_fifo_wm(use200 ? 240 : 120, &bmi_);
+    rslt = bmi2_set_fifo_wm(FIFO_READ_BURST_MAX, &bmi_);
     if (rslt != BMI2_OK) {
       watermark_set_ok_ = false;
       last_error_ = Error::FIFO_WM_FAILED;
@@ -417,6 +417,9 @@ public:
 
 private:
   static constexpr uint16_t I2C_CHUNK             = 30;
+  // Keep FIFO burst requests conservative: oversized reads can come back as
+  // all-zero payloads on some Wire stacks once internal buffers overflow.
+  static constexpr uint16_t FIFO_READ_BURST_MAX   = 120;
   static constexpr int      MAX_EXTRACT           = 128;
   static constexpr int      PENDING_CAP           = MAX_EXTRACT;
   static constexpr size_t   FIFO_BUF_CAP          = 2048u + 256u;
@@ -801,6 +804,7 @@ private:
     }
 
     uint32_t req = static_cast<uint32_t>(fifo_len) + static_cast<uint32_t>(bmi_.dummy_byte);
+    req = std::min<uint32_t>(req, FIFO_READ_BURST_MAX);
     if (req > static_cast<uint32_t>(sizeof(fifo_buf_))) {
       req = static_cast<uint32_t>(sizeof(fifo_buf_));
     }
