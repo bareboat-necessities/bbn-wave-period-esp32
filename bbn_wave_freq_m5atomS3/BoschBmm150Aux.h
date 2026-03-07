@@ -56,16 +56,31 @@ public:
     uint8_t  bmm_addr = BMM150_DEFAULT_I2C_ADDRESS; // usually 0x10
 
     // Manual AUX bridge service ODR inside BMI270.
-    // This is NOT a guarantee of fresh BMM150 output cadence.
-    float    aux_odr_hz = 25.0f;
+    // M5's BMI270+BMM150 AUX example uses 100 Hz here.
+    float    aux_odr_hz = 100.0f;
 
     uint8_t  preset_mode = BMM150_PRESETMODE_REGULAR;
 
-    // Small startup settle after entering normal mode.
-    uint16_t startup_settle_ms = 3;
+    // Bosch preset modes are not all "fast":
+    //   low power / regular / enhanced regular -> 10 Hz
+    //   high accuracy -> 20 Hz
+    // Give the sensor enough time to produce the first fresh sample.
+    uint16_t startup_settle_ms = 120;
 
     // Perform one checked mag read during begin().
     bool     verify_first_read = true;
+
+    // If polled faster than the effective BMM150 output cadence,
+    // return the previous good sample instead of repeatedly rereading
+    // stale registers through the AUX bridge.
+    bool     return_last_on_fast_poll = true;
+
+    // Board remap:
+    //   +1,+2,+3 = +X,+Y,+Z
+    //   -1,-2,-3 = -X,-Y,-Z
+    //
+    // Default is identity. Change this for your board mounting.
+    int8_t   axis_map[3] = { +1, +2, +3 };
   };
 
   enum class Error : uint8_t {
@@ -77,6 +92,7 @@ public:
 
     BMI_GET_AUX_CFG_FAILED,
     BMI_ADV_POWER_SAVE_DISABLE_FAILED,
+    BMI_AUX_PULLUP_CFG_FAILED,
     BMI_AUX_ENABLE_FAILED,
     BMI_SET_AUX_CFG_FAILED,
 
@@ -116,29 +132,19 @@ public:
   uint32_t initFailuresTotal() const            { return init_fail_total_; }
   uint32_t readOkTotal() const                  { return read_ok_total_; }
   uint32_t readFailuresTotal() const            { return read_fail_total_; }
-  uint32_t rollbackFailuresTotal() const        { return rollback_fail_total_; } // begin() rollback failures
-  uint32_t endFailuresTotal() const             { return end_fail_total_; }      // explicit end() failures
+  uint32_t rollbackFailuresTotal() const        { return rollback_fail_total_; }
+  uint32_t endFailuresTotal() const             { return end_fail_total_; }
   uint32_t possibleDuplicateReadsTotal() const  { return possible_duplicate_total_; }
   uint32_t lastReadMillis() const               { return last_read_ms_; }
 
   const Vector3f& lastGoodMag_uT() const { return last_good_uT_; }
   bool haveLastGoodMag() const { return have_last_good_; }
 
-  // Initialize BMM150 via BMI270 AUX in MANUAL bridge mode.
-  //
-  // Contract:
-  // - bmi_dev must remain valid for the lifetime of this object.
-  // - This wrapper is a manual AUX bridge, not an auto-stream FIFO driver.
-  // - It deliberately leaves BMI270 advanced power save disabled once started.
-  // - On begin() failure it attempts best-effort rollback of prior AUX config.
   bool begin(struct bmi2_dev* bmi_dev) {
     return begin(bmi_dev, Config{});
   }
-  
+
   bool begin(struct bmi2_dev* bmi_dev, const Config& cfg) {
-    // If a prior session is still attached, always try to end it first,
-    // regardless of ok_. This prevents a failed end() from being silently
-    // discarded by a later begin().
     if (session_attached_) {
       if (!end()) {
         ++init_fail_total_;
@@ -163,6 +169,7 @@ public:
     have_last_good_ = false;
     last_good_uT_ = Vector3f::Zero();
     last_read_ms_ = 0;
+    effective_mag_hz_ = 10.0f;
 
     if (!bmi_dev_) {
       ++init_fail_total_;
@@ -171,7 +178,6 @@ public:
       return false;
     }
 
-    // Save the current AUX config first so rollback/end can restore it.
     saved_aux_cfg_.type = BMI2_AUX;
     if (bmi270_get_sensor_config(&saved_aux_cfg_, 1, bmi_dev_) != BMI2_OK) {
       ++init_fail_total_;
@@ -189,6 +195,13 @@ public:
       return false;
     }
 
+    if (!setAuxPullup2k_()) {
+      ++init_fail_total_;
+      last_error_ = Error::BMI_AUX_PULLUP_CFG_FAILED;
+      bestEffortRollback_();
+      return false;
+    }
+
     {
       const uint8_t sens = BMI2_AUX;
       if (bmi2_sensor_enable(&sens, 1, bmi_dev_) != BMI2_OK) {
@@ -199,17 +212,17 @@ public:
       }
     }
 
-    // Start from the previously-read AUX config so we preserve any unknown or
-    // revision-specific fields, then override only the fields this wrapper owns.
+    // Preserve any unknown/revision-specific fields from the existing AUX config
+    // and override only what this wrapper owns.
     bmi2_sens_config sc = saved_aux_cfg_;
     sc.type = BMI2_AUX;
+    sc.cfg.aux.odr             = auxOdrFromHz_(cfg_.aux_odr_hz);
     sc.cfg.aux.aux_en          = BMI2_ENABLE;
-    sc.cfg.aux.manual_en       = BMI2_ENABLE;
     sc.cfg.aux.i2c_device_addr = cfg_.bmm_addr;
     sc.cfg.aux.fcu_write_en    = BMI2_ENABLE;
     sc.cfg.aux.man_rd_burst    = manualBurstLen_();
     sc.cfg.aux.read_addr       = dataStartReg_();
-    sc.cfg.aux.odr             = auxOdrFromHz_(cfg_.aux_odr_hz);
+    sc.cfg.aux.manual_en       = BMI2_ENABLE;
 
     if (bmi270_set_sensor_config(&sc, 1, bmi_dev_) != BMI2_OK) {
       ++init_fail_total_;
@@ -247,15 +260,8 @@ public:
     }
 
     std::memset(&bmm_settings_, 0, sizeof(bmm_settings_));
-    bmm_settings_.preset_mode = cfg_.preset_mode;
 
-    if (bmm150_set_presetmode(&bmm_settings_, &bmm_dev_) != BMM150_OK) {
-      ++init_fail_total_;
-      last_error_ = Error::BMM_SET_PRESET_FAILED;
-      bestEffortRollback_();
-      return false;
-    }
-
+    // Safer order for AUX-bridged bring-up: enter normal mode first, then apply preset.
     bmm_settings_.pwr_mode = normalModeValue_();
     if (bmm150_set_op_mode(&bmm_settings_, &bmm_dev_) != BMM150_OK) {
       ++init_fail_total_;
@@ -263,6 +269,16 @@ public:
       bestEffortRollback_();
       return false;
     }
+
+    bmm_settings_.preset_mode = cfg_.preset_mode;
+    if (bmm150_set_presetmode(&bmm_settings_, &bmm_dev_) != BMM150_OK) {
+      ++init_fail_total_;
+      last_error_ = Error::BMM_SET_PRESET_FAILED;
+      bestEffortRollback_();
+      return false;
+    }
+
+    effective_mag_hz_ = presetModeHz_(cfg_.preset_mode);
 
     if (cfg_.startup_settle_ms > 0u) {
       delay(cfg_.startup_settle_ms);
@@ -283,13 +299,6 @@ public:
     return true;
   }
 
-  // Restore prior AUX config snapshot and detach this wrapper.
-  //
-  // Note: advanced power save is intentionally NOT restored, because the
-  // surrounding BMI270 FIFO/AUX stack commonly requires it disabled and
-  // Bosch vendored revisions do not expose a portable "get current APS state".
-  //
-  // If end() fails, the session remains attached so the caller can retry cleanup.
   bool end() {
     if (!session_attached_ || !bmi_dev_) {
       resetSessionState_();
@@ -328,11 +337,6 @@ public:
     return true;
   }
 
-  // Read compensated magnetometer in microtesla.
-  //
-  // This is an on-demand manual AUX read. If polled faster than the BMM150
-  // update cadence, repeated samples are possible. Exact consecutive repeats
-  // are counted as "possible duplicates" for visibility.
   bool readMag_uT(Vector3f& m_uT_out) {
     if (!ok_) {
       last_error_ = Error::NOT_INITIALIZED;
@@ -359,6 +363,7 @@ private:
       case Error::NOT_INITIALIZED:                   return "not initialized";
       case Error::BMI_GET_AUX_CFG_FAILED:            return "bmi270_get_sensor_config(BMI2_AUX) failed";
       case Error::BMI_ADV_POWER_SAVE_DISABLE_FAILED: return "bmi2_set_adv_power_save(DISABLE) failed";
+      case Error::BMI_AUX_PULLUP_CFG_FAILED:         return "failed to configure BMI270 AUX pull-up trim";
       case Error::BMI_AUX_ENABLE_FAILED:             return "bmi2_sensor_enable(BMI2_AUX) failed";
       case Error::BMI_SET_AUX_CFG_FAILED:            return "bmi270_set_sensor_config(BMI2_AUX) failed";
       case Error::CHIP_ID_READ_FAILED:               return "BMM150 chip-id read failed";
@@ -408,8 +413,6 @@ private:
   }
 
   static uint8_t manualBurstLen_() {
-    // Choose the longest manual burst enum exposed by the vendored Bosch headers.
-    // In manual bridge mode this mainly keeps AUX config valid across revisions.
     #if defined(BMI2_AUX_READ_LEN_3)
       return BMI2_AUX_READ_LEN_3;
     #elif defined(BMI2_AUX_READ_LEN_2)
@@ -423,7 +426,7 @@ private:
 
   static uint8_t auxOdrFromHz_(float hz) {
     if (!(hz > 0.0f) || !std::isfinite(hz)) {
-      hz = 25.0f;
+      hz = 100.0f;
     }
 
     #if defined(BMI2_AUX_ODR_200HZ)
@@ -452,11 +455,61 @@ private:
     #endif
     #if defined(BMI2_AUX_ODR_0_78HZ)
       return BMI2_AUX_ODR_0_78HZ;
-    #elif defined(BMI2_AUX_ODR_25HZ)
-      return BMI2_AUX_ODR_25HZ;
+    #elif defined(BMI2_AUX_ODR_100HZ)
+      return BMI2_AUX_ODR_100HZ;
     #else
       return 0;
     #endif
+  }
+
+  static float presetModeHz_(uint8_t preset_mode) {
+    switch (preset_mode) {
+      case BMM150_PRESETMODE_HIGHACCURACY:
+        return 20.0f;
+      case BMM150_PRESETMODE_LOWPOWER:
+      case BMM150_PRESETMODE_REGULAR:
+      case BMM150_PRESETMODE_ENHANCED:
+      default:
+        return 10.0f;
+    }
+  }
+
+  uint32_t minReadIntervalMs_() const {
+    const float hz = (effective_mag_hz_ > 0.0f && std::isfinite(effective_mag_hz_))
+                   ? effective_mag_hz_
+                   : 10.0f;
+    const float ms = 1000.0f / hz;
+    const long out = lroundf(ms);
+    return out > 0 ? static_cast<uint32_t>(out) : 100u;
+  }
+
+  bool setAuxPullup2k_() {
+  #if defined(BMI2_AUX_IF_TRIM) && defined(BMI2_ASDA_PUPSEL_2K)
+    uint8_t regdata = BMI2_ASDA_PUPSEL_2K;
+    return bmi2_set_regs(BMI2_AUX_IF_TRIM, &regdata, 1, bmi_dev_) == BMI2_OK;
+  #else
+    return true;
+  #endif
+  }
+
+  static float pickAxis_(int8_t code, const Vector3f& v) {
+    switch (code) {
+      case +1: return v.x();
+      case -1: return -v.x();
+      case +2: return v.y();
+      case -2: return -v.y();
+      case +3: return v.z();
+      case -3: return -v.z();
+      default: return 0.0f;
+    }
+  }
+
+  Vector3f applyAxisMap_(const Vector3f& raw) const {
+    return Vector3f(
+      pickAxis_(cfg_.axis_map[0], raw),
+      pickAxis_(cfg_.axis_map[1], raw),
+      pickAxis_(cfg_.axis_map[2], raw)
+    );
   }
 
   static BMM150_INTF_RET_TYPE bmm_read_(uint8_t reg,
@@ -503,6 +556,21 @@ private:
   }
 
   bool readMagInternal_(Vector3f& m_uT_out, bool count_stats) {
+    const uint32_t now_ms = millis();
+
+    if (cfg_.return_last_on_fast_poll && have_last_good_) {
+      const uint32_t min_ms = minReadIntervalMs_();
+      if ((uint32_t)(now_ms - last_read_ms_) < min_ms) {
+        m_uT_out = last_good_uT_;
+        ++possible_duplicate_total_;
+        last_error_ = Error::NONE;
+        if (count_stats) {
+          ++read_ok_total_;
+        }
+        return true;
+      }
+    }
+
     bmm150_mag_data md{};
     if (bmm150_read_mag_data(&md, &bmm_dev_) != BMM150_OK) {
       last_error_ = Error::MAG_READ_FAILED;
@@ -524,19 +592,20 @@ private:
       return false;
     }
 
-    m_uT_out = Vector3f(mx, my, mz);
+    const Vector3f raw_uT(mx, my, mz);
+    m_uT_out = applyAxisMap_(raw_uT);
 
     if (have_last_good_) {
-      if (mx == last_good_uT_.x() &&
-          my == last_good_uT_.y() &&
-          mz == last_good_uT_.z()) {
+      if (m_uT_out.x() == last_good_uT_.x() &&
+          m_uT_out.y() == last_good_uT_.y() &&
+          m_uT_out.z() == last_good_uT_.z()) {
         ++possible_duplicate_total_;
       }
     }
 
     last_good_uT_ = m_uT_out;
     have_last_good_ = true;
-    last_read_ms_ = millis();
+    last_read_ms_ = now_ms;
     last_error_ = Error::NONE;
 
     if (count_stats) {
@@ -565,14 +634,13 @@ private:
     have_last_good_ = false;
     last_good_uT_ = Vector3f::Zero();
     last_read_ms_ = 0;
+    effective_mag_hz_ = 10.0f;
   }
 
   void detachSession_() {
     resetSessionState_();
   }
 
-  // Best-effort rollback during begin() failure.
-  // If rollback itself fails, keep the session attached so the caller can retry end().
   void bestEffortRollback_() {
     bool restore_ok = true;
 
@@ -590,8 +658,6 @@ private:
     if (!restore_ok) {
       ++rollback_fail_total_;
       ok_ = false;
-      // Do NOT overwrite the primary failure cause in last_error_.
-      // Keep session_attached_ true so explicit end() can retry cleanup.
       return;
     }
 
@@ -624,6 +690,7 @@ private:
   bool     have_last_good_ = false;
   Vector3f last_good_uT_ = Vector3f::Zero();
   uint32_t last_read_ms_ = 0;
+  float    effective_mag_hz_ = 10.0f;
 };
 
 #else
@@ -636,10 +703,12 @@ class BoschBmm150Aux {
 public:
   struct Config {
     uint8_t  bmm_addr = 0x10;
-    float    aux_odr_hz = 25.0f;
+    float    aux_odr_hz = 100.0f;
     uint8_t  preset_mode = 0;
-    uint16_t startup_settle_ms = 3;
+    uint16_t startup_settle_ms = 120;
     bool     verify_first_read = true;
+    bool     return_last_on_fast_poll = true;
+    int8_t   axis_map[3] = { +1, +2, +3 };
   };
 
   enum class Error : uint8_t {
@@ -690,7 +759,7 @@ public:
       "or exclude BoschBmm150Aux from this build.");
     return false;
   }
-  
+
   template <typename Dummy = void>
   bool begin(struct bmi2_dev*, const Config&) {
     static_assert(always_false<Dummy>::value,
