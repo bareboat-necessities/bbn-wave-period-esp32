@@ -161,7 +161,10 @@ public:
     M5.begin(cfg);
 
     // AtomS3R internal IMU I2C bus
-    M5.In_I2C.begin((i2c_port_t)45, 0, 400000);
+    if (!M5.In_I2C.begin((i2c_port_t)0, 45, 0)) {
+      Serial.println("[BOOT] M5.In_I2C.begin failed");
+      while (true) delay(100);
+    }
 
     ui_.begin();
     if (use_graphics_) {
