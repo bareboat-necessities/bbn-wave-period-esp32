@@ -59,8 +59,8 @@ public:
     uint16_t startup_settle_ms = 120;               // safe for 10 Hz modes
     bool     verify_first_read = true;
 
-    // If true, polling faster than BMM150 ODR returns last good sample.
-    // If false, readMag_uT() waits for a fresh DRDY sample.
+    // If true, fast polling returns the last sample.
+    // If false, readMag_uT() waits until next expected mag sample slot.
     bool     return_last_on_fast_poll = false;
 
     // Board remap:
@@ -89,7 +89,6 @@ public:
     BMM_SET_PRESET_FAILED,
     BMM_SET_OPMODE_FAILED,
     BMM_TEST_READ_FAILED,
-    BMM_AUX_COMPENSATE_FAILED,
 
     MAG_READ_FAILED,
     NONFINITE_MAG,
@@ -153,8 +152,6 @@ public:
     last_good_uT_ = Vector3f::Zero();
     last_read_ms_ = 0;
     effective_mag_hz_ = 10.0f;
-    have_last_raw_ = false;
-    std::memset(last_raw_, 0, sizeof(last_raw_));
 
     if (!bmi_dev_) {
       ++init_fail_total_;
@@ -198,14 +195,14 @@ public:
       }
     }
 
-    // Keep AUX in MANUAL mode at runtime and read one full 8-byte burst ourselves.
+    // Keep AUX in MANUAL mode permanently. This is the stable path for direct BMM150 reads.
     bmi2_sens_config sc = saved_aux_cfg_;
     sc.type = BMI2_AUX;
     sc.cfg.aux.odr             = auxOdrFromHz_(cfg_.aux_odr_hz);
     sc.cfg.aux.aux_en          = BMI2_ENABLE;
     sc.cfg.aux.i2c_device_addr = cfg_.bmm_addr;
     sc.cfg.aux.fcu_write_en    = BMI2_ENABLE;
-    sc.cfg.aux.man_rd_burst    = manualBurstLen8_();
+    sc.cfg.aux.man_rd_burst    = manualBurstLen_();
     sc.cfg.aux.read_addr       = dataStartReg_();
     sc.cfg.aux.manual_en       = BMI2_ENABLE;
 
@@ -254,7 +251,7 @@ public:
       return false;
     }
 
-    // Important: set NORMAL mode after preset config.
+    // Critical: actually enter measuring mode.
     bmm_settings_.pwr_mode = normalModeValue_();
     if (bmm150_set_op_mode(&bmm_settings_, &bmm_dev_) != BMM150_OK) {
       ++init_fail_total_;
@@ -368,8 +365,7 @@ private:
       case Error::BMM_SET_PRESET_FAILED:             return "bmm150_set_presetmode failed";
       case Error::BMM_SET_OPMODE_FAILED:             return "bmm150_set_op_mode failed";
       case Error::BMM_TEST_READ_FAILED:              return "initial BMM150 read failed";
-      case Error::BMM_AUX_COMPENSATE_FAILED:         return "bmm150_aux_mag_data failed";
-      case Error::MAG_READ_FAILED:                   return "aux raw burst read failed";
+      case Error::MAG_READ_FAILED:                   return "bmm150_read_mag_data failed";
       case Error::NONFINITE_MAG:                     return "non-finite magnetometer output";
       case Error::ZERO_MAG:                          return "all-zero magnetometer sample";
       case Error::BMI_RESTORE_AUX_CFG_FAILED:        return "failed to restore prior BMI270 AUX config";
@@ -410,9 +406,9 @@ private:
     #endif
   }
 
-  static uint8_t manualBurstLen8_() {
+  static uint8_t manualBurstLen_() {
     #if defined(BMI2_AUX_READ_LEN_3)
-      return BMI2_AUX_READ_LEN_3; // 8 bytes
+      return BMI2_AUX_READ_LEN_3;
     #elif defined(BMI2_AUX_READ_LEN_2)
       return BMI2_AUX_READ_LEN_2;
     #elif defined(BMI2_AUX_READ_LEN_1)
@@ -462,11 +458,13 @@ private:
 
   static float presetModeHz_(uint8_t preset_mode) {
     switch (preset_mode) {
-      case BMM150_PRESETMODE_HIGHACCURACY: return 20.0f;
+      case BMM150_PRESETMODE_HIGHACCURACY:
+        return 20.0f;
       case BMM150_PRESETMODE_LOWPOWER:
       case BMM150_PRESETMODE_REGULAR:
       case BMM150_PRESETMODE_ENHANCED:
-      default:                             return 10.0f;
+      default:
+        return 10.0f;
     }
   }
 
@@ -498,11 +496,11 @@ private:
 
   static float pickAxis_(int8_t code, const Vector3f& v) {
     switch (code) {
-      case +1: return  v.x();
+      case +1: return v.x();
       case -1: return -v.x();
-      case +2: return  v.y();
+      case +2: return v.y();
       case -2: return -v.y();
-      case +3: return  v.z();
+      case +3: return v.z();
       case -3: return -v.z();
       default: return 0.0f;
     }
@@ -525,8 +523,8 @@ private:
       return static_cast<BMM150_INTF_RET_TYPE>(-1);
     }
 
-    return static_cast<BMM150_INTF_RET_TYPE>(
-      bmi2_read_aux_man_mode(reg, data, len, self->bmi_dev_));
+    const int8_t r = bmi2_read_aux_man_mode(reg, data, len, self->bmi_dev_);
+    return static_cast<BMM150_INTF_RET_TYPE>(r);
   }
 
   static BMM150_INTF_RET_TYPE bmm_write_(uint8_t reg,
@@ -538,8 +536,8 @@ private:
       return static_cast<BMM150_INTF_RET_TYPE>(-1);
     }
 
-    return static_cast<BMM150_INTF_RET_TYPE>(
-      bmi2_write_aux_man_mode(reg, data, len, self->bmi_dev_));
+    const int8_t r = bmi2_write_aux_man_mode(reg, data, len, self->bmi_dev_);
+    return static_cast<BMM150_INTF_RET_TYPE>(r);
   }
 
   static void bmm_delay_us_(uint32_t us, void*) {
@@ -559,84 +557,32 @@ private:
     return true;
   }
 
-  bool readRawBurst8_(uint8_t raw[8]) {
-    if (bmi2_read_aux_man_mode(dataStartReg_(), raw, 8, bmi_dev_) != BMI2_OK) {
-      last_error_ = Error::MAG_READ_FAILED;
-      return false;
-    }
-    return true;
-  }
-
-  static bool rawBurstAllZero_(const uint8_t raw[8]) {
-    for (int i = 0; i < 8; ++i) {
-      if (raw[i] != 0u) return false;
-    }
-    return true;
-  }
-
-  // BMM150 DRDY is RHALL_LSB bit0, i.e. raw[6] bit0 in the 0x42..0x49 burst.
-  static bool rawBurstDrdy_(const uint8_t raw[8]) {
-    return (raw[6] & 0x01u) != 0u;
-  }
-
-  bool waitForFreshRaw_(uint8_t raw[8]) {
-    const uint32_t min_ms = minReadIntervalMs_();
+  bool readMagInternal_(Vector3f& m_uT_out, bool count_stats) {
+    uint32_t now_ms = millis();
 
     if (have_last_good_) {
-      const uint32_t elapsed = static_cast<uint32_t>(millis() - last_read_ms_);
+      const uint32_t min_ms = minReadIntervalMs_();
+      const uint32_t elapsed = static_cast<uint32_t>(now_ms - last_read_ms_);
+
       if (elapsed < min_ms) {
         if (cfg_.return_last_on_fast_poll) {
-          return false;
+          m_uT_out = last_good_uT_;
+          ++possible_duplicate_total_;
+          last_error_ = Error::NONE;
+          if (count_stats) {
+            ++read_ok_total_;
+          }
+          return true;
         }
+
         delay(min_ms - elapsed);
+        now_ms = millis();
       }
-    }
-
-    const uint32_t t0 = millis();
-    while (true) {
-      if (!readRawBurst8_(raw)) {
-        return false;
-      }
-
-      if (!rawBurstAllZero_(raw) && rawBurstDrdy_(raw)) {
-        return true;
-      }
-
-      if (cfg_.return_last_on_fast_poll) {
-        return false;
-      }
-
-      if (static_cast<uint32_t>(millis() - t0) >= (min_ms + 20u)) {
-        return false;
-      }
-
-      delay(2);
-    }
-  }
-
-  bool readMagInternal_(Vector3f& m_uT_out, bool count_stats) {
-    uint8_t raw[8] = {0};
-
-    if (!waitForFreshRaw_(raw)) {
-      if (cfg_.return_last_on_fast_poll && have_last_good_) {
-        m_uT_out = last_good_uT_;
-        ++possible_duplicate_total_;
-        last_error_ = Error::NONE;
-        if (count_stats) {
-          ++read_ok_total_;
-        }
-        return true;
-      }
-
-      if (count_stats) {
-        ++read_fail_total_;
-      }
-      return false;
     }
 
     bmm150_mag_data md{};
-    if (bmm150_aux_mag_data(raw, &md, &bmm_dev_) != BMM150_OK) {
-      last_error_ = Error::BMM_AUX_COMPENSATE_FAILED;
+    if (bmm150_read_mag_data(&md, &bmm_dev_) != BMM150_OK) {
+      last_error_ = Error::MAG_READ_FAILED;
       if (count_stats) {
         ++read_fail_total_;
       }
@@ -674,26 +620,49 @@ private:
       return false;
     }
 
+    // One retry on exact duplicate, to avoid obvious stale reuse when the sensor is moving.
     if (have_last_good_ &&
         m_uT_out.x() == last_good_uT_.x() &&
         m_uT_out.y() == last_good_uT_.y() &&
         m_uT_out.z() == last_good_uT_.z()) {
-      ++possible_duplicate_total_;
+      const uint32_t retry_ms = minReadIntervalMs();
+      if (!cfg_.return_last_on_fast_poll && retry_ms > 0) {
+        delay(retry_ms);
+        bmm150_mag_data md2{};
+        if (bmm150_read_mag_data(&md2, &bmm_dev_) == BMM150_OK) {
+          const Vector3f raw2(static_cast<float>(md2.x),
+                              static_cast<float>(md2.y),
+                              static_cast<float>(md2.z));
+          if (finite3_(raw2.x(), raw2.y(), raw2.z()) && !allZero3_(raw2)) {
+            Vector3f mapped2 = applyAxisMap_(raw2);
+            if (!allZero3_(mapped2)) {
+              m_uT_out = mapped2;
+            }
+          }
+        }
+      }
+
+      if (m_uT_out.x() == last_good_uT_.x() &&
+          m_uT_out.y() == last_good_uT_.y() &&
+          m_uT_out.z() == last_good_uT_.z()) {
+        ++possible_duplicate_total_;
+      }
     }
 
-    std::memcpy(last_raw_, raw, sizeof(last_raw_));
-    have_last_raw_ = true;
-
-    last_good_uT_   = m_uT_out;
+    last_good_uT_ = m_uT_out;
     have_last_good_ = true;
-    last_read_ms_   = millis();
-    last_error_     = Error::NONE;
+    last_read_ms_ = now_ms;
+    last_error_ = Error::NONE;
 
     if (count_stats) {
       ++read_ok_total_;
     }
 
     return true;
+  }
+
+  uint32_t minReadIntervalMs() const {
+    return minReadIntervalMs_();
   }
 
   void resetSessionState_() {
@@ -716,9 +685,6 @@ private:
     last_good_uT_ = Vector3f::Zero();
     last_read_ms_ = 0;
     effective_mag_hz_ = 10.0f;
-
-    have_last_raw_ = false;
-    std::memset(last_raw_, 0, sizeof(last_raw_));
   }
 
   void detachSession_() {
@@ -775,9 +741,6 @@ private:
   Vector3f last_good_uT_ = Vector3f::Zero();
   uint32_t last_read_ms_ = 0;
   float    effective_mag_hz_ = 10.0f;
-
-  bool     have_last_raw_ = false;
-  uint8_t  last_raw_[8] = {0};
 };
 
 #else
@@ -842,16 +805,14 @@ public:
   template <typename Dummy = void>
   bool begin(struct bmi2_dev*) {
     static_assert(always_false<Dummy>::value,
-      "BoschBmm150Aux: Bosch SensorAPI headers not found. Install Arduino_BMI270_BMM150, "
-      "or exclude BoschBmm150Aux from this build.");
+      "BoschBmm150Aux: Bosch SensorAPI headers not found. Install Arduino_BMI270_BMM150, or exclude BoschBmm150Aux from this build.");
     return false;
   }
 
   template <typename Dummy = void>
   bool begin(struct bmi2_dev*, const Config&) {
     static_assert(always_false<Dummy>::value,
-      "BoschBmm150Aux: Bosch SensorAPI headers not found. Install Arduino_BMI270_BMM150, "
-      "or exclude BoschBmm150Aux from this build.");
+      "BoschBmm150Aux: Bosch SensorAPI headers not found. Install Arduino_BMI270_BMM150, or exclude BoschBmm150Aux from this build.");
     return false;
   }
 
