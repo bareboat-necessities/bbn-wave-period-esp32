@@ -56,11 +56,11 @@ public:
     uint8_t  bmm_addr = BMM150_DEFAULT_I2C_ADDRESS; // usually 0x10
     float    aux_odr_hz = 100.0f;                   // BMI270 AUX service rate
     uint8_t  preset_mode = BMM150_PRESETMODE_REGULAR;
-    uint16_t startup_settle_ms = 120;               // safe for 10 Hz modes
+    uint16_t startup_settle_ms = 120;               // safe for 10 Hz presets
     bool     verify_first_read = true;
 
-    // If true, fast polling returns the last sample.
-    // If false, readMag_uT() waits until next expected mag sample slot.
+    // If true and caller polls too fast, return previous good sample.
+    // If false, readMag_uT() waits for the next fresh DRDY event.
     bool     return_last_on_fast_poll = false;
 
     // Board remap:
@@ -195,7 +195,7 @@ public:
       }
     }
 
-    // Keep AUX in MANUAL mode permanently. This is the stable path for direct BMM150 reads.
+    // Keep AUX in MANUAL mode; BMM150 API calls go through indirect reads/writes.
     bmi2_sens_config sc = saved_aux_cfg_;
     sc.type = BMI2_AUX;
     sc.cfg.aux.odr             = auxOdrFromHz_(cfg_.aux_odr_hz);
@@ -251,7 +251,7 @@ public:
       return false;
     }
 
-    // Critical: actually enter measuring mode.
+    // Critical: preset alone does not put the part into measuring mode.
     bmm_settings_.pwr_mode = normalModeValue_();
     if (bmm150_set_op_mode(&bmm_settings_, &bmm_dev_) != BMM150_OK) {
       ++init_fail_total_;
@@ -396,6 +396,10 @@ private:
     #endif
   }
 
+  // Datasheet: data-ready is register 0x48 bit 0.
+  static constexpr uint8_t dataReadyReg_() { return 0x48u; }
+  static constexpr uint8_t dataReadyMask_() { return 0x01u; }
+
   static constexpr uint8_t normalModeValue_() {
     #if defined(BMM150_POWERMODE_NORMAL)
       return BMM150_POWERMODE_NORMAL;
@@ -496,11 +500,11 @@ private:
 
   static float pickAxis_(int8_t code, const Vector3f& v) {
     switch (code) {
-      case +1: return v.x();
+      case +1: return  v.x();
       case -1: return -v.x();
-      case +2: return v.y();
+      case +2: return  v.y();
       case -2: return -v.y();
-      case +3: return v.z();
+      case +3: return  v.z();
       case -3: return -v.z();
       default: return 0.0f;
     }
@@ -557,13 +561,60 @@ private:
     return true;
   }
 
+  bool waitForDataReady_(uint32_t timeout_ms) {
+    const uint32_t start_ms = millis();
+    uint8_t status = 0;
+
+    do {
+      if (bmm_read_(dataReadyReg_(), &status, 1, this) == 0) {
+        if ((status & dataReadyMask_()) != 0u) {
+          return true;
+        }
+      }
+      delay(2);
+    } while (static_cast<uint32_t>(millis() - start_ms) < timeout_ms);
+
+    return false;
+  }
+
+  bool readMagOnce_(Vector3f& m_uT_out) {
+    bmm150_mag_data md{};
+    if (bmm150_read_mag_data(&md, &bmm_dev_) != BMM150_OK) {
+      last_error_ = Error::MAG_READ_FAILED;
+      return false;
+    }
+
+    const float mx = static_cast<float>(md.x);
+    const float my = static_cast<float>(md.y);
+    const float mz = static_cast<float>(md.z);
+
+    if (!finite3_(mx, my, mz)) {
+      last_error_ = Error::NONFINITE_MAG;
+      return false;
+    }
+
+    if (allZero3_(mx, my, mz)) {
+      last_error_ = Error::ZERO_MAG;
+      return false;
+    }
+
+    const Vector3f raw_uT(mx, my, mz);
+    m_uT_out = applyAxisMap_(raw_uT);
+
+    if (allZero3_(m_uT_out)) {
+      last_error_ = Error::ZERO_MAG;
+      return false;
+    }
+
+    return true;
+  }
+
   bool readMagInternal_(Vector3f& m_uT_out, bool count_stats) {
     uint32_t now_ms = millis();
+    const uint32_t min_ms = minReadIntervalMs_();
 
     if (have_last_good_) {
-      const uint32_t min_ms = minReadIntervalMs_();
       const uint32_t elapsed = static_cast<uint32_t>(now_ms - last_read_ms_);
-
       if (elapsed < min_ms) {
         if (cfg_.return_last_on_fast_poll) {
           m_uT_out = last_good_uT_;
@@ -574,14 +625,23 @@ private:
           }
           return true;
         }
-
         delay(min_ms - elapsed);
         now_ms = millis();
       }
     }
 
-    bmm150_mag_data md{};
-    if (bmm150_read_mag_data(&md, &bmm_dev_) != BMM150_OK) {
+    // Wait for a fresh DRDY event before reading the burst.
+    if (!waitForDataReady_(min_ms + 20u)) {
+      if (cfg_.return_last_on_fast_poll && have_last_good_) {
+        m_uT_out = last_good_uT_;
+        ++possible_duplicate_total_;
+        last_error_ = Error::NONE;
+        if (count_stats) {
+          ++read_ok_total_;
+        }
+        return true;
+      }
+
       last_error_ = Error::MAG_READ_FAILED;
       if (count_stats) {
         ++read_fail_total_;
@@ -589,56 +649,24 @@ private:
       return false;
     }
 
-    const float mx = static_cast<float>(md.x);
-    const float my = static_cast<float>(md.y);
-    const float mz = static_cast<float>(md.z);
-
-    if (!finite3_(mx, my, mz)) {
-      last_error_ = Error::NONFINITE_MAG;
+    if (!readMagOnce_(m_uT_out)) {
       if (count_stats) {
         ++read_fail_total_;
       }
       return false;
     }
 
-    if (allZero3_(mx, my, mz)) {
-      last_error_ = Error::ZERO_MAG;
-      if (count_stats) {
-        ++read_fail_total_;
-      }
-      return false;
-    }
-
-    const Vector3f raw_uT(mx, my, mz);
-    m_uT_out = applyAxisMap_(raw_uT);
-
-    if (allZero3_(m_uT_out)) {
-      last_error_ = Error::ZERO_MAG;
-      if (count_stats) {
-        ++read_fail_total_;
-      }
-      return false;
-    }
-
-    // One retry on exact duplicate, to avoid obvious stale reuse when the sensor is moving.
+    // One retry if exact duplicate and caller asked for fresh data, not cached data.
     if (have_last_good_ &&
+        !cfg_.return_last_on_fast_poll &&
         m_uT_out.x() == last_good_uT_.x() &&
         m_uT_out.y() == last_good_uT_.y() &&
         m_uT_out.z() == last_good_uT_.z()) {
-      const uint32_t retry_ms = minReadIntervalMs();
-      if (!cfg_.return_last_on_fast_poll && retry_ms > 0) {
-        delay(retry_ms);
-        bmm150_mag_data md2{};
-        if (bmm150_read_mag_data(&md2, &bmm_dev_) == BMM150_OK) {
-          const Vector3f raw2(static_cast<float>(md2.x),
-                              static_cast<float>(md2.y),
-                              static_cast<float>(md2.z));
-          if (finite3_(raw2.x(), raw2.y(), raw2.z()) && !allZero3_(raw2)) {
-            Vector3f mapped2 = applyAxisMap_(raw2);
-            if (!allZero3_(mapped2)) {
-              m_uT_out = mapped2;
-            }
-          }
+
+      if (waitForDataReady_(min_ms + 20u)) {
+        Vector3f retry = Vector3f::Zero();
+        if (readMagOnce_(retry)) {
+          m_uT_out = retry;
         }
       }
 
@@ -659,10 +687,6 @@ private:
     }
 
     return true;
-  }
-
-  uint32_t minReadIntervalMs() const {
-    return minReadIntervalMs_();
   }
 
   void resetSessionState_() {
