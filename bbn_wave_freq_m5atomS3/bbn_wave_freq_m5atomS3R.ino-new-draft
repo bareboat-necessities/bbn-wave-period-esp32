@@ -374,7 +374,21 @@ private:
 
   void reinitBoschImu_() {
     const BoschBmi270_ImuCal::Config cfg = makeImuConfig_();
-
+  
+    // TEMP DEBUG PROBE: raw FIFO init only
+    BoschBmi270Fifo fifo_probe;
+    if (!fifo_probe.begin(M5.In_I2C, cfg.bmi270_addr, cfg.ag_hz, cfg.i2c_hz)) {
+      Serial.printf("[BOOT] RAW FIFO probe failed\n");
+      Serial.printf("[BOOT] FIFO detail: %s\n", fifo_probe.lastErrorString());
+      Serial.printf("[BOOT] FIFO init path: %s\n", fifo_probe.initPathString());
+      Serial.printf("[BOOT] FIFO Bosch init rslt: %d\n", (int)fifo_probe.lastBoschInitResult());
+      Serial.printf("[BOOT] BMI addr tried: 0x%02X\n", cfg.bmi270_addr);
+      ui_.fail("IMU", fifo_probe.lastErrorString());
+      while (true) delay(100);
+    }
+    fifo_probe.end();
+  
+    // Normal app init
     if (!runtime_imu_.begin(M5.In_I2C, cfg)) {
       Serial.printf("[BOOT] Bosch IMU init failed: %s\n", runtime_imu_.lastErrorString());
       Serial.printf("[BOOT] FIFO detail: %s\n", runtime_imu_.fifo().lastErrorString());
@@ -384,13 +398,13 @@ private:
       ui_.fail("IMU", runtime_imu_.fifo().lastErrorString());
       while (true) delay(100);
     }
-
+  
     last_mag_poll_ms_    = 0;
     last_mag_success_ms_ = 0;
     have_mag_sample_     = false;
     mag_raw_uT_.setConstant(NAN);
     pending_mag_update_  = false;
-
+  
     last_skipped_total_ = runtime_imu_.fifo().skippedFramesTotal();
   }
 
