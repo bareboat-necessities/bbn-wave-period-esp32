@@ -54,20 +54,13 @@ class BoschBmm150Aux {
 public:
   struct Config {
     uint8_t  bmm_addr = BMM150_DEFAULT_I2C_ADDRESS; // usually 0x10
-
-    // BMI270 AUX service ODR.
-    float    aux_odr_hz = 100.0f;
-
-    // BMM150 preset.
+    float    aux_odr_hz = 100.0f;                   // BMI270 AUX service rate
     uint8_t  preset_mode = BMM150_PRESETMODE_REGULAR;
-
-    // 10 Hz modes need about 100 ms for a guaranteed fresh frame.
-    uint16_t startup_settle_ms = 120;
-
+    uint16_t startup_settle_ms = 120;               // safe for 10 Hz modes
     bool     verify_first_read = true;
 
-    // If true, polling faster than the effective mag ODR returns the last sample.
-    // If false, readMag_uT() waits until the next expected sample slot.
+    // If true, polling faster than BMM150 ODR returns last good sample.
+    // If false, readMag_uT() waits for a fresh DRDY sample.
     bool     return_last_on_fast_poll = false;
 
     // Board remap:
@@ -88,7 +81,6 @@ public:
     BMI_AUX_PULLUP_CFG_FAILED,
     BMI_AUX_ENABLE_FAILED,
     BMI_SET_AUX_CFG_FAILED,
-    BMI_GET_SENSOR_DATA_FAILED,
 
     CHIP_ID_READ_FAILED,
     CHIP_ID_MISMATCH,
@@ -161,6 +153,8 @@ public:
     last_good_uT_ = Vector3f::Zero();
     last_read_ms_ = 0;
     effective_mag_hz_ = 10.0f;
+    have_last_raw_ = false;
+    std::memset(last_raw_, 0, sizeof(last_raw_));
 
     if (!bmi_dev_) {
       ++init_fail_total_;
@@ -204,14 +198,14 @@ public:
       }
     }
 
-    // Setup mode: manual indirect access for init/config/trim reads.
+    // Keep AUX in MANUAL mode at runtime and read one full 8-byte burst ourselves.
     bmi2_sens_config sc = saved_aux_cfg_;
     sc.type = BMI2_AUX;
     sc.cfg.aux.odr             = auxOdrFromHz_(cfg_.aux_odr_hz);
     sc.cfg.aux.aux_en          = BMI2_ENABLE;
     sc.cfg.aux.i2c_device_addr = cfg_.bmm_addr;
     sc.cfg.aux.fcu_write_en    = BMI2_ENABLE;
-    sc.cfg.aux.man_rd_burst    = manualBurstLen_8_();
+    sc.cfg.aux.man_rd_burst    = manualBurstLen8_();
     sc.cfg.aux.read_addr       = dataStartReg_();
     sc.cfg.aux.manual_en       = BMI2_ENABLE;
 
@@ -252,6 +246,7 @@ public:
 
     std::memset(&bmm_settings_, 0, sizeof(bmm_settings_));
     bmm_settings_.preset_mode = cfg_.preset_mode;
+
     if (bmm150_set_presetmode(&bmm_settings_, &bmm_dev_) != BMM150_OK) {
       ++init_fail_total_;
       last_error_ = Error::BMM_SET_PRESET_FAILED;
@@ -259,6 +254,7 @@ public:
       return false;
     }
 
+    // Important: set NORMAL mode after preset config.
     bmm_settings_.pwr_mode = normalModeValue_();
     if (bmm150_set_op_mode(&bmm_settings_, &bmm_dev_) != BMM150_OK) {
       ++init_fail_total_;
@@ -268,36 +264,6 @@ public:
     }
 
     effective_mag_hz_ = presetModeHz_(cfg_.preset_mode);
-
-#if defined(BMM150_SEL_DRDY_PIN_EN)
-    bmm_settings_.int_settings.drdy_pin_en = 0x01;
-    (void)bmm150_set_sensor_settings(BMM150_SEL_DRDY_PIN_EN, &bmm_settings_, &bmm_dev_);
-#endif
-
-    // Switch BMI270 AUX to data mode for live magnetometer updates.
-    bmi2_sens_config data_cfg{};
-    data_cfg.type = BMI2_AUX;
-    if (bmi270_get_sensor_config(&data_cfg, 1, bmi_dev_) != BMI2_OK) {
-      ++init_fail_total_;
-      last_error_ = Error::BMI_GET_AUX_CFG_FAILED;
-      bestEffortRollback_();
-      return false;
-    }
-
-    data_cfg.cfg.aux.odr             = auxOdrFromHz_(cfg_.aux_odr_hz);
-    data_cfg.cfg.aux.aux_en          = BMI2_ENABLE;
-    data_cfg.cfg.aux.i2c_device_addr = cfg_.bmm_addr;
-    data_cfg.cfg.aux.fcu_write_en    = BMI2_ENABLE;
-    data_cfg.cfg.aux.man_rd_burst    = manualBurstLen_8_();
-    data_cfg.cfg.aux.read_addr       = dataStartReg_();
-    data_cfg.cfg.aux.manual_en       = BMI2_DISABLE;
-
-    if (bmi270_set_sensor_config(&data_cfg, 1, bmi_dev_) != BMI2_OK) {
-      ++init_fail_total_;
-      last_error_ = Error::BMI_SET_AUX_CFG_FAILED;
-      bestEffortRollback_();
-      return false;
-    }
 
     if (cfg_.startup_settle_ms > 0u) {
       delay(cfg_.startup_settle_ms);
@@ -387,30 +353,28 @@ public:
 private:
   static const char* errorString_(Error e) {
     switch (e) {
-      case Error::NONE:                        return "none";
-      case Error::NOT_BUILT:                   return "Bosch SensorAPI not available in this build";
-      case Error::NULL_BMI_DEV:                return "null bmi2_dev";
-      case Error::NOT_INITIALIZED:             return "not initialized";
-      case Error::BMI_GET_AUX_CFG_FAILED:      return "bmi270_get_sensor_config(BMI2_AUX) failed";
-      case Error::BMI_ADV_POWER_SAVE_DISABLE_FAILED:
-                                               return "bmi2_set_adv_power_save(DISABLE) failed";
-      case Error::BMI_AUX_PULLUP_CFG_FAILED:   return "failed to configure BMI270 AUX pull-up trim";
-      case Error::BMI_AUX_ENABLE_FAILED:       return "bmi2_sensor_enable(BMI2_AUX) failed";
-      case Error::BMI_SET_AUX_CFG_FAILED:      return "bmi270_set_sensor_config(BMI2_AUX) failed";
-      case Error::BMI_GET_SENSOR_DATA_FAILED:  return "bmi2_get_sensor_data failed";
-      case Error::CHIP_ID_READ_FAILED:         return "BMM150 chip-id read failed";
-      case Error::CHIP_ID_MISMATCH:            return "BMM150 chip-id mismatch";
-      case Error::BMM_INIT_FAILED:             return "bmm150_init failed";
-      case Error::BMM_SET_PRESET_FAILED:       return "bmm150_set_presetmode failed";
-      case Error::BMM_SET_OPMODE_FAILED:       return "bmm150_set_op_mode failed";
-      case Error::BMM_TEST_READ_FAILED:        return "initial BMM150 read failed";
-      case Error::BMM_AUX_COMPENSATE_FAILED:   return "bmm150_aux_mag_data failed";
-      case Error::MAG_READ_FAILED:             return "bmm150_read_mag_data failed";
-      case Error::NONFINITE_MAG:               return "non-finite magnetometer output";
-      case Error::ZERO_MAG:                    return "all-zero magnetometer sample";
-      case Error::BMI_RESTORE_AUX_CFG_FAILED:  return "failed to restore prior BMI270 AUX config";
-      case Error::BMI_AUX_DISABLE_FAILED:      return "failed to disable BMI270 AUX after restore";
-      default:                                 return "unknown";
+      case Error::NONE:                              return "none";
+      case Error::NOT_BUILT:                         return "Bosch SensorAPI not available in this build";
+      case Error::NULL_BMI_DEV:                      return "null bmi2_dev";
+      case Error::NOT_INITIALIZED:                   return "not initialized";
+      case Error::BMI_GET_AUX_CFG_FAILED:            return "bmi270_get_sensor_config(BMI2_AUX) failed";
+      case Error::BMI_ADV_POWER_SAVE_DISABLE_FAILED: return "bmi2_set_adv_power_save(DISABLE) failed";
+      case Error::BMI_AUX_PULLUP_CFG_FAILED:         return "failed to configure BMI270 AUX pull-up trim";
+      case Error::BMI_AUX_ENABLE_FAILED:             return "bmi2_sensor_enable(BMI2_AUX) failed";
+      case Error::BMI_SET_AUX_CFG_FAILED:            return "bmi270_set_sensor_config(BMI2_AUX) failed";
+      case Error::CHIP_ID_READ_FAILED:               return "BMM150 chip-id read failed";
+      case Error::CHIP_ID_MISMATCH:                  return "BMM150 chip-id mismatch";
+      case Error::BMM_INIT_FAILED:                   return "bmm150_init failed";
+      case Error::BMM_SET_PRESET_FAILED:             return "bmm150_set_presetmode failed";
+      case Error::BMM_SET_OPMODE_FAILED:             return "bmm150_set_op_mode failed";
+      case Error::BMM_TEST_READ_FAILED:              return "initial BMM150 read failed";
+      case Error::BMM_AUX_COMPENSATE_FAILED:         return "bmm150_aux_mag_data failed";
+      case Error::MAG_READ_FAILED:                   return "aux raw burst read failed";
+      case Error::NONFINITE_MAG:                     return "non-finite magnetometer output";
+      case Error::ZERO_MAG:                          return "all-zero magnetometer sample";
+      case Error::BMI_RESTORE_AUX_CFG_FAILED:        return "failed to restore prior BMI270 AUX config";
+      case Error::BMI_AUX_DISABLE_FAILED:            return "failed to disable BMI270 AUX after restore";
+      default:                                       return "unknown";
     }
   }
 
@@ -446,7 +410,7 @@ private:
     #endif
   }
 
-  static uint8_t manualBurstLen_8_() {
+  static uint8_t manualBurstLen8_() {
     #if defined(BMI2_AUX_READ_LEN_3)
       return BMI2_AUX_READ_LEN_3; // 8 bytes
     #elif defined(BMI2_AUX_READ_LEN_2)
@@ -561,8 +525,8 @@ private:
       return static_cast<BMM150_INTF_RET_TYPE>(-1);
     }
 
-    const int8_t r = bmi2_read_aux_man_mode(reg, data, len, self->bmi_dev_);
-    return static_cast<BMM150_INTF_RET_TYPE>(r);
+    return static_cast<BMM150_INTF_RET_TYPE>(
+      bmi2_read_aux_man_mode(reg, data, len, self->bmi_dev_));
   }
 
   static BMM150_INTF_RET_TYPE bmm_write_(uint8_t reg,
@@ -574,8 +538,8 @@ private:
       return static_cast<BMM150_INTF_RET_TYPE>(-1);
     }
 
-    const int8_t r = bmi2_write_aux_man_mode(reg, data, len, self->bmi_dev_);
-    return static_cast<BMM150_INTF_RET_TYPE>(r);
+    return static_cast<BMM150_INTF_RET_TYPE>(
+      bmi2_write_aux_man_mode(reg, data, len, self->bmi_dev_));
   }
 
   static void bmm_delay_us_(uint32_t us, void*) {
@@ -595,32 +559,75 @@ private:
     return true;
   }
 
-  bool readMagInternal_(Vector3f& m_uT_out, bool count_stats) {
-    uint32_t now_ms = millis();
+  bool readRawBurst8_(uint8_t raw[8]) {
+    if (bmi2_read_aux_man_mode(dataStartReg_(), raw, 8, bmi_dev_) != BMI2_OK) {
+      last_error_ = Error::MAG_READ_FAILED;
+      return false;
+    }
+    return true;
+  }
+
+  static bool rawBurstAllZero_(const uint8_t raw[8]) {
+    for (int i = 0; i < 8; ++i) {
+      if (raw[i] != 0u) return false;
+    }
+    return true;
+  }
+
+  // BMM150 DRDY is RHALL_LSB bit0, i.e. raw[6] bit0 in the 0x42..0x49 burst.
+  static bool rawBurstDrdy_(const uint8_t raw[8]) {
+    return (raw[6] & 0x01u) != 0u;
+  }
+
+  bool waitForFreshRaw_(uint8_t raw[8]) {
+    const uint32_t min_ms = minReadIntervalMs_();
 
     if (have_last_good_) {
-      const uint32_t min_ms  = minReadIntervalMs_();
-      const uint32_t elapsed = static_cast<uint32_t>(now_ms - last_read_ms_);
-
+      const uint32_t elapsed = static_cast<uint32_t>(millis() - last_read_ms_);
       if (elapsed < min_ms) {
         if (cfg_.return_last_on_fast_poll) {
-          m_uT_out = last_good_uT_;
-          ++possible_duplicate_total_;
-          last_error_ = Error::NONE;
-          if (count_stats) {
-            ++read_ok_total_;
-          }
-          return true;
+          return false;
         }
-
         delay(min_ms - elapsed);
-        now_ms = millis();
       }
     }
 
-    bmi2_sens_data sensor_data{};
-    if (bmi2_get_sensor_data(&sensor_data, bmi_dev_) != BMI2_OK) {
-      last_error_ = Error::BMI_GET_SENSOR_DATA_FAILED;
+    const uint32_t t0 = millis();
+    while (true) {
+      if (!readRawBurst8_(raw)) {
+        return false;
+      }
+
+      if (!rawBurstAllZero_(raw) && rawBurstDrdy_(raw)) {
+        return true;
+      }
+
+      if (cfg_.return_last_on_fast_poll) {
+        return false;
+      }
+
+      if (static_cast<uint32_t>(millis() - t0) >= (min_ms + 20u)) {
+        return false;
+      }
+
+      delay(2);
+    }
+  }
+
+  bool readMagInternal_(Vector3f& m_uT_out, bool count_stats) {
+    uint8_t raw[8] = {0};
+
+    if (!waitForFreshRaw_(raw)) {
+      if (cfg_.return_last_on_fast_poll && have_last_good_) {
+        m_uT_out = last_good_uT_;
+        ++possible_duplicate_total_;
+        last_error_ = Error::NONE;
+        if (count_stats) {
+          ++read_ok_total_;
+        }
+        return true;
+      }
+
       if (count_stats) {
         ++read_fail_total_;
       }
@@ -628,7 +635,7 @@ private:
     }
 
     bmm150_mag_data md{};
-    if (bmm150_aux_mag_data(sensor_data.aux_data, &md, &bmm_dev_) != BMM150_OK) {
+    if (bmm150_aux_mag_data(raw, &md, &bmm_dev_) != BMM150_OK) {
       last_error_ = Error::BMM_AUX_COMPENSATE_FAILED;
       if (count_stats) {
         ++read_fail_total_;
@@ -674,9 +681,12 @@ private:
       ++possible_duplicate_total_;
     }
 
+    std::memcpy(last_raw_, raw, sizeof(last_raw_));
+    have_last_raw_ = true;
+
     last_good_uT_   = m_uT_out;
     have_last_good_ = true;
-    last_read_ms_   = now_ms;
+    last_read_ms_   = millis();
     last_error_     = Error::NONE;
 
     if (count_stats) {
@@ -703,9 +713,12 @@ private:
     std::memset(&bmm_settings_, 0, sizeof(bmm_settings_));
 
     have_last_good_ = false;
-    last_good_uT_   = Vector3f::Zero();
-    last_read_ms_   = 0;
+    last_good_uT_ = Vector3f::Zero();
+    last_read_ms_ = 0;
     effective_mag_hz_ = 10.0f;
+
+    have_last_raw_ = false;
+    std::memset(last_raw_, 0, sizeof(last_raw_));
   }
 
   void detachSession_() {
@@ -762,6 +775,9 @@ private:
   Vector3f last_good_uT_ = Vector3f::Zero();
   uint32_t last_read_ms_ = 0;
   float    effective_mag_hz_ = 10.0f;
+
+  bool     have_last_raw_ = false;
+  uint8_t  last_raw_[8] = {0};
 };
 
 #else
