@@ -347,7 +347,8 @@ public:
     }
 
     uint8_t reg[2] = {0, 0};
-    if (bmi2_i2c_read_(0x22u, reg, 2, this) != BMI2_OK) {
+    if (i2cReadRegRaw_(0x22u, reg, 2) != BMI2_OK) {
+      last_error_ = Error::FIFO_READ_FAILED;
       return false;
     }
 
@@ -416,12 +417,12 @@ public:
 
 private:
   static constexpr uint16_t REG_IO_CHUNK            = 32;
-  static constexpr uint16_t FIFO_WATERMARK_BYTES    = 104;   // ~8 AG header frames
-  static constexpr uint16_t FIFO_MIN_READ_BYTES     = 13;    // one AG header frame
-  static constexpr uint16_t FIFO_READ_BURST_MAX     = 1024;  // big enough to avoid tiny truncated reads
+  static constexpr uint16_t FIFO_WATERMARK_BYTES    = 39;   // 3 x ~13-byte AG header frames
+  static constexpr uint16_t FIFO_MIN_READ_BYTES     = 13;   // one AG header frame
+  static constexpr uint16_t FIFO_READ_BURST_MAX     = 39;   // keep safely below short I2C watchdog
   static constexpr int      MAX_EXTRACT             = 128;
   static constexpr int      PENDING_CAP             = MAX_EXTRACT;
-  static constexpr size_t   FIFO_BUF_CAP            = 2048u + 256u;
+  static constexpr size_t   FIFO_BUF_CAP            = 256u;
   static constexpr uint32_t PAIR_TIME_SLACK_TICKS   = 32u;
   static constexpr uint32_t MAX_REASONABLE_DT_US    = 250000u;
   static constexpr uint8_t  RECOVERY_THRESHOLD      = 3u;
@@ -446,7 +447,7 @@ private:
       case Error::FIFO_WM_FAILED:        return "bmi2_set_fifo_wm failed";
       case Error::FIFO_FLUSH_FAILED:     return "FIFO flush command failed";
       case Error::FIFO_LEN_FAILED:       return "bmi2_get_fifo_length failed";
-      case Error::FIFO_READ_FAILED:      return "bmi2_read_fifo_data failed";
+      case Error::FIFO_READ_FAILED:      return "FIFO read failed";
       case Error::EXTRACT_FAILED:        return "bmi2_extract_accel/gyro failed";
       case Error::RECOVERY_FAILED:       return "driver recovery failed";
       case Error::NOT_OK:                return "driver not initialized";
@@ -493,9 +494,76 @@ private:
   #endif
   }
 
+  bool i2cBeginWrite_(uint8_t reg_addr) const {
+    if (i2c_ == nullptr) return false;
+    if (!i2c_->start(bmi_addr_, false, i2c_hz_)) return false;
+    if (!i2c_->write(reg_addr)) {
+      (void)i2c_->stop();
+      return false;
+    }
+    return true;
+  }
+
+  int8_t i2cReadRegRaw_(uint8_t reg_addr, uint8_t* reg_data, uint32_t len) const {
+    if (i2c_ == nullptr || reg_data == nullptr || len == 0) {
+      return BMI2_E_COM_FAIL;
+    }
+
+    if (!i2c_->start(bmi_addr_, false, i2c_hz_)) {
+      return BMI2_E_COM_FAIL;
+    }
+
+    if (!i2c_->write(reg_addr)) {
+      (void)i2c_->stop();
+      return BMI2_E_COM_FAIL;
+    }
+
+    if (!i2c_->restart(bmi_addr_, true, i2c_hz_)) {
+      (void)i2c_->stop();
+      return BMI2_E_COM_FAIL;
+    }
+
+    if (!i2c_->read(reg_data, static_cast<size_t>(len), true)) {
+      (void)i2c_->stop();
+      return BMI2_E_COM_FAIL;
+    }
+
+    if (!i2c_->stop()) {
+      return BMI2_E_COM_FAIL;
+    }
+
+    return BMI2_OK;
+  }
+
+  int8_t i2cWriteRegRaw_(uint8_t reg_addr, const uint8_t* reg_data, uint32_t len) const {
+    if (i2c_ == nullptr || reg_data == nullptr || len == 0) {
+      return BMI2_E_COM_FAIL;
+    }
+
+    if (!i2c_->start(bmi_addr_, false, i2c_hz_)) {
+      return BMI2_E_COM_FAIL;
+    }
+
+    if (!i2c_->write(reg_addr)) {
+      (void)i2c_->stop();
+      return BMI2_E_COM_FAIL;
+    }
+
+    if (!i2c_->write(reg_data, static_cast<size_t>(len))) {
+      (void)i2c_->stop();
+      return BMI2_E_COM_FAIL;
+    }
+
+    if (!i2c_->stop()) {
+      return BMI2_E_COM_FAIL;
+    }
+
+    return BMI2_OK;
+  }
+
   bool flushFifo_() {
     uint8_t cmd = fifoFlushCmd_();
-    const bool ok = (bmi2_i2c_write_(regCmd_(), &cmd, 1, this) == BMI2_OK);
+    const bool ok = (i2cWriteRegRaw_(regCmd_(), &cmd, 1) == BMI2_OK);
     if (ok) {
       delayMicroseconds(1000);
     }
@@ -563,6 +631,13 @@ private:
     std::memset(accel_, 0, sizeof(accel_));
     std::memset(gyro_,  0, sizeof(gyro_));
     std::memset(pending_, 0, sizeof(pending_));
+    std::memset(fifo_buf_, 0, sizeof(fifo_buf_));
+
+    last_fifo_len_   = 0;
+    last_fifo_req_   = 0;
+    last_fifo_got_   = 0;
+    last_accel_len_  = 0;
+    last_gyro_len_   = 0;
   }
 
   template <typename T>
@@ -609,6 +684,14 @@ private:
 
   static bool axesAllZero_(const bmi2_sens_axes_data& s) {
     return s.x == 0 && s.y == 0 && s.z == 0;
+  }
+
+  bool fifoBufferLooksBlank_(uint16_t n) const {
+    if (n == 0) return true;
+    for (uint16_t i = 0; i < n; ++i) {
+      if (fifo_buf_[i] != 0) return false;
+    }
+    return true;
   }
 
   void noteReadError_(Error err) {
@@ -806,6 +889,8 @@ private:
       return false;
     }
 
+    last_fifo_len_ = fifo_len;
+
     if (fifo_len < FIFO_MIN_READ_BYTES) {
       last_fill_had_error_ = false;
       return false;
@@ -814,12 +899,13 @@ private:
     uint32_t req = static_cast<uint32_t>(fifo_len);
     req = std::min<uint32_t>(req, FIFO_READ_BURST_MAX);
     req = std::min<uint32_t>(req, static_cast<uint32_t>(sizeof(fifo_buf_)));
-
     if (req < FIFO_MIN_READ_BYTES) {
-      last_fill_had_error_ = false;
-      return false;
+      req = FIFO_MIN_READ_BYTES;
     }
 
+    last_fifo_req_ = static_cast<uint16_t>(req);
+
+    std::memset(fifo_buf_, 0, static_cast<size_t>(req));
     std::memset(&fifo_, 0, sizeof(fifo_));
     fifo_.data   = fifo_buf_;
     fifo_.length = static_cast<uint16_t>(req);
@@ -829,8 +915,15 @@ private:
       return false;
     }
 
+    last_fifo_got_ = fifo_.length;
+
     if (fifo_.length < FIFO_MIN_READ_BYTES) {
       last_fill_had_error_ = false;
+      return false;
+    }
+
+    if (fifoBufferLooksBlank_(fifo_.length)) {
+      noteReadError_(Error::FIFO_READ_FAILED);
       return false;
     }
 
@@ -839,19 +932,28 @@ private:
     std::memset(accel_, 0, sizeof(accel_));
     std::memset(gyro_,  0, sizeof(gyro_));
 
+    bmi2_fifo_frame fifo_acc = fifo_;
+    bmi2_fifo_frame fifo_gyr = fifo_;
+
     uint16_t a_len = MAX_EXTRACT;
     uint16_t g_len = MAX_EXTRACT;
 
-    const int8_t ra = bmi2_extract_accel(accel_, &a_len, &fifo_, &bmi_);
-    const int8_t rg = bmi2_extract_gyro (gyro_,  &g_len, &fifo_, &bmi_);
+    const int8_t ra = bmi2_extract_accel(accel_, &a_len, &fifo_acc, &bmi_);
+    const int8_t rg = bmi2_extract_gyro (gyro_,  &g_len, &fifo_gyr, &bmi_);
+
+    last_accel_len_ = a_len;
+    last_gyro_len_  = g_len;
 
     if (ra != BMI2_OK) a_len = 0;
     if (rg != BMI2_OK) g_len = 0;
+
     if (ra != BMI2_OK || rg != BMI2_OK) {
       noteReadError_(Error::EXTRACT_FAILED);
+      return false;
     }
 
     if (a_len == 0u && g_len == 0u) {
+      last_fill_had_error_ = false;
       return false;
     }
 
@@ -878,20 +980,13 @@ private:
 
   static int8_t bmi2_i2c_read_(uint8_t reg_addr, uint8_t* reg_data, uint32_t len, void* intf_ptr) {
     auto* self = static_cast<BoschBmi270Fifo*>(intf_ptr);
-    if (self == nullptr || self->i2c_ == nullptr || reg_data == nullptr || len == 0) {
+    if (self == nullptr || reg_data == nullptr || len == 0) {
       return BMI2_E_COM_FAIL;
     }
 
+    // FIFO must be read as one contiguous transaction.
     if (reg_addr == BMI2_FIFO_DATA_ADDR) {
-      if (!self->i2c_->readRegister(
-              self->bmi_addr_,
-              reg_addr,
-              reg_data,
-              static_cast<uint16_t>(len),
-              self->i2c_hz_)) {
-        return BMI2_E_COM_FAIL;
-      }
-      return BMI2_OK;
+      return self->i2cReadRegRaw_(reg_addr, reg_data, len);
     }
 
     uint32_t off = 0;
@@ -899,12 +994,7 @@ private:
       const uint16_t n = static_cast<uint16_t>(std::min<uint32_t>(REG_IO_CHUNK, len - off));
       const uint8_t addr = static_cast<uint8_t>(reg_addr + off);
 
-      if (!self->i2c_->readRegister(
-              self->bmi_addr_,
-              addr,
-              reg_data + off,
-              n,
-              self->i2c_hz_)) {
+      if (self->i2cReadRegRaw_(addr, reg_data + off, n) != BMI2_OK) {
         return BMI2_E_COM_FAIL;
       }
 
@@ -916,7 +1006,7 @@ private:
 
   static int8_t bmi2_i2c_write_(uint8_t reg_addr, const uint8_t* reg_data, uint32_t len, void* intf_ptr) {
     auto* self = static_cast<BoschBmi270Fifo*>(intf_ptr);
-    if (self == nullptr || self->i2c_ == nullptr || reg_data == nullptr || len == 0) {
+    if (self == nullptr || reg_data == nullptr || len == 0) {
       return BMI2_E_COM_FAIL;
     }
 
@@ -925,12 +1015,7 @@ private:
       const uint16_t n = static_cast<uint16_t>(std::min<uint32_t>(REG_IO_CHUNK, len - off));
       const uint8_t addr = static_cast<uint8_t>(reg_addr + off);
 
-      if (!self->i2c_->writeRegister(
-              self->bmi_addr_,
-              addr,
-              reg_data + off,
-              n,
-              self->i2c_hz_)) {
+      if (self->i2cWriteRegRaw_(addr, reg_data + off, n) != BMI2_OK) {
         return BMI2_E_COM_FAIL;
       }
 
@@ -1038,4 +1123,11 @@ private:
   BoschAGSample pending_[PENDING_CAP]{};
   int pending_head_  = 0;
   int pending_count_ = 0;
+
+  // optional debug state
+  uint16_t last_fifo_len_  = 0;
+  uint16_t last_fifo_req_  = 0;
+  uint16_t last_fifo_got_  = 0;
+  uint16_t last_accel_len_ = 0;
+  uint16_t last_gyro_len_  = 0;
 };
