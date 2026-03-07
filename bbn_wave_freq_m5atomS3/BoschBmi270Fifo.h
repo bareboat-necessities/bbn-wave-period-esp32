@@ -53,9 +53,8 @@ struct BoschAGSample {
   float ax = 0.0f, ay = 0.0f, az = 0.0f; // m/s^2
   float gx = 0.0f, gy = 0.0f, gz = 0.0f; // rad/s
 
-  // Metadata; safe for callers to ignore.
-  uint32_t sensortime24 = 0;    // valid only if timestamp_exact == true
-  bool timestamp_exact = false; // true only when extracted per-sample time exists
+  uint32_t sensortime24 = 0;
+  bool timestamp_exact = false;
 };
 
 class BoschBmi270Fifo {
@@ -169,6 +168,7 @@ public:
     last_error_       = Error::NONE;
 
     std::memset(&bmi_, 0, sizeof(bmi_));
+    bmi_.chip_id         = bmi_addr_;
     bmi_.intf            = BMI2_I2C_INTF;
     bmi_.read            = &BoschBmi270Fifo::bmi2_i2c_read_;
     bmi_.write           = &BoschBmi270Fifo::bmi2_i2c_write_;
@@ -215,6 +215,9 @@ public:
     cfg[1].cfg.gyr.bwp         = BMI2_GYR_NORMAL_MODE;
     cfg[1].cfg.gyr.noise_perf  = BMI2_POWER_OPT_MODE;
     cfg[1].cfg.gyr.filter_perf = BMI2_PERF_OPT_MODE;
+#ifdef BMI2_GYR_OIS_2000
+    cfg[1].cfg.gyr.ois_range   = BMI2_GYR_OIS_2000;
+#endif
 
     rslt = bmi270_set_sensor_config(cfg, 2, &bmi_);
     if (rslt != BMI2_OK) {
@@ -233,6 +236,7 @@ public:
       return failBegin_(Error::DISABLE_APS_FAILED);
     }
     aps_disabled_ = true;
+    bmi_.aps_status = BMI2_DISABLE;
 
     rslt = bmi2_set_fifo_config(BMI2_FIFO_ALL_EN, BMI2_DISABLE, &bmi_);
     if (rslt != BMI2_OK) {
@@ -377,8 +381,8 @@ public:
 #endif
   }
 
-  // Returns exactly one queued sample.
-  // Use readLatestAG() if you explicitly want to discard older queued samples.
+  // Returns exactly one sample. This call waits briefly for a fresh FIFO frame
+  // so callers polling slightly early do not keep reusing the previous output.
   bool readOneAG(BoschAGSample& out) {
 #if !ATOMS3R_HAVE_BOSCH_SENSORAPI
     (void)out;
@@ -391,9 +395,9 @@ public:
     }
 
     if (pending_count_ == 0) {
-      if (!fillPendingFromFifo_()) {
+      if (!waitAndFillPendingFromFifo_()) {
         if (last_fill_had_error_ && consecutive_read_errors_ >= RECOVERY_THRESHOLD) {
-          if (!recover() || !fillPendingFromFifo_()) {
+          if (!recover() || !waitAndFillPendingFromFifo_()) {
             return false;
           }
         } else {
@@ -413,8 +417,7 @@ public:
 #endif
   }
 
-  // Returns the newest available sample from the current FIFO burst and
-  // discards older queued samples.
+  // Returns the newest available sample and discards older queued ones.
   bool readLatestAG(BoschAGSample& out) {
 #if !ATOMS3R_HAVE_BOSCH_SENSORAPI
     (void)out;
@@ -427,9 +430,9 @@ public:
     }
 
     if (pending_count_ == 0) {
-      if (!fillPendingFromFifo_()) {
+      if (!waitAndFillPendingFromFifo_()) {
         if (last_fill_had_error_ && consecutive_read_errors_ >= RECOVERY_THRESHOLD) {
-          if (!recover() || !fillPendingFromFifo_()) {
+          if (!recover() || !waitAndFillPendingFromFifo_()) {
             return false;
           }
         } else {
@@ -469,10 +472,10 @@ public:
 
     while (produced < max_out) {
       if (pending_count_ == 0) {
-        if (!fillPendingFromFifo_()) {
+        if (!waitAndFillPendingFromFifo_()) {
           if (last_fill_had_error_ && consecutive_read_errors_ >= RECOVERY_THRESHOLD) {
             if (recover()) {
-              if (!fillPendingFromFifo_()) {
+              if (!waitAndFillPendingFromFifo_()) {
                 break;
               }
             } else {
@@ -496,10 +499,10 @@ public:
   }
 
 private:
-  static constexpr uint16_t REG_IO_CHUNK          = 32;
-  static constexpr uint16_t FIFO_WATERMARK_BYTES  = 39;   // known-good on this stack
-  static constexpr uint16_t FIFO_MIN_READ_BYTES   = 13;   // one accel+gyro header frame
-  static constexpr uint16_t FIFO_READ_BURST_MAX   = 39;   // keep tiny to avoid FIFO transport issues
+  static constexpr uint16_t REG_IO_CHUNK          = 30;
+  static constexpr uint16_t FIFO_WATERMARK_BYTES  = 13;   // one AG frame, lower latency
+  static constexpr uint16_t FIFO_MIN_READ_BYTES   = 13;   // one AG header frame
+  static constexpr uint16_t FIFO_READ_BURST_MAX   = 39;   // small, known-good
   static constexpr int      MAX_EXTRACT           = 128;
   static constexpr int      PENDING_CAP           = MAX_EXTRACT;
   static constexpr size_t   FIFO_BUF_CAP          = 256u;
@@ -572,16 +575,6 @@ private:
   #else
     return 0xB0u;
   #endif
-  }
-
-  bool i2cBeginWrite_(uint8_t reg_addr) const {
-    if (i2c_ == nullptr) return false;
-    if (!i2c_->start(bmi_addr_, false, i2c_hz_)) return false;
-    if (!i2c_->write(reg_addr)) {
-      (void)i2c_->stop();
-      return false;
-    }
-    return true;
   }
 
   int8_t i2cReadRegRaw_(uint8_t reg_addr, uint8_t* reg_data, uint32_t len) const {
@@ -1075,13 +1068,42 @@ private:
     return pending_count_ > 0;
   }
 
+  bool waitAndFillPendingFromFifo_() {
+    if (pending_count_ > 0) {
+      return true;
+    }
+
+    const uint32_t wait_us = computeReadWaitUs_();
+    const uint32_t t0 = micros();
+
+    do {
+      if (fillPendingFromFifo_()) {
+        return true;
+      }
+      if (last_fill_had_error_) {
+        return false;
+      }
+      delayMicroseconds(400);
+    } while (static_cast<uint32_t>(micros() - t0) < wait_us);
+
+    return fillPendingFromFifo_();
+  }
+
+  uint32_t computeReadWaitUs_() const {
+    float wait_s = nominal_dt_ * 1.5f;
+    if (!(wait_s > 0.0f)) wait_s = 0.015f;
+    uint32_t us = static_cast<uint32_t>(wait_s * 1.0e6f);
+    if (us < 3000u)  us = 3000u;
+    if (us > 25000u) us = 25000u;
+    return us;
+  }
+
   static int8_t bmi2_i2c_read_(uint8_t reg_addr, uint8_t* reg_data, uint32_t len, void* intf_ptr) {
     auto* self = static_cast<BoschBmi270Fifo*>(intf_ptr);
     if (self == nullptr || reg_data == nullptr || len == 0) {
       return BMI2_E_COM_FAIL;
     }
 
-    // FIFO must be one raw contiguous transaction.
     if (reg_addr == BMI2_FIFO_DATA_ADDR) {
       return self->i2cReadRegRaw_(reg_addr, reg_data, len);
     }
