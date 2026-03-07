@@ -55,18 +55,19 @@ public:
   struct Config {
     uint8_t  bmm_addr = BMM150_DEFAULT_I2C_ADDRESS; // usually 0x10
 
-    // AUX bridge service rate inside BMI270.
+    // BMI270 AUX bridge service rate.
     float    aux_odr_hz = 100.0f;
 
     uint8_t  preset_mode = BMM150_PRESETMODE_REGULAR;
 
-    // Give bring-up time before first verified read.
-    uint16_t startup_settle_ms = 40;
+    // Regular/low-power/enhanced are 10 Hz; high-accuracy is 20 Hz.
+    // 120 ms guarantees at least one fresh frame for 10 Hz modes.
+    uint16_t startup_settle_ms = 120;
 
     bool     verify_first_read = true;
 
-    // If true and reads come faster than one forced conversion time,
-    // return the previous sample instead of triggering another conversion.
+    // If true and caller polls faster than sensor cadence, return last good sample.
+    // If false, readMag_uT() waits until the next expected fresh sample slot.
     bool     return_last_on_fast_poll = false;
 
     // Board remap:
@@ -117,13 +118,13 @@ public:
 
   const Config& config() const { return cfg_; }
 
-  uint32_t initFailuresTotal() const           { return init_fail_total_; }
-  uint32_t readOkTotal() const                 { return read_ok_total_; }
-  uint32_t readFailuresTotal() const           { return read_fail_total_; }
-  uint32_t rollbackFailuresTotal() const       { return rollback_fail_total_; }
-  uint32_t endFailuresTotal() const            { return end_fail_total_; }
-  uint32_t possibleDuplicateReadsTotal() const { return possible_duplicate_total_; }
-  uint32_t lastReadMillis() const              { return last_read_ms_; }
+  uint32_t initFailuresTotal() const            { return init_fail_total_; }
+  uint32_t readOkTotal() const                  { return read_ok_total_; }
+  uint32_t readFailuresTotal() const            { return read_fail_total_; }
+  uint32_t rollbackFailuresTotal() const        { return rollback_fail_total_; }
+  uint32_t endFailuresTotal() const             { return end_fail_total_; }
+  uint32_t possibleDuplicateReadsTotal() const  { return possible_duplicate_total_; }
+  uint32_t lastReadMillis() const               { return last_read_ms_; }
 
   const Vector3f& lastGoodMag_uT() const { return last_good_uT_; }
   bool haveLastGoodMag() const { return have_last_good_; }
@@ -157,6 +158,7 @@ public:
     have_last_good_ = false;
     last_good_uT_ = Vector3f::Zero();
     last_read_ms_ = 0;
+    effective_mag_hz_ = 10.0f;
 
     if (!bmi_dev_) {
       ++init_fail_total_;
@@ -200,6 +202,7 @@ public:
       }
     }
 
+    // Preserve existing AUX config and override only what we own.
     bmi2_sens_config sc = saved_aux_cfg_;
     sc.type = BMI2_AUX;
     sc.cfg.aux.odr             = auxOdrFromHz_(cfg_.aux_odr_hz);
@@ -255,10 +258,20 @@ public:
       return false;
     }
 
+    bmm_settings_.pwr_mode = normalModeValue_();
+    if (bmm150_set_op_mode(&bmm_settings_, &bmm_dev_) != BMM150_OK) {
+      ++init_fail_total_;
+      last_error_ = Error::BMM_SET_OPMODE_FAILED;
+      bestEffortRollback_();
+      return false;
+    }
+
 #if defined(BMM150_SEL_DRDY_PIN_EN)
     bmm_settings_.int_settings.drdy_pin_en = 0x01;
     (void)bmm150_set_sensor_settings(BMM150_SEL_DRDY_PIN_EN, &bmm_settings_, &bmm_dev_);
 #endif
+
+    effective_mag_hz_ = presetModeHz_(cfg_.preset_mode);
 
     if (cfg_.startup_settle_ms > 0u) {
       delay(cfg_.startup_settle_ms);
@@ -267,12 +280,14 @@ public:
     if (cfg_.verify_first_read) {
       Vector3f tmp = Vector3f::Zero();
       bool got_valid = false;
+      const uint32_t wait_ms = minReadIntervalMs_();
 
       for (int attempt = 0; attempt < 4; ++attempt) {
         if (readMagInternal_(tmp, false)) {
           got_valid = true;
           break;
         }
+        delay(wait_ms);
       }
 
       if (!got_valid) {
@@ -392,6 +407,16 @@ private:
     #endif
   }
 
+  static constexpr uint8_t normalModeValue_() {
+    #if defined(BMM150_POWERMODE_NORMAL)
+      return BMM150_POWERMODE_NORMAL;
+    #elif defined(BMM150_NORMAL_MODE)
+      return BMM150_NORMAL_MODE;
+    #else
+      return 0x00u;
+    #endif
+  }
+
   static uint8_t manualBurstLen_() {
     #if defined(BMI2_AUX_READ_LEN_3)
       return BMI2_AUX_READ_LEN_3;
@@ -442,24 +467,25 @@ private:
     #endif
   }
 
-  static constexpr uint8_t forcedModeValue_() {
-    #if defined(BMM150_POWERMODE_FORCED)
-      return BMM150_POWERMODE_FORCED;
-    #elif defined(BMM150_FORCED_MODE)
-      return BMM150_FORCED_MODE;
-    #else
-      return 0x01u;
-    #endif
+  static float presetModeHz_(uint8_t preset_mode) {
+    switch (preset_mode) {
+      case BMM150_PRESETMODE_HIGHACCURACY:
+        return 20.0f;
+      case BMM150_PRESETMODE_LOWPOWER:
+      case BMM150_PRESETMODE_REGULAR:
+      case BMM150_PRESETMODE_ENHANCED:
+      default:
+        return 10.0f;
+    }
   }
 
-  uint16_t forcedMeasurementWaitMs_() const {
-    switch (cfg_.preset_mode) {
-      case BMM150_PRESETMODE_LOWPOWER:     return 5;
-      case BMM150_PRESETMODE_REGULAR:      return 12;
-      case BMM150_PRESETMODE_ENHANCED:     return 20;
-      case BMM150_PRESETMODE_HIGHACCURACY: return 55;
-      default:                             return 12;
-    }
+  uint32_t minReadIntervalMs_() const {
+    const float hz = (effective_mag_hz_ > 0.0f && std::isfinite(effective_mag_hz_))
+                   ? effective_mag_hz_
+                   : 10.0f;
+    const float ms = 1000.0f / hz;
+    const long out = lroundf(ms);
+    return out > 0 ? static_cast<uint32_t>(out) : 100u;
   }
 
   bool setAuxPullup2k_() {
@@ -499,17 +525,6 @@ private:
     );
   }
 
-  bool triggerForcedMeasurement_() {
-    bmm150_settings s{};
-    s.pwr_mode = forcedModeValue_();
-    if (bmm150_set_op_mode(&s, &bmm_dev_) != BMM150_OK) {
-      last_error_ = Error::BMM_SET_OPMODE_FAILED;
-      return false;
-    }
-    delay(forcedMeasurementWaitMs_());
-    return true;
-  }
-
   static BMM150_INTF_RET_TYPE bmm_read_(uint8_t reg,
                                         uint8_t* data,
                                         uint32_t len,
@@ -518,6 +533,7 @@ private:
     if (!self || !self->bmi_dev_ || !data || len == 0u) {
       return static_cast<BMM150_INTF_RET_TYPE>(-1);
     }
+
     return static_cast<BMM150_INTF_RET_TYPE>(
       bmi2_read_aux_man_mode(reg, data, len, self->bmi_dev_));
   }
@@ -530,6 +546,7 @@ private:
     if (!self || !self->bmi_dev_ || !data || len == 0u) {
       return static_cast<BMM150_INTF_RET_TYPE>(-1);
     }
+
     return static_cast<BMM150_INTF_RET_TYPE>(
       bmi2_write_aux_man_mode(reg, data, len, self->bmi_dev_));
   }
@@ -552,26 +569,26 @@ private:
   }
 
   bool readMagInternal_(Vector3f& m_uT_out, bool count_stats) {
-    const uint32_t now_ms = millis();
+    uint32_t now_ms = millis();
 
-    if (cfg_.return_last_on_fast_poll && have_last_good_) {
+    if (have_last_good_) {
+      const uint32_t min_ms = minReadIntervalMs_();
       const uint32_t elapsed = static_cast<uint32_t>(now_ms - last_read_ms_);
-      if (elapsed < forcedMeasurementWaitMs_()) {
-        m_uT_out = last_good_uT_;
-        ++possible_duplicate_total_;
-        last_error_ = Error::NONE;
-        if (count_stats) {
-          ++read_ok_total_;
-        }
-        return true;
-      }
-    }
 
-    if (!triggerForcedMeasurement_()) {
-      if (count_stats) {
-        ++read_fail_total_;
+      if (elapsed < min_ms) {
+        if (cfg_.return_last_on_fast_poll) {
+          m_uT_out = last_good_uT_;
+          ++possible_duplicate_total_;
+          last_error_ = Error::NONE;
+          if (count_stats) {
+            ++read_ok_total_;
+          }
+          return true;
+        }
+
+        delay(min_ms - elapsed);
+        now_ms = millis();
       }
-      return false;
     }
 
     bmm150_mag_data md{};
@@ -614,16 +631,17 @@ private:
       return false;
     }
 
-    if (have_last_good_ &&
-        m_uT_out.x() == last_good_uT_.x() &&
-        m_uT_out.y() == last_good_uT_.y() &&
-        m_uT_out.z() == last_good_uT_.z()) {
-      ++possible_duplicate_total_;
+    if (have_last_good_) {
+      if (m_uT_out.x() == last_good_uT_.x() &&
+          m_uT_out.y() == last_good_uT_.y() &&
+          m_uT_out.z() == last_good_uT_.z()) {
+        ++possible_duplicate_total_;
+      }
     }
 
     last_good_uT_ = m_uT_out;
     have_last_good_ = true;
-    last_read_ms_ = millis();
+    last_read_ms_ = now_ms;
     last_error_ = Error::NONE;
 
     if (count_stats) {
@@ -652,6 +670,7 @@ private:
     have_last_good_ = false;
     last_good_uT_ = Vector3f::Zero();
     last_read_ms_ = 0;
+    effective_mag_hz_ = 10.0f;
   }
 
   void detachSession_() {
@@ -707,6 +726,7 @@ private:
   bool     have_last_good_ = false;
   Vector3f last_good_uT_ = Vector3f::Zero();
   uint32_t last_read_ms_ = 0;
+  float    effective_mag_hz_ = 10.0f;
 };
 
 #else
@@ -721,7 +741,7 @@ public:
     uint8_t  bmm_addr = 0x10;
     float    aux_odr_hz = 100.0f;
     uint8_t  preset_mode = 0;
-    uint16_t startup_settle_ms = 40;
+    uint16_t startup_settle_ms = 120;
     bool     verify_first_read = true;
     bool     return_last_on_fast_poll = false;
     int8_t   axis_map[3] = { +1, +2, +3 };
