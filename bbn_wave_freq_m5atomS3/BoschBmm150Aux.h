@@ -727,7 +727,13 @@ private:
     trim_.dig_z1 = u16le_(b);
 
     if (!auxRead_(kRegDigXYZ1Lsb, b, 2)) return false;
-    trim_.dig_xyz1 = u16le_(b);
+    // Bosch reference parsing masks bit7 of the MSB for dig_xyz1:
+    //   temp_msb = (trim_xy1xy2[5] & 0x7F) << 8
+    //   dig_xyz1 = temp_msb | trim_xy1xy2[4]
+    trim_.dig_xyz1 = static_cast<uint16_t>(
+      (static_cast<uint16_t>(b[0])) |
+      (static_cast<uint16_t>(b[1] & 0x7Fu) << 8)
+    );
 
     if (!auxRead_(kRegDigZ3Lsb, b, 2)) return false;
     trim_.dig_z3 = s16le_(b);
