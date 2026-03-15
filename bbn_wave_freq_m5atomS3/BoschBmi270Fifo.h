@@ -495,9 +495,9 @@ public:
 
 private:
   static constexpr uint16_t REG_IO_CHUNK          = 32;
-  static constexpr uint16_t FIFO_WATERMARK_BYTES  = 13;   // one AG frame worth of latency
-  static constexpr uint16_t FIFO_MIN_READ_BYTES   = 13;
-  static constexpr uint16_t FIFO_READ_BURST_MAX   = 39;   // keep the known-good tiny raw burst
+  static constexpr uint16_t FIFO_WATERMARK_BYTES  = 64;   // low latency without forcing tiny partial reads
+  static constexpr uint16_t FIFO_MIN_READ_BYTES   = 1;
+  static constexpr uint16_t FIFO_READ_BURST_MAX   = 256;
   static constexpr int      MAX_EXTRACT           = 128;
   static constexpr int      PENDING_CAP           = MAX_EXTRACT;
   static constexpr size_t   FIFO_BUF_CAP          = 256u;
@@ -1011,23 +1011,17 @@ private:
     last_fifo_sensor_time24_     = 0;
     last_burst_exact_timestamps_ = false;
 
-    if (fifo_len < FIFO_MIN_READ_BYTES) {
+    if (fifo_len == 0u) {
       last_fill_had_error_ = false;
       return false;
     }
 
-    // Keep the same small, known-good FIFO burst size that actually worked on this stack.
     uint32_t req = static_cast<uint32_t>(fifo_len);
     req = std::min<uint32_t>(req, FIFO_READ_BURST_MAX);
     req = std::min<uint32_t>(req, static_cast<uint32_t>(sizeof(fifo_buf_)));
-    if (req < FIFO_MIN_READ_BYTES) {
-      req = FIFO_MIN_READ_BYTES;
-    }
-
-    // Keep burst aligned to the known-good AG frame quantum so we do not cut regular frames.
-    req = (req / FIFO_MIN_READ_BYTES) * FIFO_MIN_READ_BYTES;
-    if (req < FIFO_MIN_READ_BYTES) {
-      req = FIFO_MIN_READ_BYTES;
+    if (req == 0u) {
+      last_fill_had_error_ = false;
+      return false;
     }
 
     last_fifo_req_ = static_cast<uint16_t>(req);
@@ -1045,7 +1039,7 @@ private:
     last_fifo_got_           = fifo_.length;
     last_fifo_sensor_time24_ = fifoSensorTimeField_(fifo_, 0) & BMI270_SENSORTIME_MASK;
 
-    if (fifo_.length < FIFO_MIN_READ_BYTES) {
+    if (fifo_.length == 0u) {
       last_fill_had_error_ = false;
       return false;
     }

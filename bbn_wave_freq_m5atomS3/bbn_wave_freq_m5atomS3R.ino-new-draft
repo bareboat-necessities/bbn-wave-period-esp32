@@ -436,9 +436,10 @@ private:
   void pollRuntimeMag_() {
 #if defined(ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI) && ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI
     if (!runtime_imu_.magConfigured()) return;
-    if (!runtime_imu_.mag().ok()) return;
 
     const uint32_t now_ms  = millis();
+
+    if (!runtime_imu_.mag().ok()) return;
     const uint32_t poll_ms = magPollMs_();
 
     if (last_mag_poll_ms_ != 0 &&
@@ -448,7 +449,9 @@ private:
     last_mag_poll_ms_ = now_ms;
 
     Vector3f m_s;
-    if (!runtime_imu_.mag().readMag_uT(m_s)) return;
+    const bool read_ok = runtime_imu_.mag().readMag_uT(m_s);
+    const bool sample_usable = finite3_(m_s) && (m_s.norm() > 1.0f);
+    if (!read_ok && !sample_usable) return;
 
     const Vector3f m_body(m_s.y(), m_s.x(), -m_s.z());
 

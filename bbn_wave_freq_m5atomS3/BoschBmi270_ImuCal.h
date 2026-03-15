@@ -154,14 +154,7 @@ public:
 
 #if defined(ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI) && ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI
     if (cfg_.enable_mag_aux) {
-      BoschBmm150Aux::Config mcfg;
-      mcfg.bmm_addr          = cfg_.mag_bmm150_addr;
-      mcfg.aux_odr_hz        = sanitizedMagOdrHz_();
-      mcfg.startup_settle_ms = cfg_.mag_startup_settle_ms;
-      mcfg.verify_first_read = cfg_.mag_verify_first_read;
-
-      mag_configured_ = mag_.begin(rawBmiDev_(), mcfg);
-      if (!mag_configured_) {
+      if (!beginMagWithAddrFallback_()) {
         last_error_ = Error::MAG_BEGIN_FAILED;
       }
     } else {
@@ -499,19 +492,41 @@ private:
       (void)mag_.end();
     }
 
-    BoschBmm150Aux::Config mcfg;
-    mcfg.bmm_addr          = cfg_.mag_bmm150_addr;
-    mcfg.aux_odr_hz        = sanitizedMagOdrHz_();
-    mcfg.startup_settle_ms = cfg_.mag_startup_settle_ms;
-    mcfg.verify_first_read = cfg_.mag_verify_first_read;
-
-    mag_configured_ = mag_.begin(rawBmiDev_(), mcfg);
-    if (!mag_configured_) {
+    if (!beginMagWithAddrFallback_()) {
       have_valid_mag_ = false;
       return false;
     }
 
     return true;
+#else
+    return false;
+#endif
+  }
+
+
+  bool beginMagWithAddrFallback_() {
+#if defined(ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI) && ATOMS3R_HAVE_BOSCH_BMM150_AUX_SENSORAPI
+    mag_configured_ = false;
+
+    BoschBmm150Aux::Config mcfg;
+    mcfg.aux_odr_hz        = sanitizedMagOdrHz_();
+    mcfg.startup_settle_ms = cfg_.mag_startup_settle_ms;
+    mcfg.verify_first_read = cfg_.mag_verify_first_read;
+
+    const uint8_t preferred = cfg_.mag_bmm150_addr;
+    const uint8_t alternate = (preferred == 0x10u) ? 0x12u : 0x10u;
+
+    const uint8_t candidates[2] = { preferred, alternate };
+    for (uint8_t addr : candidates) {
+      mcfg.bmm_addr = addr;
+      if (mag_.begin(rawBmiDev_(), mcfg)) {
+        cfg_.mag_bmm150_addr = addr;
+        mag_configured_ = true;
+        return true;
+      }
+    }
+
+    return false;
 #else
     return false;
 #endif
