@@ -73,7 +73,7 @@ enum class TrackerType { ARANOVSKIY = 0, KALMANF = 1, ZEROCROSS = 2 };
   #define MAG_DELAY_SEC 8.0f
 #endif
 
-static constexpr float    LOOP_HZ        = 100.0f;
+static constexpr float    LOOP_HZ        = 200.0f;
 static constexpr uint32_t LOOP_PERIOD_US = static_cast<uint32_t>(1000000.0f / LOOP_HZ);
 
 static constexpr uint32_t UI_REFRESH_MS   = 100;
