@@ -784,6 +784,12 @@ private:
                                : 0.0f;
     const float mag_target_ms = static_cast<float>(magPollMs_());
 
+#if ARDUINO_PLOTTER
+    Serial.printf("Hcm:%+.3f\twaveEnvelopeCM:%+.3f\timuStale:%u\n",
+                  static_cast<double>(heave_m_ * 100.0f),
+                  static_cast<double>(wave_envelope_m_ * 100.0f),
+                  static_cast<unsigned>(stale_frame_count_));
+#else
     Serial.printf(
       "FIFO batch=%u | dt_imu_ms=%.2f | mag_valid=%u | dt_mag_ms=%s%.2f (target~%.2f) | acc_ned[m/s^2] N=%.3f E=%.3f D=%.3f | gyro_ned[rad/s] N=%.3f E=%.3f D=%.3f | mag_ned[uT] N=%.2f E=%.2f D=%.2f\n",
       static_cast<unsigned>(last_fifo_batch_count_),
@@ -801,6 +807,8 @@ private:
       static_cast<double>(m_cal_.x()),
       static_cast<double>(m_cal_.y()),
       static_cast<double>(m_cal_.z()));
+#endif
+
 #endif
   }
 };
