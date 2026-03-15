@@ -63,8 +63,8 @@ public:
 
     // If caller polls faster than the configured mag rate:
     //  - true  => return last good finite sample
-    //  - false => wait for next sample period
-    bool     return_last_on_fast_poll = false;
+    //  - false => return false immediately (non-blocking)
+    bool     return_last_on_fast_poll = true;
 
     // On read failure, output last good sample if available, else zeros.
     // Function still returns false.
@@ -515,6 +515,32 @@ private:
     }
   }
 
+  static uint8_t odrCodeFromHz_(float hz) {
+    if (!(hz > 0.0f) || !std::isfinite(hz)) return 0x06u; // 25 Hz default
+    if (hz >= 27.5f) return 0x07u; // 30 Hz
+    if (hz >= 22.5f) return 0x06u; // 25 Hz
+    if (hz >= 17.5f) return 0x05u; // 20 Hz
+    if (hz >= 12.5f) return 0x04u; // 15 Hz
+    if (hz >= 9.0f)  return 0x00u; // 10 Hz
+    if (hz >= 7.0f)  return 0x03u; // 8 Hz
+    if (hz >= 5.0f)  return 0x02u; // 6 Hz
+    return 0x01u;                  // 2 Hz
+  }
+
+  static float odrHzFromCode_(uint8_t code) {
+    switch (code & 0x07u) {
+      case 0x01u: return 2.0f;
+      case 0x02u: return 6.0f;
+      case 0x03u: return 8.0f;
+      case 0x00u: return 10.0f;
+      case 0x04u: return 15.0f;
+      case 0x05u: return 20.0f;
+      case 0x06u: return 25.0f;
+      case 0x07u: return 30.0f;
+      default:    return 10.0f;
+    }
+  }
+
   uint32_t minReadIntervalMs_() const {
     const float hz = (effective_mag_hz_ > 0.0f && std::isfinite(effective_mag_hz_))
                    ? effective_mag_hz_
@@ -648,7 +674,8 @@ private:
     }
 
     op &= static_cast<uint8_t>(~(kOpModeBitsMask | kOdrBitsMask));
-    op |= static_cast<uint8_t>((presetOdrCode_(cfg_.preset_mode) << 3) & kOdrBitsMask);
+    const uint8_t odr_code = odrCodeFromHz_(cfg_.aux_odr_hz);
+    op |= static_cast<uint8_t>((odr_code << 3) & kOdrBitsMask);
     op |= kOpModeNormal;
 
     if (!auxWrite_(kRegOpCtrl, op)) {
@@ -656,7 +683,7 @@ private:
     }
 
     delay(5);
-    effective_mag_hz_ = presetModeHz_(cfg_.preset_mode);
+    effective_mag_hz_ = odrHzFromCode_(odr_code);
     return true;
   }
 
@@ -849,8 +876,9 @@ private:
           return true;
         }
 
-        delay(min_ms - elapsed);
-        now_ms = millis();
+        safeFailureOutput_(m_uT_out);
+        last_error_ = Error::NONE;
+        return false;
       }
     }
 
@@ -987,7 +1015,7 @@ public:
     uint8_t  preset_mode = 0;
     uint16_t startup_settle_ms = 200;
     bool     verify_first_read = true;
-    bool     return_last_on_fast_poll = false;
+    bool     return_last_on_fast_poll = true;
     bool     return_last_good_on_error = true;
     int8_t   axis_map[3] = { +1, +2, +3 };
   };
