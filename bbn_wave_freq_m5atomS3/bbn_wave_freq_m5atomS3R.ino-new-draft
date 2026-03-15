@@ -193,20 +193,10 @@ public:
     drawHomeStatic_();
 
     delay(100);
-    start_us_     = micros();
-    next_tick_us_ = micros();
   }
 
   void tick() {
-    const uint32_t now_us = micros();
-    const int32_t wait_us = static_cast<int32_t>(next_tick_us_ - now_us);
-
-    if (wait_us > 0) {
-      delayMicroseconds(static_cast<uint32_t>(wait_us));
-    } else {
-      next_tick_us_ = now_us;
-    }
-    next_tick_us_ += LOOP_PERIOD_US;
+    const uint32_t loop_start_us = micros();
 
 #if SEA_STATE_ENABLE_WIZARD
     Input::update();
@@ -232,6 +222,7 @@ public:
     constexpr int MAX_STEPS_PER_TICK = 24;
     BoschAGSample batch[MAX_STEPS_PER_TICK];
     const int n = runtime_imu_.fifo().readAG(batch, MAX_STEPS_PER_TICK);
+    last_fifo_batch_count_ = static_cast<uint16_t>(std::max(n, 0));
 
     const uint32_t skipped_now   = runtime_imu_.fifo().skippedFramesTotal();
     const uint32_t skipped_delta = skipped_now - last_skipped_total_;
@@ -246,6 +237,7 @@ public:
 
     updateUI_();
     streamSerial_();
+    waitForNextLoopTick_(loop_start_us);
   }
 
 private:
@@ -270,8 +262,6 @@ private:
   uint32_t tap_deadline_ms_ = 0;
 #endif
 
-  uint32_t start_us_       = 0;
-  uint32_t next_tick_us_   = 0;
   uint32_t last_ui_ms_     = 0;
   uint32_t last_serial_ms_ = 0;
 
@@ -302,6 +292,10 @@ private:
 
   uint16_t stale_frame_count_ = 0;
   uint32_t last_skipped_total_ = 0;
+  uint16_t last_fifo_batch_count_ = 0;
+
+  bool     have_last_fusion_time24_ = false;
+  uint32_t last_fusion_time24_      = 0;
 
   bool     rot_inited_    = false;
   float    rot_dpm_filt_  = 0.0f;
@@ -309,6 +303,46 @@ private:
   Vector3f gyro_bias_ema_ = Vector3f::Zero();
 
 private:
+  static void waitForNextLoopTick_(uint32_t loop_start_us) {
+    const uint32_t elapsed_us = micros() - loop_start_us;
+    if (elapsed_us < LOOP_PERIOD_US) {
+      delayMicroseconds(LOOP_PERIOD_US - elapsed_us);
+    }
+  }
+
+  float nominalFusionDt_() const {
+    const float dt_nom = runtime_imu_.fifo().nominalDt();
+    if (dt_nom > 0.0f && std::isfinite(dt_nom)) {
+      return dt_nom;
+    }
+    return 1.0f / LOOP_HZ;
+  }
+
+  float computeFusionDtFromFifoTimestamp_(const BoschAGSample& s) {
+    const float dt_nom = nominalFusionDt_();
+
+    if (!s.timestamp_exact) {
+      return dt_nom;
+    }
+
+    const uint32_t curr24 = s.sensortime24 & BMI270_SENSORTIME_MASK;
+    if (!have_last_fusion_time24_) {
+      have_last_fusion_time24_ = true;
+      last_fusion_time24_ = curr24;
+      return dt_nom;
+    }
+
+    const uint32_t dt_ticks = (curr24 - last_fusion_time24_) & BMI270_SENSORTIME_MASK;
+    last_fusion_time24_ = curr24;
+
+    const float dt_fifo_s = static_cast<float>(dt_ticks) * BMI270_SENSORTIME_TICK_S;
+    if (!(dt_fifo_s > 0.0f) || !std::isfinite(dt_fifo_s)) {
+      return dt_nom;
+    }
+
+    return dt_fifo_s;
+  }
+
   BoschBmi270_ImuCal::Config makeImuConfig_() const {
     BoschBmi270_ImuCal::Config cfg;
     cfg.bmi270_addr                = BMI270_ADDR;
@@ -395,6 +429,8 @@ private:
     pending_mag_update_  = false;
 
     last_skipped_total_ = runtime_imu_.fifo().skippedFramesTotal();
+    have_last_fusion_time24_ = false;
+    last_fusion_time24_      = 0;
   }
 
   void pollRuntimeMag_() {
@@ -518,6 +554,8 @@ private:
     mag_norm_uT_         = NAN;
 
     stale_frame_count_ = 0;
+    have_last_fusion_time24_ = false;
+    last_fusion_time24_      = 0;
   }
 
 #if SEA_STATE_ENABLE_WIZARD
@@ -563,7 +601,7 @@ private:
 #endif
 
   void updateFilter_(const BoschAGSample& s) {
-    dt_ = s.dt_s;
+    dt_ = computeFusionDtFromFifoTimestamp_(s);
     constexpr float tempC = 25.0f;
 
     const Vector3f a_s(s.ax, s.ay, s.az);
@@ -741,18 +779,28 @@ private:
     nmea_xdr_freq(SEA_STATE_NMEA_TALKER, wave_hz_);
     nmea_rot(SEA_STATE_NMEA_TALKER, rot_dpm_filt_, valid);
 #else
-/*
-    Serial.printf("dt_:%+.3f\n", static_cast<double>(dt_ * 1000));  
+    const float mag_delta_ms = have_mag_sample_
+                               ? static_cast<float>(now_ms - last_mag_success_ms_)
+                               : 0.0f;
+    const float mag_target_ms = static_cast<float>(magPollMs_());
 
-    Serial.printf("Hcm:%+.3f\twaveEnvelopeCM:%+.3f\timuStale:%u\n",
-                  static_cast<double>(heave_m_ * 100.0f),
-                  static_cast<double>(wave_envelope_m_ * 100.0f),
-                  static_cast<unsigned>(stale_frame_count_));
-*/                 
-    Serial.printf("az:%+.3f\tmy:%+.6f\twz:%+.5f\n",
-                  static_cast<double>(a_cal_.z()),
-                  static_cast<double>(m_cal_.y()),
-                  static_cast<double>(w_cal_.z()));  
+    Serial.printf(
+      "FIFO batch=%u | dt_imu_ms=%.2f | mag_valid=%u | dt_mag_ms=%s%.2f (target~%.2f) | acc_ned[m/s^2] N=%.3f E=%.3f D=%.3f | gyro_ned[rad/s] N=%.3f E=%.3f D=%.3f | mag_ned[uT] N=%.2f E=%.2f D=%.2f\n",
+      static_cast<unsigned>(last_fifo_batch_count_),
+      static_cast<double>(dt_ * 1000.0f),
+      mag_ok_ ? 1U : 0U,
+      mag_fresh_ ? "+" : "~",
+      static_cast<double>(mag_delta_ms),
+      static_cast<double>(mag_target_ms),
+      static_cast<double>(a_cal_.x()),
+      static_cast<double>(a_cal_.y()),
+      static_cast<double>(a_cal_.z()),
+      static_cast<double>(w_cal_.x()),
+      static_cast<double>(w_cal_.y()),
+      static_cast<double>(w_cal_.z()),
+      static_cast<double>(m_cal_.x()),
+      static_cast<double>(m_cal_.y()),
+      static_cast<double>(m_cal_.z()));
 #endif
   }
 };
