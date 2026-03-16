@@ -1,7 +1,7 @@
 #pragma once
 
 /*
-  Copyright (c) 2025 Mikhail Grushinskiy
+  Copyright (c) 2025-2026 Mikhail Grushinskiy
 
   Based on: https://github.com/thomaspasser/q-mekf
   MIT License, Copyright (c) 2023 Thomas Passer
@@ -55,11 +55,11 @@ inline OUPrims<T> make_prims(T h, T tau) {
     return {alpha, em1};
 }
 
-// Full exponential-map correction (Rodrigues in quaternion form).
+// Quaternion from a rotation vector δθ.
 // Accurate for both small and large |δθ|.
-// Right-multiply convention: q_new = qref ⊗ δq(δθ), where δθ = vector increment.
-// Uses Maclaurin expansion with FMA for small |δθ| to avoid 0/0 and cancellation.
-// Series preserves 2nd-order accuracy in propagation and correction.
+// This helper is convention-agnostic by itself; the filter convention depends
+// on how the returned quaternion is multiplied into qref.
+// Uses a small-angle series to avoid loss of precision near |δθ| = 0.
 template<typename T>
 inline Eigen::Quaternion<T> quat_from_delta_theta(const Eigen::Matrix<T,3,1>& dtheta) {
     const T theta = dtheta.norm();
