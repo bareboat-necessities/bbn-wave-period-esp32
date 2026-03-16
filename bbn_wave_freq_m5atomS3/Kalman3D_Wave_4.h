@@ -772,8 +772,8 @@ class Kalman3D_Wave_4 {
 
     static MatrixBaseN initialize_Q(Vector3 sigma_g, T b0);
 
-    // Quaternion & small-angle helpers (kept)
-    void applyQuaternionCorrectionFromErrorState(); // apply correction to qref using xext(0..2)
+    // Inject the current local attitude-error state into qref, then clear the attitude-error slot in xext.
+    void applyQuaternionCorrectionFromErrorState();
 
     static void PhiAxis3x1_analytic(T tau, T h, Eigen::Matrix<T,3,3>& Phi_axis);
     static void QdAxis3x1_analytic(T tau, T h, T sigma2, Eigen::Matrix<T,3,3>& Qd_axis);
@@ -1980,7 +1980,7 @@ void Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::applyQuaternionCorrect
     Eigen::Quaternion<T> corr = quat_from_delta_theta((xext.template segment<3>(0)).eval());
     qref = qref * corr;
     qref.normalize();
-    // Clear error-state attitude correction after applying
+    // Clear the local attitude-error state after injection.
     xext.template head<3>().setZero();
 }
 
