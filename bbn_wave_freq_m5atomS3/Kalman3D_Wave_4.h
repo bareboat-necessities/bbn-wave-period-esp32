@@ -11,8 +11,7 @@
      p (3)   : displacement/position in world frame
      a_w (3) : latent world-frame inertial acceleration (NED)
 
-  - The quaternion MEKF logic (time_update, measurement_update, partial updates, quaternion correction)
-    is preserved where possible.
+  - The quaternion MEKF logic (time_update, measurement_update, partial updates, quaternion correction) is implemented.
   - The extended linear states are driven by a latent OU world-acceleration a_w
     (accelerometer input is used only in the measurement update).
   - A full extended covariance (Pext) is maintained.
@@ -313,8 +312,8 @@ class Kalman3D_Wave_4 {
             // Just disabled: decouple base (A) from linear (L)
             zero_AL_cross_cov_once_();
 
-            // Optional: also decouple accel bias from the linear block
-            // if you consider those part of the "A" subsystem when linear is off.
+            // Also decouple accel bias from the linear block
+            // if we consider those part of the "A" subsystem when linear is off.
             if constexpr (with_accel_bias) {
                 Pext.template block<9,3>(OFF_V, OFF_BA).setZero();
                 Pext.template block<3,9>(OFF_BA, OFF_V).setZero();
@@ -522,7 +521,7 @@ class Kalman3D_Wave_4 {
 	    log_tau_aw_f_.r    = tau_cmd_log * tau_cmd_log;
 	}
 	
-	// Feed “commands” from your external adaptation
+	// Feed “commands” from an external adaptation
 	void command_sigma_acc(const Vector3& sigma_acc_cmd) { param_rw_update_sigma_acc_cmd_(sigma_acc_cmd); }
 	void command_tau_aw   (T tau_cmd)                    { param_rw_update_tau_cmd_(tau_cmd); }
 	
@@ -547,7 +546,7 @@ class Kalman3D_Wave_4 {
     void set_alpha_smoothing_tau(T tau_sec) { alpha_smooth_tau_ = std::max(T(0), tau_sec); }
 
     // Set / update steady wind heel (roll about BODY X, rad).
-    // Call this periodically (e.g. when your wind model changes) *before*
+    // Call this periodically (e.g. when the wind model changes) *before*
     // calling time_update/measurement_update_* for the next step.
 	void update_wind_heel(T heel_rad) {
 	    const T old = wind_heel_rad_;
@@ -614,7 +613,7 @@ class Kalman3D_Wave_4 {
 
     // IMU lever-arm (off-CoG) support
     bool   use_imu_lever_arm_       = false;
-    // Lever arm in *physical* BODY frame B (what you measure on the boat).
+    // Lever arm in *physical* BODY frame B (what we measure on the boat).
     Vector3 r_imu_wrt_cog_body_phys_ = Vector3::Zero();
 
     // Cached kinematics in the virtual un-heeled frame B'
@@ -1156,7 +1155,7 @@ Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::Kalman3D_Wave_4(
 	    sigma_acc0.y() = std::sqrt(std::max(T(0), Racc(1,1)));
 	    sigma_acc0.z() = std::sqrt(std::max(T(0), Racc(2,2)));
 	
-	    // R_p0 in your ctor is "variance" scalar; convert to std
+	    // R_p0 in the ctor is "variance" scalar; convert to std
 	    const T sigma_p00 = std::sqrt(std::max(T(1e-12), R_p0_noise_var));
 	    Vector3 sigma_p00v = Vector3::Constant(sigma_p00);
 	
