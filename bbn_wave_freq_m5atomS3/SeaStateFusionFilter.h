@@ -83,8 +83,8 @@ constexpr float ADAPT_RS_MULT              = 5.0f;   // dimensionless
 constexpr float ONLINE_TUNE_WARMUP_SEC     = 5.0f;
 constexpr float MAG_DELAY_SEC              = 8.0f;
 
-// Frequency smoother dt (SeaStateFusionFilter is designed for 240 Hz)
-constexpr float FREQ_SMOOTHER_DT = 1.0f / 240.0f;
+// Frequency smoother dt (SeaStateFusionFilter is designed for 200 Hz)
+constexpr float FREQ_SMOOTHER_DT = 1.0f / 200.0f;
 
 struct TuneState {
     float tau_applied   = 1.1f;    // s

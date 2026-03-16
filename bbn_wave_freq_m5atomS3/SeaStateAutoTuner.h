@@ -134,7 +134,7 @@ private:
 #include <iostream>
 
 static inline void SeaStateAutoTuner_test() {
-    constexpr float Fs   = 240.0f;
+    constexpr float Fs   = 200.0f;
     constexpr float DT   = 1.0f / Fs;
     constexpr float F_HZ = 0.5f;
     const float omega = 2.0f * 3.14159265358979323846f * F_HZ;

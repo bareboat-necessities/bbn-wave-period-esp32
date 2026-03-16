@@ -6,7 +6,7 @@ template <typename Real = float>
 class FirstOrderIIRSmoother {
 public:
     /**
-     * @param dt                  Sample period in seconds (e.g. 1.0f / 240.0f)
+     * @param dt                  Sample period in seconds (e.g. 1.0f / 200.0f)
      * @param settle_time_sec90   Time to reach ~90% of a step (seconds)
      */
     FirstOrderIIRSmoother(Real dt,

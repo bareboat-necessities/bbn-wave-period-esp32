@@ -351,7 +351,7 @@ static void process_wave_file_direction_only(const std::string& filename,
 }
 
 int main(int argc, char* argv[]) {
-    const float dt = 1.0f / 240.0f;
+    const float dt = 1.0f / 200.0f;
 
     std::string tracker_name = "kalmf"; // default
     for (int i = 1; i < argc; i++) {

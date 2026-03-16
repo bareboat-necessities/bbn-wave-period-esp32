@@ -28,7 +28,7 @@ plt.rcParams.update({
 DATA_DIR = "./"
 
 # === Sampling cutoff ===
-SAMPLE_RATE = 240
+SAMPLE_RATE = 200
 MAX_TIME = 600.0
 MAX_RECORDS = int(SAMPLE_RATE * MAX_TIME)
 

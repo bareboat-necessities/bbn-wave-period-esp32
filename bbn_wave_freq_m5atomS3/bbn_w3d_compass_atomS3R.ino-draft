@@ -70,7 +70,7 @@ enum class TrackerType { ARANOVSKIY = 0, KALMANF = 1, ZEROCROSS = 2 };
 #endif
 
 // Loop timing
-static constexpr float    LOOP_HZ        = 240.0f;
+static constexpr float    LOOP_HZ        = 200.0f;
 static constexpr uint32_t LOOP_PERIOD_US = (uint32_t)(1000000.0f / LOOP_HZ);
 
 // Mag pacing only (wrapper gates internally); 12ms ~ 83 Hz

@@ -11,7 +11,7 @@ We evaluate the proposed Kalman filter against several canonical wave models.
 
 \begin{table}[t]
   \centering
-  \caption{Wave scenarios. Runs: \SI{20}{min} at \SI{240}{Hz} capturing $\sim$288{,}000 samples.}
+  \caption{Wave scenarios. Runs: \SI{20}{min} at \SI{200}{Hz} capturing $\sim$240{,}000 samples.}
   \label{tab:scenarios}
   \sisetup{table-number-alignment = center}
   \setlength{\tabcolsep}{2pt}%
@@ -27,7 +27,7 @@ We evaluate the proposed Kalman filter against several canonical wave models.
   \end{tabular}
 \end{table}
 
-Each scenario undergoes \SI{20}{min} simulation at \SI{240}{Hz}, producing time series of world-frame displacement, velocity, and 
+Each scenario undergoes \SI{20}{min} simulation at \SI{200}{Hz}, producing time series of world-frame displacement, velocity, and 
 acceleration alongside body-frame IMU measurements (specific force and angular rate). Directional seas employ a randomized $\cos^{2s}$ spread 
 about a nominal direction, with each spectral component receiving independent phase randomization while maintaining ensemble energy consistency.
 
@@ -62,7 +62,7 @@ in physical units (e.g.\ $\mu$T). This provides both estimator inputs and ground
     \textbf{Quantity} & \textbf{Value} & \textbf{Notes} \\
     \midrule
     \multicolumn{3}{@{}l}{\emph{Timing / protocol}} \\
-    IMU sample rate & \SI{240}{\hertz} & $\Delta t = 1/240$ \\
+    IMU sample rate & \SI{200}{\hertz} & $\Delta t = 1/200$ \\
     Magnetometer ODR & \SI{100}{\hertz} & hold-last-sample \\
     \midrule
     \multicolumn{3}{@{}l}{\emph{Accelerometer noise/bias model (per axis)}} \\
@@ -92,7 +92,7 @@ in physical units (e.g.\ $\mu$T). This provides both estimator inputs and ground
 \end{table}
 
 \paragraph{Multi-rate timing and update schedule (condition under test: asynchrony)}
-The inertial channels $\vct{f}_b$ and $\boldsymbol{\omega}_b$ are streamed at $240$~Hz.
+The inertial channels $\vct{f}_b$ and $\boldsymbol{\omega}_b$ are streamed at $200$~Hz.
 Magnetometer samples are produced at an independent ODR of $100$~Hz and delivered with hold-last-sample
 between magnetometer ticks. The filter is stepped once per IMU sample: each step performs a time update
 driven by $\vct{\omega}_{\text{meas}}$ and a rank--3 accelerometer update driven by $\vct{f}_{\text{meas}}$,

@@ -35,7 +35,7 @@ FNAME_RE = re.compile(
 )
 
 # Sampling config
-SAMPLE_RATE_HZ = 240
+SAMPLE_RATE_HZ = 200
 MAX_TIME_S = 300.0
 MAX_ROWS = int(SAMPLE_RATE_HZ * MAX_TIME_S)
 

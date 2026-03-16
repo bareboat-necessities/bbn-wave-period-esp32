@@ -684,7 +684,7 @@ private:
 #include <iostream>
 #include <stdexcept>
 
-constexpr float SAMPLE_FREQ_HZ   = 240.0f;
+constexpr float SAMPLE_FREQ_HZ   = 200.0f;
 constexpr float DT               = 1.0f / SAMPLE_FREQ_HZ;
 constexpr float SIM_DURATION_SEC = 60.0f;
 constexpr float SINE_AMPLITUDE   = 1.0f;

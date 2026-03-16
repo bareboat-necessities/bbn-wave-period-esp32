@@ -6,7 +6,7 @@
   - Uses AtomS3R_ImuCal.h (blob + runtime apply + axis mapping + clearM5UnifiedImuCalibration)
   - Uses AtomS3R_ImuCalWizard.h (UI + wizard capture/fit/save + Input tap logic)
   - Uses your QuaternionMEKF (q-mekf) implementation (KalmanQMEKF.h) for fused roll/pitch/yaw
-  - Runs accel+gyro at ~240 Hz, mag is slower and gated by time+delta (stale-repeat rejection)
+  - Runs accel+gyro at ~200 Hz, mag is slower and gated by time+delta (stale-repeat rejection)
   - Shows Heading (deg, 0..360), Roll/Pitch (deg) on screen and prints to Serial
 
   Taps:
@@ -51,7 +51,7 @@ using namespace atoms3r_ical;
 using Vector3f = Eigen::Matrix<float, 3, 1>;
 
 // Sampling / gating tuning
-static constexpr float    LOOP_HZ        = 240.0f;
+static constexpr float    LOOP_HZ        = 200.0f;
 static constexpr uint32_t LOOP_PERIOD_US = (uint32_t)(1000000.0f / LOOP_HZ);
 
 // Mag ODR is slower; also many builds repeat stale values.
@@ -158,7 +158,7 @@ public:
   }
 
   void tick() {
-    // Pace loop to ~240 Hz (light pacing; wizard UI will override timing when active)
+    // Pace loop to ~200 Hz (light pacing; wizard UI will override timing when active)
     const uint32_t now_us = micros();
     int32_t wait_us = (int32_t)(next_tick_us_ - now_us);
     if (wait_us > 0) {
@@ -257,7 +257,7 @@ private:
 
   // MEKF
   void resetMEKF_() {
-    // Noise tuning for 240 Hz acc+gyro updates (conservative handheld/boat defaults):
+    // Noise tuning for 200 Hz acc+gyro updates (conservative handheld/boat defaults):
     const float g = ImuCalCfg::g_std;
 
     Vector3f sigma_a; sigma_a << 0.06f * g, 0.06f * g, 0.06f * g; // m/s^2
@@ -337,7 +337,7 @@ private:
       mekf_inited_ = true;
     }
 
-    // Core filter updates at ~240Hz
+    // Core filter updates at ~200Hz
     mekf_->time_update(w_cal_, dt);
 
     // IMPORTANT: attitude update should use accel *direction*.
