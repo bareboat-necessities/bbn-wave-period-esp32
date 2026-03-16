@@ -477,7 +477,7 @@ private:
     constexpr float IMU_TUNE_REF_HZ = 100.0f;
     constexpr float MAG_TUNE_REF_HZ = 30.0f;
 
-    constexpr float acc_sigma_ref_mps2 = 0.150f;
+    constexpr float acc_sigma_ref_mps2 = 0.14f;
     constexpr float gyr_sigma_ref_rps  = 0.00135f;
     constexpr float mag_sigma_ref_uT   = 1.80f;
 
@@ -501,7 +501,7 @@ private:
     fcfg.mag_world_ref = Vector3f(0.0f, 0.0f, 0.0f);
 
     fcfg.freeze_acc_bias_until_live = true;
-    fcfg.Racc_warmup = 0.16f;
+    fcfg.Racc_warmup = 0.18f;
 
     fcfg.sigma_a  = sigma_a;
     fcfg.sigma_g  = sigma_g;
@@ -521,9 +521,9 @@ private:
     ff.enableTuner(true);
     ff.setWithMag(true);
     ff.setSFactor(1.0f);
-    ff.setTauCoeff(1.3f);
-    ff.setSigmaCoeff(0.85f);
-    ff.setRSCoeff(0.8f);
+    ff.setTauCoeff(1.4f);
+    ff.setSigmaCoeff(0.9f);
+    ff.setRSCoeff(0.55f);
     ff.setRSXYFactor(0.17f);
     ff.setAccNoiseFloorSigma(ACC_NOISE_FLOOR_SIGMA_DEFAULT);
     ff.setHarmonicPositionDespikeConfig(5, 4.0f);
