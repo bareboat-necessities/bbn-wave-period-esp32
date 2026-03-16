@@ -329,7 +329,7 @@ for fname in files:
         ("freq_tracker_hz", "Frequency (Hz)"),
         ("accel_std_combo", r"Accel std and $\sigma_a$ applied ($m/s^2$)"),
         ("tau_applied",     r"$\tau$ applied (s)"),
-        ("R_p0_applied",     r"$R_{p0}$ applied"),
+        ("p0_combo",        r"$R_{p0}$ / $p_{0,S}$ applied"),
     ]
 
     fig, axes = make_subplots(len(tuner_panels), latex_safe(basename) + " (Frequency / Tuner)")
@@ -360,6 +360,22 @@ for fname in files:
             ax.grid(True)
             if have_any:
                 ax.legend(loc="upper right", fontsize=8)
+            continue
+
+        if key == "p0_combo":
+            # Old logs use R_p0_applied; newer adapt-4 logs expose p0_S_applied.
+            if "R_p0_applied" in df.columns:
+                ax.plot(time, df["R_p0_applied"], linewidth=1.2, label=r"$R_{p0}$ applied")
+            elif "p0_S_applied" in df.columns:
+                ax.plot(time, df["p0_S_applied"], linewidth=1.2, label=r"$p_{0,S}$ applied")
+            else:
+                ax.text(0.01, 0.50, "Missing: " + latex_safe("R_p0_applied") + " or " + latex_safe("p0_S_applied"), transform=ax.transAxes)
+                ax.set_axis_off()
+                continue
+
+            ax.set_ylabel(ylabel)
+            ax.grid(True)
+            ax.legend(loc="upper right", fontsize=8)
             continue
 
         # Normal single-series panels

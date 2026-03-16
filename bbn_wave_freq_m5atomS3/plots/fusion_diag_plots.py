@@ -74,7 +74,7 @@ for fname in sorted(files):
     time = df["time"]
 
     # Required columns (applied values)
-    required = ["freq_tracker_hz", "sigma_a_applied", "tau_applied", "R_p0_applied"]
+    required = ["freq_tracker_hz", "sigma_a_applied", "tau_applied"]
     missing = [c for c in required if c not in df.columns]
     if missing:
         print(f"Missing columns in {fname}: {missing}")
@@ -95,8 +95,16 @@ for fname in sorted(files):
     axes[2].set_ylabel(r"$\tau$ [s]")
     axes[2].grid(True)
 
-    axes[3].plot(time, df["R_p0_applied"], color="tab:red", linewidth=1.2)
-    axes[3].set_ylabel(r"$R_{p0}$")
+    if "R_p0_applied" in df.columns:
+        axes[3].plot(time, df["R_p0_applied"], color="tab:red", linewidth=1.2, label=r"$R_{p0}$ applied")
+    elif "p0_S_applied" in df.columns:
+        axes[3].plot(time, df["p0_S_applied"], color="tab:red", linewidth=1.2, label=r"$p_{0,S}$ applied")
+    else:
+        print(f"Missing columns in {fname}: ['R_p0_applied' or 'p0_S_applied']")
+        plt.close(fig)
+        continue
+    axes[3].set_ylabel(r"$R_{p0}$ / $p_{0,S}$")
+    axes[3].legend(loc="upper right", fontsize=8)
     axes[3].set_xlabel("Time [s]")
     axes[3].grid(True)
 
