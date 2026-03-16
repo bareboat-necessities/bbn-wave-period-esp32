@@ -198,13 +198,13 @@ for fname in files:
                 plot_envelope(ax_val, time.to_numpy(), df["disp_scale_m"].to_numpy(),
                               label=r"Envelope $\pm$ disp\_scale", shade=True)
             else:
-                ax_val.text(0.01, 0.10, "Missing: disp_scale_m", transform=ax_val.transAxes)
+                ax_val.text(0.01, 0.10, "Missing: " + latex_safe("disp_scale_m"), transform=ax_val.transAxes)
         elif prefix == "vel":
             if "vel_scale_mps" in df.columns:
                 plot_envelope(ax_val, time.to_numpy(), df["vel_scale_mps"].to_numpy(),
                               label=r"Envelope $\pm$ vel\_scale", shade=True)
             else:
-                ax_val.text(0.01, 0.10, "Missing: vel_scale_mps", transform=ax_val.transAxes)
+                ax_val.text(0.01, 0.10, "Missing: " + latex_safe("vel_scale_mps"), transform=ax_val.transAxes)
 
         ax_val.set_ylabel(f"{prefix.capitalize()} Z")
         ax_val.grid(True)
@@ -348,13 +348,13 @@ for fname in files:
                 ax.plot(time, std, linewidth=1.2, label=r"Accel std ($\sqrt{\mathrm{var}}$)")
                 have_any = True
             else:
-                ax.text(0.01, 0.60, "Missing: accel_std_tuner or accel_var_tuner", transform=ax.transAxes)
+                ax.text(0.01, 0.60, "Missing: " + latex_safe("accel_std_tuner") + " or " + latex_safe("accel_var_tuner"), transform=ax.transAxes)
 
             if "sigma_a_applied" in df.columns:
                 ax.plot(time, df["sigma_a_applied"], linewidth=1.2, linestyle="--", label=r"$\sigma_a$ applied")
                 have_any = True
             else:
-                ax.text(0.01, 0.40, "Missing: sigma_a_applied", transform=ax.transAxes)
+                ax.text(0.01, 0.40, "Missing: " + latex_safe("sigma_a_applied"), transform=ax.transAxes)
 
             ax.set_ylabel(ylabel)
             ax.grid(True)
@@ -364,7 +364,7 @@ for fname in files:
 
         # Normal single-series panels
         if key not in df.columns:
-            ax.text(0.01, 0.5, f"Missing: {key}", transform=ax.transAxes)
+            ax.text(0.01, 0.5, f"Missing: {latex_safe(key)}", transform=ax.transAxes)
             ax.set_axis_off()
             continue
 
@@ -386,7 +386,7 @@ for fname in files:
     fig, axes = make_subplots(len(dir_cols), latex_safe(basename) + " (Direction)")
     for ax, (col, ylabel) in zip(axes, dir_cols):
         if col not in df.columns:
-            ax.text(0.01, 0.5, f"Missing: {col}", transform=ax.transAxes)
+            ax.text(0.01, 0.5, f"Missing: {latex_safe(col)}", transform=ax.transAxes)
             ax.set_axis_off()
             continue
 
