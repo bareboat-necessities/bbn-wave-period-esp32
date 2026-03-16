@@ -208,8 +208,8 @@ static void process_wave_file_for_tracker(const std::string &filename,
         << "gyro_bias_x,gyro_bias_y,gyro_bias_z,"
         << "acc_bias_est_x,acc_bias_est_y,acc_bias_est_z,"
         << "gyro_bias_est_x,gyro_bias_est_y,gyro_bias_est_z,"
-        << "tau_applied,sigma_a_applied,R_S_applied,"
-        << "tau_target,sigma_a_target,R_S_target,"
+        << "tau_applied,sigma_a_applied,R_p0_applied,"
+        << "tau_target,sigma_a_target,R_p0_target,"
         << "freq_tracker_hz,Tp_tuner_s,accel_var_tuner\n";
 
     WaveDataCSVReader reader(filename);
