@@ -155,6 +155,11 @@ inline float diffDeg(float est_deg, float ref_deg) {
     return wrapDeg(est_deg - ref_deg);
 }
 
+inline float p0_s_from_sigma_tau(float sigma_a, float tau) {
+    if (!std::isfinite(sigma_a) || !std::isfinite(tau)) return NAN;
+    return sigma_a * tau * tau;
+}
+
 //  RMS helper
 class RMSReport {
 public:
@@ -362,7 +367,7 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
         << "mag_bias_x,mag_bias_y,mag_bias_z,"                          // TRUE (uT), BODY-NED
         << "mag_bias_est_x,mag_bias_est_y,mag_bias_est_z,"              // EST  (uT), BODY-NED
         << "mag_bias_err_x,mag_bias_err_y,mag_bias_err_z,"              // EST-TRUE (uT)       
-        << "tau_applied,sigma_a_applied,R_S_applied,"
+        << "tau_applied,sigma_a_applied,p0_S_applied,"
         << "freq_tracker_hz,Tp_tuner_s,accel_var_tuner,"
         << "disp_scale_m,vel_scale_mps,"
         << "dir_phase,"
@@ -448,7 +453,7 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
         filter.mekf().set_Racc(Vector3f::Constant(0.5f));
     } else {
         filter.enableLinearBlock(true);
-        filter.enableTuner(true);                    // keep adaptive R_S/tuning active
+        filter.enableTuner(true);                    // keep adaptive p0_S/tuning active
         filter.enableClamp(true);
     }
     
@@ -651,7 +656,7 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
             << mag_bias_err.x()      << "," << mag_bias_err.y()      << "," << mag_bias_err.z()      << ","           
             << filter.getTauApplied() << ","
             << filter.getSigmaApplied() << ","
-            << filter.getRSApplied() << ","
+            << p0_s_from_sigma_tau(filter.getSigmaApplied(), filter.getTauApplied()) << ","
             << filter.getFreqHz() << ","
             << filter.getPeriodSec() << ","
             << filter.getAccelVariance() << ","
@@ -827,11 +832,11 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
         // Extended diagnostic summary
         float tau_target   = filter.getTauTarget();
         float sigma_target = filter.getSigmaTarget();
-        float RS_target    = filter.getRSTarget();
+        float p0_S_target  = p0_s_from_sigma_tau(sigma_target, tau_target);
 
         float tau_applied   = filter.getTauApplied();
         float sigma_applied = filter.getSigmaApplied();
-        float RS_applied    = filter.getRSApplied();
+        float p0_S_applied  = p0_s_from_sigma_tau(sigma_applied, tau_applied);
 
         float f_hz          = filter.getFreqHz();
         float Tp_tuner      = filter.getPeriodSec();
@@ -839,10 +844,10 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
 
         std::cout << "tau_target=" << tau_target
                   << ", sigma_target=" << sigma_target
-                  << ", RS_target=" << RS_target << "\n";
+                  << ", p0_S_target=" << p0_S_target << "\n";
         std::cout << "tau_applied=" << tau_applied
                   << ", sigma_applied=" << sigma_applied
-                  << ", RS_applied=" << RS_applied << "\n";
+                  << ", p0_S_applied=" << p0_S_applied << "\n";
         std::cout << "f_hz=" << f_hz
                   << ", Tp_tuner=" << Tp_tuner
                   << ", accel_var=" << accel_var << "\n";
