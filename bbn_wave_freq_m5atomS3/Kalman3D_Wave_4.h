@@ -9,7 +9,6 @@
   Full-matrix Kalman that with linear navigation states:
      v (3)   : velocity in world frame
      p (3)   : displacement/position in world frame
-     S (3)   : integral of displacement (∫ p dt) — with zero pseudo-measurement for drift correction
      a_w (3) : latent world-frame inertial acceleration (NED)
 
   - The quaternion MEKF logic (time_update, measurement_update, partial updates, quaternion correction)
@@ -95,11 +94,10 @@ inline Eigen::Quaternion<T> quat_from_delta_theta(const Eigen::Matrix<T,3,1>& dt
 }
 
 // Safe expansions for OU discrete coefficients.
-// Provides phi_pa, phi_Sa with series fallback for small x = h/tau.
+// Provides phi_pa with series fallback for small x = h/tau.
 template<typename T>
 struct OUDiscreteCoeffs {
     T phi_pa; // coefficient for position vs. accel
-    T phi_Sa; // coefficient for S vs. accel
 };
 
 template<typename T>
@@ -108,30 +106,22 @@ inline OUDiscreteCoeffs<T> safe_phi_A_coeffs(T h, T tau) {
     const T inv_tau = safe_inv_tau(tau);
     const T x = h * inv_tau;
     const T tau2 = tau*tau;
-    const T tau3 = tau2*tau;
 
     if (std::abs(x) < T(1e-2)) {
         // Maclaurin expansions
         const T x2 = x*x;
         const T x3 = x2*x;
         const T x4 = x3*x;
-        const T x5 = x4*x;
 
         // phi_pa ≈ τ² (x²/2 - x³/6 + x⁴/24)
         c.phi_pa = tau2 * (T(0.5)*x2 - T(1.0/6.0)*x3 + T(1.0/24.0)*x4);
 
-        // phi_Sa ≈ τ³ (x³/6 - x⁴/24 + x⁵/120)
-        c.phi_Sa = tau3 * (T(1.0/6.0)*x3 - T(1.0/24.0)*x4 + T(1.0/120.0)*x5);
     } else {
         // General closed-form branch
-        const T alpha  = std::exp(-x);
         const T em1    = std::expm1(-x);
         // reuse for stability
         const T phi_pa = tau2 * (x + em1);
-        const T phi_Sa = tau3 * (T(0.5)*x*x - x - em1);
-
         c.phi_pa = phi_pa;
-        c.phi_Sa = phi_Sa;
     }
     return c;
 }
@@ -200,8 +190,8 @@ class Kalman3D_Wave_4 {
     // Base (att_err + optional gyro bias)
     static constexpr int BASE_N = with_gyro_bias ? 6 : 3;
 
-    // Extended added states: v(3), p(3), S(3), a_w(3) [+ b_acc(3)]
-    static constexpr int EXT_ADD = 12
+    // Extended added states: v(3), p(3), a_w(3) [+ b_acc(3)]
+    static constexpr int EXT_ADD = 9
         + (with_accel_bias ? 3 : 0);
 
     static constexpr int NX = BASE_N + EXT_ADD;
@@ -209,10 +199,9 @@ class Kalman3D_Wave_4 {
     // Offsets (always defined)
     static constexpr int OFF_V   = BASE_N + 0;
     static constexpr int OFF_P   = BASE_N + 3;
-    static constexpr int OFF_S   = BASE_N + 6;
-    static constexpr int OFF_AW  = BASE_N + 9;
+    static constexpr int OFF_AW  = BASE_N + 6;
 
-    static constexpr int OFF_BA  = with_accel_bias ? (BASE_N + 12) : -1;
+    static constexpr int OFF_BA  = with_accel_bias ? (BASE_N + 9) : -1;
 
 
     typedef Matrix<T, 3, 1> Vector3;
@@ -221,9 +210,9 @@ class Kalman3D_Wave_4 {
     typedef Matrix<T, 3, 3> Matrix3;
 
     // Fixed-size helpers for internal scratch
-    typedef Matrix<T, 12, 12> Matrix12;
-    typedef Matrix<T, 12,  1> Vector12;
-    typedef Matrix<T, BASE_N, 12> MatrixBaseN12;
+    typedef Matrix<T, 9, 9> Matrix9;
+    typedef Matrix<T, 9,  1> Vector9;
+    typedef Matrix<T, BASE_N, 9> MatrixBaseN9;
     typedef Matrix<T, NX,  3> MatrixNX3;
 
     static constexpr T STD_GRAVITY = T(9.80665);  // standard gravity acceleration m/s²
@@ -244,7 +233,7 @@ class Kalman3D_Wave_4 {
 
     // Constructor signatures preserved, additional defaults for linear process noise
     Kalman3D_Wave_4(Vector3 const& sigma_a, Vector3 const& sigma_g, Vector3 const& sigma_m,
-                  T Pq0 = T(5e-4), T Pb0 = T(1e-6), T b0 = T(1e-11), T R_S_noise_var = T(1.5),
+                  T Pq0 = T(5e-4), T Pb0 = T(1e-6), T b0 = T(1e-11), T R_p0_noise_var = T(1.5),
                   T gravity_magnitude = T(STD_GRAVITY));
 
     // Initialization / measurement API
@@ -265,9 +254,6 @@ class Kalman3D_Wave_4 {
     void measurement_update_mag_only(Vector3 const& mag);
 
     // Extended-only API:
-    // Apply zero pseudo-measurement on S (integral drift correction)
-    void applyIntegralZeroPseudoMeas();
-
     // 3D pseudo-measurement on position p (world, NED):
     //   p_meas ≈ p (meters), with per-axis std sigma_meas.
     // This does a full 3x3 Joseph update on the position block and its cross-covariances.
@@ -318,9 +304,9 @@ class Kalman3D_Wave_4 {
         }
     }
 
-    // Enable/disable propagation & drift-correction of linear states [v,p,S,a_w].
+    // Enable/disable propagation & drift-correction of linear states [v,p,a_w].
     // When disabled, the filter behaves like a pure attitude/bias MEKF:
-    //  • [v,p,S,a_w] are frozen (no process, no S pseudo-measurements),
+    //  • [v,p,a_w] are frozen (no process, no pseudo-measurements),
     //  • attitude & biases still propagate and accept accel/mag updates.
     void set_linear_block_enabled(bool on) {
         if (linear_block_enabled_ && !on) {
@@ -330,8 +316,8 @@ class Kalman3D_Wave_4 {
             // Optional: also decouple accel bias from the linear block
             // if you consider those part of the "A" subsystem when linear is off.
             if constexpr (with_accel_bias) {
-                Pext.template block<12,3>(OFF_V, OFF_BA).setZero();
-                Pext.template block<3,12>(OFF_BA, OFF_V).setZero();
+                Pext.template block<9,3>(OFF_V, OFF_BA).setZero();
+                Pext.template block<3,9>(OFF_BA, OFF_V).setZero();
             }
             // keep cadence sane
             pseudo_update_counter_ = 0;
@@ -355,8 +341,8 @@ class Kalman3D_Wave_4 {
                 Pext.template block<BASE_N,3>(0, OFF_BA).setZero();
 
                 // Also decouple from linear block (optional but consistent)
-                Pext.template block<3,12>(OFF_BA, OFF_V).setZero();
-                Pext.template block<12,3>(OFF_V, OFF_BA).setZero();
+                Pext.template block<3,9>(OFF_BA, OFF_V).setZero();
+                Pext.template block<9,3>(OFF_V, OFF_BA).setZero();
             } else {
                 // inflate P_ba logic
                 auto Pba = Pext.template block<3,3>(OFF_BA, OFF_BA);
@@ -378,12 +364,6 @@ class Kalman3D_Wave_4 {
     [[nodiscard]] Vector3 get_position() const {
         // position state at offset BASE_N+3
         return xext.template segment<3>(BASE_N + 3);
-    }
-
-    // Integral displacement in world (NED)
-    [[nodiscard]] Vector3 get_integral_displacement() const {
-        // integral of displacement state at offset BASE_N+6
-        return xext.template segment<3>(BASE_N + 6);
     }
 
     // Latent OU world-acceleration a_w (world, NED)
@@ -455,27 +435,27 @@ class Kalman3D_Wave_4 {
         has_cross_cov_a_xy = true;
     }
 
-    // Covariances for ∫p dt pseudo-measurement
-	void set_RS_noise(const Vector3& sigma_S) {
-		if (param_rw_enabled_) { param_rw_update_sigma_S_cmd_(sigma_S); return; }
-		R_S = sigma_S.array().square().matrix().asDiagonal();
-		R_S = T(0.5) * (R_S + R_S.transpose());
-	}
+    // Covariances for periodic position-zero pseudo-measurement
+    void set_Rp0_noise(const Vector3& sigma_p0) {
+        if (param_rw_enabled_) { param_rw_update_sigma_p0_cmd_(sigma_p0); return; }
+        R_p0 = sigma_p0.array().square().matrix().asDiagonal();
+        R_p0 = T(0.5) * (R_p0 + R_p0.transpose());
+    }
 
-	void set_RS_noise_matrix(const Matrix3& R) {
-	    Matrix3 S = T(0.5) * (R + R.transpose());
-	    project_psd<T,3>(S, T(1e-8));
-	
-	    if (param_rw_enabled_) {
-	        Vector3 sig;
-	        sig.x() = std::sqrt(std::max(T(0), S(0,0)));
-	        sig.y() = std::sqrt(std::max(T(0), S(1,1)));
-	        sig.z() = std::sqrt(std::max(T(0), S(2,2)));
-	        param_rw_update_sigma_S_cmd_(sig);
-	        return;
-	    }
-	    R_S = S;
-	}
+    void set_Rp0_noise_matrix(const Matrix3& R) {
+        Matrix3 S = T(0.5) * (R + R.transpose());
+        project_psd<T,3>(S, T(1e-8));
+
+        if (param_rw_enabled_) {
+            Vector3 sig;
+            sig.x() = std::sqrt(std::max(T(0), S(0,0)));
+            sig.y() = std::sqrt(std::max(T(0), S(1,1)));
+            sig.z() = std::sqrt(std::max(T(0), S(2,2)));
+            param_rw_update_sigma_p0_cmd_(sig);
+            return;
+        }
+        R_p0 = S;
+    }
 
     // Accelerometer measurement noise (std in m/s² per axis)
 	void set_Racc(const Vector3& sigma_acc) {
@@ -488,10 +468,9 @@ class Kalman3D_Wave_4 {
         Rmag = sigma_mag.array().square().matrix().asDiagonal();
     }
 
-    void set_initial_linear_uncertainty(T sigma_v0, T sigma_p0, T sigma_S0) {
+    void set_initial_linear_uncertainty(T sigma_v0, T sigma_p0) {
         Pext.template block<3,3>(OFF_V, OFF_V) = Matrix3::Identity() * (sigma_v0 * sigma_v0);   // v (3)
         Pext.template block<3,3>(OFF_P, OFF_P) = Matrix3::Identity() * (sigma_p0 * sigma_p0);   // p (3)
-        Pext.template block<3,3>(OFF_S, OFF_S) = Matrix3::Identity() * (sigma_S0 * sigma_S0);   // S (3)
     }
 
     void set_initial_acc_bias_std(T s) {
@@ -531,28 +510,26 @@ class Kalman3D_Wave_4 {
 	}
 	
 	// Optional tuning (log-domain stds)
-	void set_param_rw_process_std_log(Vector3 sigma_acc_rw_log, Vector3 sigma_S_rw_log, T tau_rw_log) {
+	void set_param_rw_process_std_log(Vector3 sigma_acc_rw_log, Vector3 sigma_p0_rw_log, T tau_rw_log) {
 	    log_sigma_acc_f_.q = sigma_acc_rw_log.array().square().matrix();
-	    log_sigma_S_f_.q   = sigma_S_rw_log.array().square().matrix();
+	    log_sigma_p0_f_.q   = sigma_p0_rw_log.array().square().matrix();
 	    log_tau_aw_f_.q    = tau_rw_log * tau_rw_log;
 	}
 	
-	void set_param_cmd_std_log(Vector3 sigma_acc_cmd_log, Vector3 sigma_S_cmd_log, T tau_cmd_log) {
+	void set_param_cmd_std_log(Vector3 sigma_acc_cmd_log, Vector3 sigma_p0_cmd_log, T tau_cmd_log) {
 	    log_sigma_acc_f_.r = sigma_acc_cmd_log.array().square().matrix();
-	    log_sigma_S_f_.r   = sigma_S_cmd_log.array().square().matrix();
+	    log_sigma_p0_f_.r   = sigma_p0_cmd_log.array().square().matrix();
 	    log_tau_aw_f_.r    = tau_cmd_log * tau_cmd_log;
 	}
 	
 	// Feed “commands” from your external adaptation
 	void command_sigma_acc(const Vector3& sigma_acc_cmd) { param_rw_update_sigma_acc_cmd_(sigma_acc_cmd); }
-	void command_sigma_S  (const Vector3& sigma_S_cmd)   { param_rw_update_sigma_S_cmd_(sigma_S_cmd); }
 	void command_tau_aw   (T tau_cmd)                    { param_rw_update_tau_cmd_(tau_cmd); }
 	
 	// Convenience
-	void apply_adaptive_params(const Vector3& sigma_acc_cmd, T tau_cmd, const Vector3& sigma_S_cmd) {
+	void apply_adaptive_params(const Vector3& sigma_acc_cmd, T tau_cmd) {
 	    command_sigma_acc(sigma_acc_cmd);
 	    command_tau_aw(tau_cmd);
-	    command_sigma_S(sigma_S_cmd);
 	}
 				
     // IMU lever-arm API
@@ -620,7 +597,7 @@ class Kalman3D_Wave_4 {
     MatrixBaseN Qbase; // Q for attitude & bias
 
     Matrix3 Racc; // Accelerometer noise (diagonal) stored as Matrix3
-    Matrix3 R_S;  // Triple integration measurement noise
+    Matrix3 R_p0;  // Position-zero pseudo-measurement noise
 
     // World-acceleration OU process a_w dynamics parameters
     T tau_aw = T(2.1);            // correlation time [s], tune 1–3.5 s for sea states
@@ -654,15 +631,15 @@ class Kalman3D_Wave_4 {
     MatrixBaseN  F_AA_scratch_;
     MatrixBaseN  Q_AA_scratch_;
 
-    Matrix12     F_LL_scratch_;
-    Matrix12     Q_LL_scratch_;
-    Matrix12     tmpLL_scratch_;
+    Matrix9      F_LL_scratch_;
+    Matrix9      Q_LL_scratch_;
+    Matrix9      tmpLL_scratch_;
 
-    Vector12     x_lin_prev_scratch_;
-    Vector12     x_lin_next_scratch_;
+    Vector9      x_lin_prev_scratch_;
+    Vector9      x_lin_next_scratch_;
 
     MatrixBaseN  tmpAA_scratch_;
-    MatrixBaseN12 tmpAL_scratch_;
+    MatrixBaseN9 tmpAL_scratch_;
 
     MatrixNX3    PCt_scratch_;
     MatrixNX3    K_scratch_;
@@ -799,8 +776,8 @@ class Kalman3D_Wave_4 {
     // Quaternion & small-angle helpers (kept)
     void applyQuaternionCorrectionFromErrorState(); // apply correction to qref using xext(0..2)
 
-    static void PhiAxis4x1_analytic(T tau, T h, Eigen::Matrix<T,4,4>& Phi_axis);
-    static void QdAxis4x1_analytic(T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis);
+    static void PhiAxis3x1_analytic(T tau, T h, Eigen::Matrix<T,3,3>& Phi_axis);
+    static void QdAxis3x1_analytic(T tau, T h, T sigma2, Eigen::Matrix<T,3,3>& Qd_axis);
 
     // Reusable helpers for all 3×3 measurement updates
 
@@ -890,14 +867,14 @@ class Kalman3D_Wave_4 {
 
     void zero_AL_cross_cov_once_() {
         constexpr int NA = BASE_N;
-        constexpr int NL = 12; // [v,p,S,a_w]
+        constexpr int NL = 9; // [v,p,a_w]
         Pext.template block<NA,NL>(0, OFF_V).setZero();
         Pext.template block<NL,NA>(OFF_V, 0).setZero();
     }
 
     EIGEN_STRONG_INLINE void freeze_linear_rows_(MatrixNX3& M) const {
-        // Linear block is [v,p,S,a_w] = 12 states starting at OFF_V
-        M.template block<12,3>(OFF_V, 0).setZero();
+        // Linear block is [v,p,a_w] = 9 states starting at OFF_V
+        M.template block<9,3>(OFF_V, 0).setZero();
     }
 
     EIGEN_STRONG_INLINE void freeze_acc_bias_rows_(MatrixNX3& M) const {
@@ -1055,15 +1032,15 @@ class Kalman3D_Wave_4 {
 	
 	// Log-parameters we filter:
 	//  - log(sigma_acc)  -> used to build Racc
-	//  - log(sigma_S)    -> used to build R_S (diag)
+	//  - log(sigma_p0)    -> used to build R_p0 (diag)
 	//  - log(tau_aw)     -> used for OU time constant
 	RWVec3Diag log_sigma_acc_f_;
-	RWVec3Diag log_sigma_S_f_;
+	RWVec3Diag log_sigma_p0_f_;
 	RWScalar   log_tau_aw_f_;
 	
 	// Safety clamps (physical units)
 	T sigma_acc_min_ = T(1e-4), sigma_acc_max_ = T(50);   // m/s^2
-	T sigma_S_min_   = T(1e-6), sigma_S_max_   = T(1e6);  // m*s (depends on your S meaning)
+	T sigma_p0_min_   = T(1e-6), sigma_p0_max_   = T(1e6);  // m (position pseudo-measurement std bounds)
 	T tau_min_       = T(1e-3), tau_max_       = T(60);   // s
 	
 	EIGEN_STRONG_INLINE void refresh_model_params_from_filtered_() {
@@ -1072,11 +1049,11 @@ class Kalman3D_Wave_4 {
 	    sigma_acc = clamp_pos_vec_(sigma_acc, sigma_acc_min_, sigma_acc_max_);
 	    Racc = sigma_acc.array().square().matrix().asDiagonal();
 	
-	    // sigma_S -> R_S (diag)
-	    Vector3 sigma_S = log_sigma_S_f_.x.array().exp().matrix();
-	    sigma_S = clamp_pos_vec_(sigma_S, sigma_S_min_, sigma_S_max_);
-	    R_S = sigma_S.array().square().matrix().asDiagonal();
-	    R_S = T(0.5) * (R_S + R_S.transpose());
+	    // sigma_p0 -> R_p0 (diag)
+	    Vector3 sigma_p0 = log_sigma_p0_f_.x.array().exp().matrix();
+	    sigma_p0 = clamp_pos_vec_(sigma_p0, sigma_p0_min_, sigma_p0_max_);
+	    R_p0 = sigma_p0.array().square().matrix().asDiagonal();
+	    R_p0 = T(0.5) * (R_p0 + R_p0.transpose());
 	
 	    // tau_aw
 	    T tau = std::exp(log_tau_aw_f_.x);
@@ -1087,7 +1064,7 @@ class Kalman3D_Wave_4 {
 	EIGEN_STRONG_INLINE void param_rw_predict_(T dt) {
 	    if (!param_rw_enabled_) return;
 	    log_sigma_acc_f_.predict(dt);
-	    log_sigma_S_f_.predict(dt);
+	    log_sigma_p0_f_.predict(dt);
 	    log_tau_aw_f_.predict(dt);
 	    refresh_model_params_from_filtered_();
 	}
@@ -1103,14 +1080,14 @@ class Kalman3D_Wave_4 {
 	    refresh_model_params_from_filtered_();
 	}
 	
-	EIGEN_STRONG_INLINE void param_rw_update_sigma_S_cmd_(const Vector3& sigma_S_cmd) {
+	EIGEN_STRONG_INLINE void param_rw_update_sigma_p0_cmd_(const Vector3& sigma_p0_cmd) {
 	    if (!param_rw_enabled_) {
-	        set_RS_noise(sigma_S_cmd);
+	        set_Rp0_noise(sigma_p0_cmd);
 	        return;
 	    }
-	    Vector3 s = clamp_pos_vec_(sigma_S_cmd, sigma_S_min_, sigma_S_max_);
+	    Vector3 s = clamp_pos_vec_(sigma_p0_cmd, sigma_p0_min_, sigma_p0_max_);
 	    Vector3 z = s.array().log().matrix();
-	    log_sigma_S_f_.update(z);
+	    log_sigma_p0_f_.update(z);
 	    refresh_model_params_from_filtered_();
 	}
 	
@@ -1133,7 +1110,7 @@ Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::Kalman3D_Wave_4(
     Vector3 const& sigma_a,
     Vector3 const& sigma_g,
     Vector3 const& sigma_m,
-    T Pq0, T Pb0, T b0, T R_S_noise_var, T gravity_magnitude)
+    T Pq0, T Pb0, T b0, T R_p0_noise_var, T gravity_magnitude)
   : Qbase(initialize_Q(sigma_g, b0)),
     gravity_magnitude_(gravity_magnitude),
     Racc(sigma_a.array().square().matrix().asDiagonal()),
@@ -1141,7 +1118,7 @@ Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::Kalman3D_Wave_4(
 {
     qref.setIdentity();  // quaternion init
 
-    R_S = Matrix3::Identity() * R_S_noise_var;
+    R_p0 = Matrix3::Identity() * R_p0_noise_var;
 
     // initialize base / extended states
     MatrixBaseN Pbase;
@@ -1169,8 +1146,7 @@ Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::Kalman3D_Wave_4(
 
     const T sigma_v0 = T(1.0);    // m/s
     const T sigma_p0 = T(20.0);   // m
-    const T sigma_S0 = T(50.0);   // m·s
-    set_initial_linear_uncertainty(sigma_v0, sigma_p0, sigma_S0);
+    set_initial_linear_uncertainty(sigma_v0, sigma_p0);
 
 	// Init commanded-parameter filter means from current settings
 	{
@@ -1180,35 +1156,35 @@ Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::Kalman3D_Wave_4(
 	    sigma_acc0.y() = std::sqrt(std::max(T(0), Racc(1,1)));
 	    sigma_acc0.z() = std::sqrt(std::max(T(0), Racc(2,2)));
 	
-	    // R_S in your ctor is "variance" scalar; convert to std
-	    const T sigma_S0 = std::sqrt(std::max(T(1e-12), R_S_noise_var));
-	    Vector3 sigma_S0v = Vector3::Constant(sigma_S0);
+	    // R_p0 in your ctor is "variance" scalar; convert to std
+	    const T sigma_p00 = std::sqrt(std::max(T(1e-12), R_p0_noise_var));
+	    Vector3 sigma_p00v = Vector3::Constant(sigma_p00);
 	
 	    log_sigma_acc_f_.x = clamp_pos_vec_(sigma_acc0, sigma_acc_min_, sigma_acc_max_).array().log().matrix();
-	    log_sigma_S_f_.x   = clamp_pos_vec_(sigma_S0v,  sigma_S_min_,   sigma_S_max_  ).array().log().matrix();
+	    log_sigma_p0_f_.x   = clamp_pos_vec_(sigma_p00v,  sigma_p0_min_,   sigma_p0_max_  ).array().log().matrix();
 	    log_tau_aw_f_.x    = std::log(clamp_pos_(tau_aw, tau_min_, tau_max_));
 	
 	    // Reasonable default uncertainties (in log-domain)
 	    log_sigma_acc_f_.P = Vector3::Constant(T(0.10) * T(0.10)); // ~10% 1σ
-	    log_sigma_S_f_.P   = Vector3::Constant(T(0.15) * T(0.15)); // ~15% 1σ
+	    log_sigma_p0_f_.P   = Vector3::Constant(T(0.15) * T(0.15)); // ~15% 1σ
 	    log_tau_aw_f_.P    = T(0.20) * T(0.20);                    // ~20% 1σ
 	
 	    // Default RW diffusion (log units per sqrt(s)) -> variance per second
 	    const T rw_sig_acc = T(0.02); // ~2%/sqrt(s)
-	    const T rw_sig_S   = T(0.02);
+	    const T rw_sig_p0   = T(0.02);
 	    const T rw_tau     = T(0.01);
 	
 	    log_sigma_acc_f_.q = Vector3::Constant(rw_sig_acc * rw_sig_acc);
-	    log_sigma_S_f_.q   = Vector3::Constant(rw_sig_S   * rw_sig_S);
+	    log_sigma_p0_f_.q   = Vector3::Constant(rw_sig_p0   * rw_sig_p0);
 	    log_tau_aw_f_.q    = rw_tau * rw_tau;
 	
 	    // Default command noise (how noisy the external adapter is), log-domain
 	    const T cmd_sig_acc = T(0.10); // ~10%
-	    const T cmd_sig_S   = T(0.15); // ~15%
+	    const T cmd_sig_p0   = T(0.15); // ~15%
 	    const T cmd_tau     = T(0.20); // ~20%
 	
 	    log_sigma_acc_f_.r = Vector3::Constant(cmd_sig_acc * cmd_sig_acc);
-	    log_sigma_S_f_.r   = Vector3::Constant(cmd_sig_S   * cmd_sig_S);
+	    log_sigma_p0_f_.r   = Vector3::Constant(cmd_sig_p0   * cmd_sig_p0);
 	    log_tau_aw_f_.r    = cmd_tau * cmd_tau;
 	}			
 }
@@ -1355,7 +1331,6 @@ void Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::initialize_from_truth(
     // Load linear states directly from truth
     xext.template segment<3>(OFF_V)  = v_ned;    // velocity (world NED)
     xext.template segment<3>(OFF_P)  = p_ned;    // position (world NED)
-    xext.template segment<3>(OFF_S).setZero();   // integral of p, start at 0
     xext.template segment<3>(OFF_AW) = a_w_ned;  // world acceleration (OU state)
 
     // Bias states = 0
@@ -1382,7 +1357,7 @@ void Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::time_update(
 {
     last_dt_ = Ts;   // Remember last dt
 
-	// Commanded parameters random-walk prediction (updates Racc, R_S, tau_aw smoothly)
+	// Commanded parameters random-walk prediction (updates Racc, R_p0, tau_aw smoothly)
 	param_rw_predict_(Ts);		
 
     // De-heel gyro into virtual frame B' using current wind_heel_rad_
@@ -1517,98 +1492,86 @@ void Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::time_update(
         Pext.template block<NA,NA>(0,0).noalias() += Q_AA;
     }
 
-    // Linear subsystem [v,p,S,a_w] (12×12)
-    Matrix12& F_LL = F_LL_scratch_; F_LL.setZero();
-    Matrix12& Q_LL = Q_LL_scratch_; Q_LL.setZero();
+    // Linear subsystem [v,p,a_w] (9×9)
+    Matrix9& F_LL = F_LL_scratch_; F_LL.setZero();
+    Matrix9& Q_LL = Q_LL_scratch_; Q_LL.setZero();
 
     if (linear_block_enabled_) {
         // Build F_LL per axis
         for (int axis = 0; axis < 3; ++axis) {
             const T tau = std::max(T(1e-6), tau_aw);
 
-            Eigen::Matrix<T,4,4> Phi_axis;
-            PhiAxis4x1_analytic(tau, Ts, Phi_axis);
+            Eigen::Matrix<T,3,3> Phi_axis;
+            PhiAxis3x1_analytic(tau, Ts, Phi_axis);
 
-            const int idx[4] = {0,3,6,9}; // [v,p,S,a] offsets
-            for (int i = 0; i < 4; ++i)
-                for (int j = 0; j < 4; ++j)
+            const int idx[3] = {0,3,6}; // [v,p,a] offsets
+            for (int i = 0; i < 3; ++i)
+                for (int j = 0; j < 3; ++j)
                     F_LL(idx[i] + axis, idx[j] + axis) = Phi_axis(i,j);
         }
+
         // Build Q_LL
         if (has_cross_cov_a_xy) {
             // Correlated vector-OU with shared tau: Q_LL = (Σ ⊗ Qaxis_unit)
-            // written directly in group-first order: [v(3), p(3), S(3), a(3)].
-            Eigen::Matrix<T,4,4> Qaxis_unit;
-            QdAxis4x1_analytic(tau_aw, Ts, T(1), Qaxis_unit);
+            // written directly in group-first order: [v(3), p(3), a(3)].
+            Eigen::Matrix<T,3,3> Qaxis_unit;
+            QdAxis3x1_analytic(tau_aw, Ts, T(1), Qaxis_unit);
             Qaxis_unit = T(0.5) * (Qaxis_unit + Qaxis_unit.transpose()); // hygiene
 
             // SPD, symmetric copy of Σ_aw (3x3)
             const Matrix3 Sig = T(0.5) * (Sigma_aw_stat + Sigma_aw_stat.transpose());
 
             Q_LL.setZero();
-            // group offsets in interleaved state order
-            const int goff[4] = {0, 3, 6, 9}; // v, p, S, a
+            const int goff[3] = {0, 3, 6}; // v, p, a
 
-            // Blockwise assembly: each 3x3 block is Sig scaled by the 4x4 scalar
-            for (int g = 0; g < 4; ++g) {
-                for (int h = 0; h < 4; ++h) {
+            for (int g = 0; g < 3; ++g) {
+                for (int h = 0; h < 3; ++h) {
                     Q_LL.template block<3,3>(goff[g], goff[h]).noalias()
                         = Sig * Qaxis_unit(g,h);
                 }
             }
-            // Symmetry + PSD cleanup
             Q_LL = T(0.5) * (Q_LL + Q_LL.transpose());
-            project_psd<T,12>(Q_LL, T(1e-12));
+            project_psd<T,9>(Q_LL, T(1e-12));
         } else {
             // Independent axes (no cross-correlation) — per-axis Qd on the diagonal
-            const int idx[4] = {0,3,6,9};
+            const int idx[3] = {0,3,6};
             for (int axis = 0; axis < 3; ++axis) {
                 const T tau    = std::max(T(1e-6), tau_aw);
                 const T sigma2 = Sigma_aw_stat(axis, axis);
-                Eigen::Matrix<T,4,4> Qd_axis;
-                QdAxis4x1_analytic(tau, Ts, sigma2, Qd_axis);
-                for (int i = 0; i < 4; ++i)
-                    for (int j = 0; j < 4; ++j)
+                Eigen::Matrix<T,3,3> Qd_axis;
+                QdAxis3x1_analytic(tau, Ts, sigma2, Qd_axis);
+                for (int i = 0; i < 3; ++i)
+                    for (int j = 0; j < 3; ++j)
                         Q_LL(idx[i] + axis, idx[j] + axis) = Qd_axis(i,j);
             }
             Q_LL = T(0.5) * (Q_LL + Q_LL.transpose());
         }
 
-        // Mean propagation for [v,p,S,a_w]
-        Vector12& x_lin_prev = x_lin_prev_scratch_;
+        // Mean propagation for [v,p,a_w]
+        Vector9& x_lin_prev = x_lin_prev_scratch_;
         x_lin_prev.template segment<3>(0)  = xext.template segment<3>(OFF_V);
         x_lin_prev.template segment<3>(3)  = xext.template segment<3>(OFF_P);
-        x_lin_prev.template segment<3>(6)  = xext.template segment<3>(OFF_S);
-        x_lin_prev.template segment<3>(9)  = xext.template segment<3>(OFF_AW);
+        x_lin_prev.template segment<3>(6)  = xext.template segment<3>(OFF_AW);
 
-        Vector12& x_lin_next = x_lin_next_scratch_;
+        Vector9& x_lin_next = x_lin_next_scratch_;
         x_lin_next.noalias() = F_LL * x_lin_prev;
         xext.template segment<3>(OFF_V)  = x_lin_next.template segment<3>(0);
         xext.template segment<3>(OFF_P)  = x_lin_next.template segment<3>(3);
-        xext.template segment<3>(OFF_S)  = x_lin_next.template segment<3>(6);
-        xext.template segment<3>(OFF_AW) = x_lin_next.template segment<3>(9);
+        xext.template segment<3>(OFF_AW) = x_lin_next.template segment<3>(6);
 
         // Covariance propagation (blockwise)
         constexpr int NA = BASE_N;
-        constexpr int NL = 12;
+        constexpr int NL = 9;
 
         // LL block
-        Matrix12& tmpLL = tmpLL_scratch_;
-
-        // tmpLL = F_LL * P_LL_old
+        Matrix9& tmpLL = tmpLL_scratch_;
         tmpLL.noalias() = F_LL * Pext.template block<NL,NL>(OFF_V,OFF_V);
-
-        // P_LL_new = tmpLL * F_LLᵀ + Q_LL
         Pext.template block<NL,NL>(OFF_V,OFF_V).noalias() = tmpLL * F_LL.transpose();
         Pext.template block<NL,NL>(OFF_V,OFF_V).noalias() += Q_LL;
 
         // AL block (cross-covariance)
-        MatrixBaseN12& tmpAL = tmpAL_scratch_;
-
-        // tmpAL = F_AA * P_AL_old
+        MatrixBaseN9& tmpAL = tmpAL_scratch_;
         tmpAL.noalias() = F_AA * Pext.template block<NA,NL>(0,OFF_V);
-
-        // P_AL_new = tmpAL * F_LLᵀ
         Pext.template block<NA,NL>(0,OFF_V).noalias() = tmpAL * F_LL.transpose();
 
         // Keep symmetry: P_LA = P_ALᵀ
@@ -1630,7 +1593,7 @@ void Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::time_update(
         Pext.template block<NB,NA>(OFF_BA,0) = tmpAB.transpose();
 
         if (linear_block_enabled_) {
-            constexpr int NL = 12;
+            constexpr int NL = 9;
             Eigen::Matrix<T,NL,NB> tmpLB = F_LL * Pext.template block<NL,NB>(OFF_V,OFF_BA);
             Pext.template block<NL,NB>(OFF_V,OFF_BA) = tmpLB;
             Pext.template block<NB,NL>(OFF_BA,OFF_V) = tmpLB.transpose();
@@ -1639,14 +1602,18 @@ void Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::time_update(
 
     symmetrize_Pext_();   // Symmetry hygiene
 
-    // Integral pseudo-measurement drift correction (only if linear block is live)
+    // Periodic position-zero pseudo-measurement drift correction
     if (linear_block_enabled_) {
         if (++pseudo_update_counter_ >= PSEUDO_UPDATE_PERIOD) {
-            applyIntegralZeroPseudoMeas();
+            Vector3 sigma_p0;
+            sigma_p0.x() = std::sqrt(std::max(T(0), R_p0(0,0)));
+            sigma_p0.y() = std::sqrt(std::max(T(0), R_p0(1,1)));
+            sigma_p0.z() = std::sqrt(std::max(T(0), R_p0(2,2)));
+            measurement_update_position_pseudo(Vector3::Zero(), sigma_p0);
             pseudo_update_counter_ = 0;
         }
     } else {
-        pseudo_update_counter_ = 0;   // avoid weird cadence when re-enabling
+        pseudo_update_counter_ = 0;
     }
 }
 
@@ -2019,42 +1986,6 @@ void Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::applyQuaternionCorrect
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::applyIntegralZeroPseudoMeas()
-{
-    if (!linear_block_enabled_) return;
-
-    constexpr int off_S = OFF_S;   // offset of S block (3 states)
-
-    // Innovation: target S = 0
-    const Vector3 r = -xext.template segment<3>(off_S);
-
-    // Innovation covariance S = P_SS + R_S
-    Matrix3& S_mat = S_scratch_;
-    S_mat = Pext.template block<3,3>(off_S, off_S) + R_S;
-
-    // Cross covariance PCᵀ = P(:,S) (NX×3)
-    MatrixNX3& PCt = PCt_scratch_;
-    PCt.noalias() = Pext.template block<NX,3>(0, off_S);
-	if constexpr (with_accel_bias) {
-        if (!acc_bias_updates_enabled_) freeze_acc_bias_rows_(PCt);
-    }
-
-    Eigen::LDLT<Matrix3> ldlt;
-    if (!safe_ldlt3_(S_mat, ldlt, R_S.norm())) return;
-    MatrixNX3& K = K_scratch_;
-    K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
-    if constexpr (with_accel_bias) {
-        if (!acc_bias_updates_enabled_) freeze_acc_bias_rows_(K);
-    }
-
-    xext.noalias() += K * r;            // State update
-    joseph_update3_(K, S_mat, PCt);     // Covariance update
-
-    // Apply quaternion correction (attitude may get nudged via cross-covariances)
-    applyQuaternionCorrectionFromErrorState();
-}
-
-template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::measurement_update_position_pseudo(
     const Vector3& p_meas, const Vector3& sigma_meas)
 {
@@ -2195,82 +2126,41 @@ void Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::measurement_update_ver
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::PhiAxis4x1_analytic(
-    T tau, T h, Eigen::Matrix<T,4,4>& Phi_axis)
+void Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::PhiAxis3x1_analytic(
+    T tau, T h, Eigen::Matrix<T,3,3>& Phi_axis)
 {
     const auto P = make_prims<T>(h, tau);
-    // Stable re-expressions (let x = h/tau, em1 = expm1(-x)):
-    // 1 - alpha = -em1
-    // phi_va_c = tau*(1 - alpha)               = -tau*em1
-    // phi_pa_c = tau*h - tau^2*(1 - alpha)     = tau^2*(x + em1)
-    // phi_Sa_c = 0.5*tau*h^2 - tau^2*h + tau^3*(1 - alpha)
-    //        = tau^3*(0.5*x^2 - x - em1)
-
     const T phi_va_c = -tau * P.em1;
     auto coeffs = safe_phi_A_coeffs<T>(h, tau);
     const T phi_pa_c = coeffs.phi_pa;
-    const T phi_Sa_c = coeffs.phi_Sa;
 
     Phi_axis.setZero();
     // v_{k+1}
     Phi_axis(0,0) = T(1);
-    Phi_axis(0,3) = phi_va_c;
+    Phi_axis(0,2) = phi_va_c;
 
     // p_{k+1}
     Phi_axis(1,0) = h;
     Phi_axis(1,1) = T(1);
-    Phi_axis(1,3) = phi_pa_c;
-
-    // S_{k+1}
-    Phi_axis(2,0) = T(0.5)*h*h;
-    Phi_axis(2,1) = h;
-    Phi_axis(2,2) = T(1);
-    Phi_axis(2,3) = phi_Sa_c;
+    Phi_axis(1,2) = phi_pa_c;
 
     // a_{k+1}
-    Phi_axis(3,3) = std::min(P.alpha, T(1));
+    Phi_axis(2,2) = std::min(P.alpha, T(1));
 }
 
-// Discrete OU covariance for [v, p, S, a] axis subsystem.
-// Inputs:
-//   tau     = OU correlation time constant [s]
-//   h       = step size (sampling interval Ts) [s]
-//   sigma2  = stationary variance of a [ (m/s^2)^2 ]
-// Outputs:
-//   Qd_axis = (4x4) discrete covariance contribution for [v, p, S, a]
+// Discrete OU covariance for [v, p, a] axis subsystem.
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
-    T tau, T h, T sigma2, Eigen::Matrix<T,4,4>& Qd_axis)
+void Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::QdAxis3x1_analytic(
+    T tau, T h, T sigma2, Eigen::Matrix<T,3,3>& Qd_axis)
 {
-    // Guard very small tau
     const T tau_eff = std::max(tau, T(1e-7));
     const T inv_tau = T(1) / tau_eff;
-    const T x       = h * inv_tau;      // x = h/τ
-
-    // Small-x series branch (|h/τ| ≪ 1)
-    // Derived from Qd = ∫_0^h Φ(t) G q_c Gᵀ dt with
-    //   q_c = 2 σ² / τ,  a is OU with corr. time τ, stat. var σ².
-    //
-    // Series in h up to O(h^5) (equivalently O(x^5)):
-    //
-    //   Q_vv ≈ σ² (  2 h^3/(3 τ)  −  h^4/(2 τ²)   +  7 h^5/(30 τ^3)     )
-    //   Q_vp ≈ σ² (    h^4/(4 τ)  −  h^5/(6 τ²)                         )
-    //   Q_vS ≈ σ² (    h^5/(15 τ)                                       )
-    //   Q_va ≈ σ² (    h^2/τ  −  h^3/τ² + 7 h^4/(12 τ^3) − h^5/(4 τ^4)  )
-    //   Q_pp ≈ σ² (    h^5/(10 τ)                                       )
-    //   Q_pa ≈ σ² (    h^3/(3 τ) − h^4/(3 τ²) + 11 h^5/(60 τ^3)         )
-    //   Q_Sa ≈ σ² (    h^4/(12 τ) − h^5/(12 τ²)                         )
-    //   Q_aa ≈ σ² ( 2 h/τ − 2 h^2/τ² + 4 h^3/(3 τ^3)
-    //                         − 2 h^4/(3 τ^4) + 4 h^5/(15 τ^5) )
-    //
-    // and Q is symmetric.  Terms like Q_pS, Q_SS are O(h^6..h^7) and
-    // safely negligible in the x≲1e−2 regime.
+    const T x       = h * inv_tau;
 
     if (std::abs(x) < T(1e-2)) {
         const T inv_tau2 = inv_tau * inv_tau;
         const T inv_tau3 = inv_tau2 * inv_tau;
         const T inv_tau4 = inv_tau3 * inv_tau;
-        const T inv_tau5 = inv_tau4 * inv_tau;
 
         const T h2 = h * h;
         const T h3 = h2 * h;
@@ -2278,128 +2168,54 @@ void Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::QdAxis4x1_analytic(
         const T h5 = h4 * h;
 
         const T s = sigma2;
-
         Qd_axis.setZero();
-
-        // Row 0: v
-        Qd_axis(0,0) = s * ( (T(2) / T(3)) * h3 * inv_tau
-                           - T(1) / T(2)   * h4 * inv_tau2
-                           + T(7) / T(30)  * h5 * inv_tau3 );
-        Qd_axis(0,1) = s * (  T(1) / T(4)  * h4 * inv_tau
-                           - T(1) / T(6)   * h5 * inv_tau2 );
-        Qd_axis(0,2) = s * (  T(1) / T(15) * h5 * inv_tau );
-        Qd_axis(0,3) = s * (  h2 * inv_tau
-                           -  h3 * inv_tau2
-                           + (T(7) / T(12)) * h4 * inv_tau3
-                           -  T(1) / T(4)   * h5 * inv_tau4 );
-        // Row 1: p
+        Qd_axis(0,0) = s * ((T(2)/T(3))*h3*inv_tau - (T(1)/T(2))*h4*inv_tau2 + (T(7)/T(30))*h5*inv_tau3);
+        Qd_axis(0,1) = s * ((T(1)/T(4))*h4*inv_tau - (T(1)/T(6))*h5*inv_tau2);
+        Qd_axis(0,2) = s * (h2*inv_tau - h3*inv_tau2 + (T(7)/T(12))*h4*inv_tau3 - (T(1)/T(4))*h5*inv_tau4);
         Qd_axis(1,0) = Qd_axis(0,1);
-        Qd_axis(1,1) = s * (  T(1) / T(10) * h5 * inv_tau );
-        Qd_axis(1,2) = T(0); // O(h^6) and smaller, negligible here
-        Qd_axis(1,3) = s * (  T(1) / T(3)  * h3 * inv_tau
-                           -  T(1) / T(3)  * h4 * inv_tau2
-                           + T(11) / T(60) * h5 * inv_tau3 );
-        // Row 2: S
+        Qd_axis(1,1) = s * ((T(1)/T(10))*h5*inv_tau);
+        Qd_axis(1,2) = s * ((T(1)/T(3))*h3*inv_tau - (T(1)/T(3))*h4*inv_tau2 + (T(11)/T(60))*h5*inv_tau3);
         Qd_axis(2,0) = Qd_axis(0,2);
-        Qd_axis(2,1) = Qd_axis(1,2); // = 0
-        Qd_axis(2,2) = T(0);         // leading term is O(h^7)
-        Qd_axis(2,3) = s * (  T(1) / T(12) * h4 * inv_tau
-                           -  T(1) / T(12) * h5 * inv_tau2 );
-        // Row 3: a
-        Qd_axis(3,0) = Qd_axis(0,3);
-        Qd_axis(3,1) = Qd_axis(1,3);
-        Qd_axis(3,2) = Qd_axis(2,3);
-        Qd_axis(3,3) = s * (  T(2)        * h  * inv_tau
-                           -  T(2)        * h2 * inv_tau2
-                           + (T(4) / T(3))  * h3 * inv_tau3
-                           - (T(2) / T(3))  * h4 * inv_tau4
-                           + (T(4) / T(15)) * h5 * inv_tau5 );
+        Qd_axis(2,1) = Qd_axis(1,2);
+        Qd_axis(2,2) = s * (T(2)*h*inv_tau - T(2)*h2*inv_tau2 + (T(4)/T(3))*h3*inv_tau3 - (T(2)/T(3))*h4*inv_tau4);
 
-        // Scrub NaNs / infs and enforce PSD
-        for (int i = 0; i < 4; ++i) {
-            for (int j = 0; j < 4; ++j) {
-                T &v = Qd_axis(i,j);
-                if (!std::isfinite(v)) {
-                    v = (i == j) ? T(1e-18) : T(0);
-                }
-            }
-        }
-        project_psd<T,4>(Qd_axis, T(1e-12));
+        project_psd<T,3>(Qd_axis, T(1e-12));
         Qd_axis = T(0.5) * (Qd_axis + Qd_axis.transpose());
         return;
     }
 
-    // General closed-form branch
-    // Scalar OU for [v, p, S, a]:
-    //   dv = a dt
-    //   dp = v dt
-    //   dS = p dt
-    //   da = -(1/τ) a dt + sqrt(q_c) dW,  q_c = 2 σ² / τ
-    //
-    // Exact discrete covariance:
-    //   Qd(h) = ∫_0^h Φ(t) G q_c Gᵀ Φ(t)ᵀ dt
-    // with closed-form entries in terms of x = h/τ and α = e^{-x}.
-    const T x_full  = x;
-    const T alpha   = std::exp(-x_full);
-    const T alpha2  = alpha * alpha;
+    const T alpha  = std::exp(-x);
+    const T alpha2 = alpha * alpha;
+    const T q_c    = (T(2) * sigma2) * inv_tau;
 
-    const T q_c     = (T(2) * sigma2) * inv_tau;
+    const T tau2 = tau_eff * tau_eff;
+    const T tau3 = tau2 * tau_eff;
+    const T tau4 = tau3 * tau_eff;
+    const T tau5 = tau4 * tau_eff;
 
-    const T tau2 = tau_eff * tau_eff; const T tau3 = tau2 * tau_eff;
-    const T tau4 = tau3 * tau_eff;    const T tau5 = tau4 * tau_eff;
-    const T tau6 = tau5 * tau_eff;    const T tau7 = tau6 * tau_eff;
+    const T x2 = x * x;
+    const T x3 = x2 * x;
 
-    const T x2 = x_full * x_full;  const T x3 = x2 * x_full;
-    const T x4 = x3 * x_full;      const T x5 = x4 * x_full;
+    const T K00 = tau3 * (-alpha2 + T(4)*alpha + T(2)*x - T(3)) / T(2);
+    const T K01 = tau4 * (alpha2 + T(2)*alpha*(x - T(1)) + x2 - T(2)*x + T(1)) / T(2);
+    const T K02 = tau2 * (alpha2 - T(2)*alpha + T(1)) / T(2);
 
-    const T K00 = tau3 * (-alpha2 + T(4)*alpha + T(2)*x_full - T(3)) / T(2);
-    const T K01 = tau4 * ( alpha2 + T(2)*alpha*(x_full - T(1)) + x2 - T(2)*x_full + T(1)) / T(2);
-    const T K02 = tau5 * (-T(3)*alpha2 + T(3)*alpha*(x2 + T(4)) + x3 - T(3)*x2 + T(6)*x_full - T(9)) / T(6);
-    const T K03 = tau2 * ( alpha2 - T(2)*alpha + T(1)) / T(2);
+    const T K11 = tau5 * (-alpha2/T(2) - T(2)*alpha*x + x3/T(3) - x2 + x + T(1)/T(2));
+    const T K12 = tau3 * (-alpha2 - T(2)*alpha*x + T(1)) / T(2);
 
-    const T K11 = tau5 * (-alpha2/T(2) - T(2)*alpha*x_full + x3/T(3) - x2 + x_full + T(1)/T(2));
-    const T K12 = tau6 * ( alpha2/T(2)
-                         + alpha * (-x2 + T(2)*x_full - T(2)) / T(2)
-                         + x4/T(8) - x3/T(2) + x2 - x_full + T(1)/T(2));
-    const T K13 = tau3 * (-alpha2 - T(2)*alpha*x_full + T(1)) / T(2);
-
-    const T K22 = tau7 * (-alpha2/T(2)
-                         + alpha * x2 + T(2)*alpha
-                         + x5/T(20) - x4/T(4) + T(2)*x3/T(3)
-                         - x2 + x_full - T(3)/T(2));
-    const T K23 = tau4 * ( alpha2 - alpha * (x2 + T(2)) + T(1)) / T(2);
-    const T K33 = tau_eff * (T(1) - alpha2) / T(2);
+    const T K22 = tau_eff * (T(1) - alpha2) / T(2);
 
     Qd_axis.setZero();
     Qd_axis(0,0) = q_c * K00;
     Qd_axis(0,1) = q_c * K01;
     Qd_axis(0,2) = q_c * K02;
-    Qd_axis(0,3) = q_c * K03;
-
     Qd_axis(1,0) = Qd_axis(0,1);
     Qd_axis(1,1) = q_c * K11;
     Qd_axis(1,2) = q_c * K12;
-    Qd_axis(1,3) = q_c * K13;
-
     Qd_axis(2,0) = Qd_axis(0,2);
     Qd_axis(2,1) = Qd_axis(1,2);
     Qd_axis(2,2) = q_c * K22;
-    Qd_axis(2,3) = q_c * K23;
 
-    Qd_axis(3,0) = Qd_axis(0,3);
-    Qd_axis(3,1) = Qd_axis(1,3);
-    Qd_axis(3,2) = Qd_axis(2,3);
-    Qd_axis(3,3) = q_c * K33;
-
-    // Scrub NaNs / infs and enforce PSD
-    for (int i = 0; i < 4; ++i) {
-        for (int j = 0; j < 4; ++j) {
-            T &v = Qd_axis(i,j);
-            if (!std::isfinite(v)) {
-                v = (i == j) ? T(1e-18) : T(0);
-            }
-        }
-    }
-    project_psd<T,4>(Qd_axis, T(1e-12));
+    project_psd<T,3>(Qd_axis, T(1e-12));
     Qd_axis = T(0.5) * (Qd_axis + Qd_axis.transpose());
 }
