@@ -581,7 +581,7 @@ class Kalman3D_Wave_4 {
     Vector3 v2ref = Vector3::UnitX();
 
     // Extended full state xext and Pext (NX x NX)
-    Matrix<T, NX, 1> xext; // [ δθ(3), (gyro bias 3 optional), v(3), p(3), S(3), a_w(3), (accel bias 3 optional) ]
+    Matrix<T, NX, 1> xext; // [ δθ(3), (gyro bias 3 optional), v(3), p(3), a_w(3), (accel bias 3 optional) ]
     MatrixNX Pext;
 
     Vector3 last_gyr_bias_corrected{};  // Last gyro
