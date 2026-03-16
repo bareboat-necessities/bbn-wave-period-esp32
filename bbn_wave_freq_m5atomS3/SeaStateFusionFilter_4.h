@@ -73,8 +73,8 @@ constexpr float MAX_FREQ_HZ = 6.0f;
 constexpr float MIN_TAU_S   = 0.02f;
 constexpr float MAX_TAU_S   = 3.0f;
 constexpr float MAX_SIGMA_A = 6.0f;
-constexpr float MIN_R_S     = 0.4f;
-constexpr float MAX_R_S     = 35.0f;
+constexpr float MIN_R_S     = 0.05f;
+constexpr float MAX_R_S     = 20.0f;
 
 constexpr float ADAPT_TAU_SEC              = 1.5f;
 constexpr float ADAPT_EVERY_SECS           = 0.1f;
@@ -88,7 +88,7 @@ constexpr float FREQ_SMOOTHER_DT = 1.0f / 200.0f;
 struct TuneState {
     float tau_applied   = 1.1f;    // s
     float sigma_applied = 1e-2f;    // m/s²
-    float RS_applied    = 0.5f;     // m*s
+    float RS_applied    = 0.1f;     // m
 };
 
 //  Tracker policy traits
