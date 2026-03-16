@@ -959,7 +959,7 @@ private:
 
     // Runtime-configurable anisotropy knobs
     float R_S_xy_factor_ = 0.17f;  // [0..1] scales XY pseudo-meas vs Z
-    float S_factor_      = 1.7f;   // (>0) scales Σ_aw horizontal std vs vertical
+    float S_factor_      = 1.4f;   // (>0) scales Σ_aw horizontal std vs vertical
 
     TrackingPolicy                  tracker_policy_{};
     FirstOrderIIRSmoother<float>    freq_fast_smoother_{FREQ_SMOOTHER_DT, 3.5f};   // ~3.5 s to 90% step
@@ -974,7 +974,7 @@ private:
     // Runtime-configurable accel noise floor (1σ), m/s²
     float acc_noise_floor_sigma_ = ACC_NOISE_FLOOR_SIGMA_DEFAULT;
 
-    float R_S_coeff_    = 1.2f;
+    float R_S_coeff_    = 1.1f;
     float tau_coeff_    = 1.4f;
     float sigma_coeff_  = 0.9f;  // Real noise inflates estimated sigma, to get more realistic sigma for OU we reduce it.
 
@@ -1017,7 +1017,7 @@ public:
         float mag_ref_timeout_sec = 4.5f; // fallback guard
 
         // Used only if dt_mag can’t be inferred
-        float mag_odr_guess_hz = 80.0f;
+        float mag_odr_guess_hz = 25.0f;
 
         // MagAutoTuner config override (optional)
         bool use_custom_mag_tuner_cfg = false;
