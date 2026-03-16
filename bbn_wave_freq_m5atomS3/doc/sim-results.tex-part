@@ -10,7 +10,7 @@ We evaluate the proposed Kalman3D\_Wave filter against a comprehensive battery o
     \item \textbf{Pierson–Moskowitz (PM) Stokes seas}: Fully-developed sea state with third-order bound harmonics that introduce \textit{nonlinear wave–wave interactions} and subtle phase coupling effects
 \end{itemize}
 
-Each scenario undergoes rigorous \SI{20}{min} simulation at \SI{240}{Hz}, producing co-registered time series of world-frame displacement, velocity, and acceleration alongside body-frame IMU measurements (specific force and angular rate). The extended duration ensures statistical stationarity while capturing low-frequency drift dynamics. Directional seas employ a randomized $\cos^{2s}$ spread about a nominal direction, with each spectral component receiving independent phase randomization while maintaining ensemble energy consistency.
+Each scenario undergoes rigorous \SI{20}{min} simulation at \SI{200}{Hz}, producing co-registered time series of world-frame displacement, velocity, and acceleration alongside body-frame IMU measurements (specific force and angular rate). The extended duration ensures statistical stationarity while capturing low-frequency drift dynamics. Directional seas employ a randomized $\cos^{2s}$ spread about a nominal direction, with each spectral component receiving independent phase randomization while maintaining ensemble energy consistency.
 
 We consider four sea states (height–period tuples) representing progressively more challenging conditions:
 \[
@@ -20,7 +20,7 @@ For compactness, we denote each case as \texttt{W1}–\texttt{W4}, spanning from
 
 \begin{table}[t]
   \centering
-  \caption{Wave scenarios synthesized for evaluation—a gradient from mathematical idealization to oceanographic realism. Each run: \SI{20}{min} at \SI{240}{Hz} capturing $\sim$288,000 samples.}
+  \caption{Wave scenarios synthesized for evaluation—a gradient from mathematical idealization to oceanographic realism. Each run: \SI{20}{min} at \SI{200}{Hz} capturing $\sim$240,000 samples.}
   \label{tab:scenarios}
   \sisetup{table-number-alignment = center}
   \begin{tabular}{@{}lcccc@{}}
@@ -46,7 +46,7 @@ For each time $t_k$, the simulator outputs world-frame reference $\big(\mathbf{p
 \paragraph{Intuition.}
 We evaluate on both synthetic seas and directional spreads, and we report accuracy only after warm-up to avoid conflating adaptation transients with steady-state performance.
 
-\paragraph{Data.} Synthetic runs of \SI{20}{min} at \SI{240}{Hz} for five models (Gerstner, JONSWAP, PM-Stokes, Fenton, Cnoidal) and four sea states $\mathcal{W}=\{(\SI{0.27}{m},\SI{3.0}{s}),(\SI{1.5}{m},\SI{5.7}{s}),(\SI{4.0}{m},\SI{8.5}{s}),(\SI{8.5}{m},\SI{11.4}{s})\}$; directional seas use randomized $\cos^{2s}$ spreads about a nominal heading.
+\paragraph{Data.} Synthetic runs of \SI{20}{min} at \SI{200}{Hz} for five models (Gerstner, JONSWAP, PM-Stokes, Fenton, Cnoidal) and four sea states $\mathcal{W}=\{(\SI{0.27}{m},\SI{3.0}{s}),(\SI{1.5}{m},\SI{5.7}{s}),(\SI{4.0}{m},\SI{8.5}{s}),(\SI{8.5}{m},\SI{11.4}{s})\}$; directional seas use randomized $\cos^{2s}$ spreads about a nominal heading.
 
 \paragraph{Windowing.} All metrics computed over the terminal \SI{60}{s} (to remove warm-up transients).
 
@@ -72,7 +72,7 @@ with illustrative limits $(\lambda_x,\lambda_y,\lambda_z,\lambda_\psi)=(33,33,12
 \subsection{Filter Configuration: Adaptive Intelligence Meets Robust Estimation}
 The Kalman3D\_Wave estimator runs at the full IMU rate with a sophisticated multi-rate update strategy:
 \begin{itemize}
-    \item \textbf{High-frequency core}: Time update + accelerometer measurement each step (240 Hz) maintaining tight coupling with high-frequency wave dynamics
+    \item \textbf{High-frequency core}: Time update + accelerometer measurement each step (200 Hz) maintaining tight coupling with high-frequency wave dynamics
     \item \textbf{Stabilized yaw observability}: Magnetometer updates gated after a fixed 5-second delay to avoid initialization transients, then applied every third sample to balance observability with computational load
     \item \textbf{Online auto-tuner intelligence}: Real-time estimation of $\sigma_a$ from vertical specific force using 60-second EWMA horizon, frequency smoothing via 5-second EMA, and application of the physically-grounded regularization law:
     \[

@@ -539,7 +539,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
 
 // Main
 int main(int argc, char* argv[]) {
-    float dt = 1.0f / 240.0f;
+    float dt = 1.0f / 200.0f;
 
     bool with_mag = true;
     add_noise = true;

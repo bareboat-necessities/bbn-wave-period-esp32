@@ -75,7 +75,7 @@ z_only_components = {
 }
 
 # Sampling cutoff
-SAMPLE_RATE = 240
+SAMPLE_RATE = 200
 MAX_TIME = 60.0
 MAX_RECORDS = int(SAMPLE_RATE * MAX_TIME)
 

@@ -30,7 +30,7 @@ const float g_std = 9.80665f; // standard gravity acceleration m/s²
 #include "WaveFilters.h"
 
 // Config
-static constexpr float SAMPLE_RATE_HZ = 240.0f;
+static constexpr float SAMPLE_RATE_HZ = 200.0f;
 static constexpr float DELTA_T        = 1.0f / SAMPLE_RATE_HZ;
 static constexpr float NOISE_STDDEV   = 0.08f;
 static constexpr float BIAS_MEAN      = 0.10f;

@@ -60,7 +60,7 @@ void process_wave_file(const std::string &filename, float dt) {
     // Estimator
     constexpr int Nfreq = 32;
     constexpr int Nblock = 256;
-    WaveSpectrumEstimator<Nfreq, Nblock> estimator(240.0, 30, true);
+    WaveSpectrumEstimator<Nfreq, Nblock> estimator(200.0, 30, true);
 
     // Reference model spectrum (higher-res, then interpolate to estimator freqs)
     Eigen::Matrix<double,128,1> f_ref, S_ref;
@@ -165,7 +165,7 @@ void process_wave_file(const std::string &filename, float dt) {
 }
 
 int main() {
-    float dt = 1.0f / 240.0f;
+    float dt = 1.0f / 200.0f;
     std::cout << "Standalone spectrum simulation (IMU → estimator vs ref model)\n";
 
     // gather wave_data files

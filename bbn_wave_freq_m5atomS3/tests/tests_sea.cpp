@@ -28,7 +28,7 @@
 #include "PiersonMoskowitzStokes3D_Waves.h"
 
 // Config
-static constexpr float SAMPLE_RATE_HZ = 240.0f;
+static constexpr float SAMPLE_RATE_HZ = 200.0f;
 static constexpr float DELTA_T = 1.0f / SAMPLE_RATE_HZ;
 static constexpr float TEST_DURATION_S = 5 * 60.0f;
 static constexpr float NOISE_STDDEV = 0.08f;

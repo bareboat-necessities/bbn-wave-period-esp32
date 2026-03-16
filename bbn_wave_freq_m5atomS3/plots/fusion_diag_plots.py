@@ -25,7 +25,7 @@ plt.rcParams.update({
 
 # === Configuration ===
 DATA_DIR = "./"
-SAMPLE_RATE_HZ = 240
+SAMPLE_RATE_HZ = 200
 SKIP_TIME_S = 1140.0     # skip initial transient
 PLOT_TIME_S = 60.0       # plot next 60 seconds
 MAX_TIME_S = SKIP_TIME_S + PLOT_TIME_S

@@ -78,7 +78,7 @@ public:
         inline void reset() { z1 = z2 = 0; }
     };
 
-    WaveSpectrumEstimator(double fs_raw_ = 240.0,
+    WaveSpectrumEstimator(double fs_raw_ = 200.0,
                           int decimFactor_ = 30,
                           bool hannEnabled_ = true)
         : fs_raw(fs_raw_), decimFactor(decimFactor_), hannEnabled(hannEnabled_)
@@ -660,7 +660,7 @@ void WaveSpectrumEstimator_test() {
     constexpr int Nfreq = 32;
     constexpr int Nblock = 256;
 
-    double fs = 240.0;
+    double fs = 200.0;
     WaveSpectrumEstimator<Nfreq, Nblock> estimator(fs, 2, true);
 
     double f_test = 0.2;
