@@ -23,7 +23,7 @@
 
     • Online auto-tuning of Kalman filter parameters (τ, σₐ, Rₛ) through
       SeaStateAutoTuner, which estimates acceleration variance and applies the
-      σₐ·τ³ regularization law to stabilize displacement drift correction.
+      σₐ·τ² regularization law to stabilize displacement drift correction.
 
   Where
   – τ (tau):  OU process time constant ≈ ½ · T  (half the dominant period of acceleration)
@@ -60,7 +60,6 @@
 #include "FrameConversions.h"
 #include "KalmanWaveDirection.h"
 #include "WaveDirectionDetector.h"
-#include "TimeAwareSpikeFilter.h"
 
 // Shared constants
 
@@ -305,7 +304,6 @@ public:
         // waiting for slow adaptation cadence.
         if (startup_stage_ == StartupStage::Live && enable_linear_block_) {
             apply_RS_tune_();
-            applyDriftPseudoMeasurements_(dt, acc, a_vert_up); 
         }
     
         const float omega = 2.0f * static_cast<float>(M_PI) * freq_hz_;
@@ -352,28 +350,6 @@ public:
         }
     }
 
-    // Drift pseudo-measurements bundle
-    //
-    // All std dev are derived from current (sigma_a, tau) coming from the tuner:
-    //   pos std  ~  (sigma_a * tau^2) * sigma_mult
-    //   vel std  ~  (sigma_a * tau)   * sigma_mult
-    //
-    // Each pseudo-meas has:
-    //   enabled, period_steps, sigma_mult, gate_scale (threshold vs envelope).
-    //
-    struct DriftPseudoCfg {
-        bool  enabled      = false;
-        int   period_steps = 6;      // cadence in IMU cycles
-        float sigma_mult   = 10.0f;  // dimensionless multiplier (default HIGH = light touch)
-        float sigma_min    = 0.02f;  // absolute floor (units depend on measurement)
-        float gate_scale   = 1.2f;   // envelope gate (e.g. 1.2 => breach at 120% envelope)
-    };
-    
-    void setPseudoVzZeroOnPosBreachCfg(const DriftPseudoCfg& c) { pm_vz_zero_on_pos_breach_ = c; }
-    void setPseudoPosZeroCfg(const DriftPseudoCfg& c)           { pm_pos_zero_              = c; }
-    void setPseudoVzClampCfg(const DriftPseudoCfg& c)           { pm_vz_clamp_              = c; }
-    void setPseudoHarmonicPosCfg(const DriftPseudoCfg& c)       { pm_harmonic_pos_          = c; }
-    
     void setWithMag(bool with_mag) {
         with_mag_ = with_mag;
     }
@@ -447,15 +423,6 @@ public:
     void enableTuner(bool flag = true) {
         enable_tuner_ = flag;
     }
-
-    void setHarmonicPositionDespikeConfig(int window_size, float threshold) {
-        if (window_size < 3) return;
-        if (!std::isfinite(threshold) || threshold <= 0.0f) return;
-        harmonic_despike_window_ = window_size;
-        harmonic_despike_threshold_ = threshold;
-        initHarmonicDespikeFilters_();
-    }
-
     // Enable/disable use of the extended linear block [v,p,S,a_w] in Kalman3D_Wave_4.
     //
     // When flag == false:
@@ -750,92 +717,11 @@ private:
                         : 1.0f;
         const float RSb = std::min(std::max(tune_.RS_applied, min_R_S_), max_R_S_);
         const float rs_xy = RSb * s * R_S_xy_factor_;
-        mekf_->set_RS_noise(Eigen::Vector3f(
+        mekf_->set_Rp0_noise(Eigen::Vector3f(
             rs_xy,
             rs_xy,
             RSb * s
         ));
-    }
-
-    void initHarmonicDespikeFilters_() {
-        despike_ax_ = std::make_unique<TimeAwareSpikeFilter>(harmonic_despike_window_, harmonic_despike_threshold_);
-        despike_ay_ = std::make_unique<TimeAwareSpikeFilter>(harmonic_despike_window_, harmonic_despike_threshold_);
-        despike_az_ = std::make_unique<TimeAwareSpikeFilter>(harmonic_despike_window_, harmonic_despike_threshold_);
-    }
-
-    void resetDriftCorrections_() {
-        pm_ctr_vz_zero_  = 0;
-        pm_ctr_pos_zero_ = 0;
-        pm_ctr_vz_clamp_ = 0;
-        pm_ctr_harmonic_pos_ = 0;
-        initHarmonicDespikeFilters_();
-    }
-
-    void applyHarmonicPositionCorrection_(float dt,
-                                          const Eigen::Vector3f& acc_body_ned,
-                                          float a_vert_up_osc)
-    {
-        if (!mekf_) return;
-        if (!pm_harmonic_pos_.enabled) return;
-        if (!(dt > 0.0f) || !std::isfinite(dt)) return;
-    
-        // Envelope gate (drift-risk only)
-        float env_scale = getDisplacementScale(true);
-        if (!std::isfinite(env_scale) || env_scale <= 0.0f) env_scale = 1.0f;
-    
-        const float absz = std::fabs(mekf_->get_position().z());
-        const float gate = std::max(0.0f, pm_harmonic_pos_.gate_scale) * env_scale;
-        if (!(absz > gate)) return;
-    
-        // Cadence (same pattern as other pm_* corrections)
-        if (++pm_ctr_harmonic_pos_ < std::max(1, pm_harmonic_pos_.period_steps)) return;
-        pm_ctr_harmonic_pos_ = 0;
-    
-        // Frequency for harmonic proxy
-        const float harmonic_freq_hz =
-            (std::isfinite(freq_hz_) && freq_hz_ > 0.0f) ? freq_hz_ : freq_hz_slow_;
-    
-        const float omega = 2.0f * static_cast<float>(M_PI) *
-                            std::max(harmonic_freq_hz, min_freq_hz_);
-        const float omega_sq = omega * omega;
-        if (!(omega_sq > 1e-4f) || !std::isfinite(omega_sq)) return;
-    
-        if (!acc_body_ned.allFinite()) return;
-    
-        // “no backfeed”: use raw IMU accel (no attitude rotation), but use oscillatory vertical for z.
-        const Eigen::Vector3f a_world_ned = acc_body_ned;
-    
-        if (!despike_ax_ || !despike_ay_ || !despike_az_) {
-            initHarmonicDespikeFilters_();
-        }
-    
-        // NED-down oscillatory vertical accel
-        const float a_z_ned_osc = -a_vert_up_osc;
-    
-        const Eigen::Vector3f a_despiked(
-            despike_ax_->filterWithDelta(a_world_ned.x(), dt),
-            despike_ay_->filterWithDelta(a_world_ned.y(), dt),
-            despike_az_->filterWithDelta(a_z_ned_osc, dt)
-        );
-        if (!a_despiked.allFinite()) return;
-    
-        // p ≈ -a / ω² (componentwise, in NED)
-        const Eigen::Vector3f p_meas = -a_despiked / omega_sq;
-        if (!p_meas.allFinite()) return;
-    
-        // position std ≈ (sigma_a * tau^2) * sigma_mult, with anisotropy via S_factor_.
-        Eigen::Vector3f sig = sigmaP_fromSigmaTau_(pm_harmonic_pos_.sigma_mult);
-    
-        const float smin = std::max(1e-6f, pm_harmonic_pos_.sigma_min);
-        sig.x() = std::max(sig.x(), smin);
-        sig.y() = std::max(sig.y(), smin);
-        sig.z() = std::max(sig.z(), smin);
-    
-        mekf_->measurement_update_position_pseudo(p_meas, sig);
-    }
-
-    static Eigen::Vector3f harmonicPseudoPositionFromAccel_(const Eigen::Vector3f& a_ned, float omega_sq) {
-        return -a_ned / omega_sq;
     }
 
     void update_tuner(float dt, float a_vert_inertial, float freq_hz_for_tuner) {
@@ -913,7 +799,7 @@ private:
         }
       
         float RS_raw = R_S_coeff_ * sigma_target_
-                       * tau_target_ * tau_target_ * tau_target_;
+                       * tau_target_ * tau_target_;
 
         if (enable_clamp_) {
             RS_target_ = std::min(std::max(RS_raw, min_R_S_), max_R_S_);
@@ -972,7 +858,6 @@ private:
         // Optional: avoid immediate adapt burst after reset
         last_adapt_time_sec_ = time_;
 
-        resetDriftCorrections_();
     }
     
     void enterCold_() {
@@ -993,7 +878,6 @@ private:
             warmup_Racc_active_ = true;
         }
 
-        resetDriftCorrections_();
     }
 
     void enterLive_() {
@@ -1017,7 +901,6 @@ private:
         apply_ou_tune_();
         if (enable_linear_block_) apply_RS_tune_();
       
-        resetDriftCorrections_();
     }
 
     StartupStage startup_stage_    = StartupStage::Cold;
@@ -1053,32 +936,7 @@ private:
     bool enable_clamp_ = true;
     bool enable_tuner_ = true;
 
-    float harmonic_despike_threshold_ = 4.0f;
-    int harmonic_despike_window_ = 5;
-    std::unique_ptr<TimeAwareSpikeFilter> despike_ax_;
-    std::unique_ptr<TimeAwareSpikeFilter> despike_ay_;
-    std::unique_ptr<TimeAwareSpikeFilter> despike_az_;
-
-    // drift pseudo-measurement configs
-    DriftPseudoCfg pm_vz_zero_on_pos_breach_ {
-        /*enabled*/ true, /*period*/ 3, /*sigma_mult*/ 2.0f, /*sigma_min*/ 0.03f, /*gate*/ 0.8f
-    };
-    DriftPseudoCfg pm_pos_zero_ {
-        /*enabled*/ true, /*period*/ 5, /*sigma_mult*/ 8.0f, /*sigma_min*/ 0.05f, /*gate*/ 0.3f
-    };
-    DriftPseudoCfg pm_vz_clamp_ {
-        /*enabled*/ true, /*period*/ 3, /*sigma_mult*/ 2.0f, /*sigma_min*/ 0.03f, /*gate*/ 0.9f
-    };
-    DriftPseudoCfg pm_harmonic_pos_ {
-        /*enabled*/ true, /*period*/ 5, /*sigma_mult*/ 6.0f, /*sigma_min*/ 0.05f, /*gate*/ 0.10f
-    };
-      
     float speed_env_mult_ = 1.0f;   // v_env ≈ speed_env_mult * ω * z_env
-
-    int pm_ctr_vz_zero_ = 0;
-    int pm_ctr_pos_zero_ = 0;
-    int pm_ctr_vz_clamp_ = 0;
-    int pm_ctr_harmonic_pos_ = 0;
 
     // Controls whether the extended linear block [v,p,S,a_w] of Kalman3D_Wave_4
     // is ever enabled. When false, the underlying filter runs as a pure
@@ -1128,118 +986,6 @@ private:
 
     WaveDirectionDetector<float> dir_sign_{0.002f, 0.005f};   // smoothing, sensitivity
     WaveDirection                dir_sign_state_ = UNCERTAIN;
-
-    void applyDriftPseudoMeasurements_(float dt,
-                                       const Eigen::Vector3f& acc_body_ned,
-                                       float a_vert_up_osc)
-    {
-        if (!mekf_) return;
-        if (startup_stage_ != StartupStage::Live) return;
-        if (!enable_linear_block_) return;
-        if (!(dt > 0.0f) || !std::isfinite(dt)) return;
-    
-        // Displacement envelope (your existing model)
-        float z_env = getDisplacementScale(true);
-        if (!std::isfinite(z_env) || z_env <= 0.0f) z_env = 0.3f;
-    
-        const float pz = mekf_->get_position().z();     // NED down
-        const float absz = std::fabs(pz);
-
-        // Harmonic approximation
-        if (pm_harmonic_pos_.enabled) {
-            applyHarmonicPositionCorrection_(dt, acc_body_ned, a_vert_up_osc);
-        }
-    
-        // On displacement envelope breach: pseudo-measure v_z -> 0
-        if (pm_vz_zero_on_pos_breach_.enabled) {
-            if (++pm_ctr_vz_zero_ >= std::max(1, pm_vz_zero_on_pos_breach_.period_steps)) {
-                pm_ctr_vz_zero_ = 0;
-                const float gate = std::max(0.05f, pm_vz_zero_on_pos_breach_.gate_scale) * z_env;
-                if (absz > gate) {
-                    const float vz = mekf_->get_velocity().z(); // NED down
-                    // Apply only if moving AWAY from sea level (z=0): pz and vz same sign => |pz| increasing
-                    // (If pz>0 and vz>0 => going down further; pz<0 and vz<0 => going up further.)
-                    if (std::isfinite(vz) && (pz * vz > 0.0f)) {
-                        const float sigma_vz = std::max(
-                            sigmaV_fromSigmaTau_(pm_vz_zero_on_pos_breach_.sigma_mult).z(),
-                            pm_vz_zero_on_pos_breach_.sigma_min
-                        );
-                        mekf_->measurement_update_vert_velocity_pseudo(0.0f, sigma_vz);
-                    }
-                }
-            }
-        }
-    
-        // Direct displacement zero (z only), gentle, high sigma by default
-        if (pm_pos_zero_.enabled) {
-            if (++pm_ctr_pos_zero_ >= std::max(1, pm_pos_zero_.period_steps)) {
-                pm_ctr_pos_zero_ = 0;  
-                const float gate = std::max(0.05f, pm_pos_zero_.gate_scale) * z_env;
-                if (absz > gate) {
-                    const float sigma_z = std::max(
-                        sigmaP_fromSigmaTau_(pm_pos_zero_.sigma_mult).z(),
-                        pm_pos_zero_.sigma_min
-                    );
-                    // Only affect z: keep x/y "measured" at their current predicted values
-                    Eigen::Vector3f p_meas = mekf_->get_position();
-                    p_meas.z() = 0.0f;
-                    const float BIG = 1e5f;
-                    Eigen::Vector3f sig(BIG, BIG, sigma_z);
-                    mekf_->measurement_update_position_pseudo(p_meas, sig);
-                }
-            }
-        }
-    
-        // Speed envelope estimate + clamp v_z when breached
-        if (pm_vz_clamp_.enabled) {
-            if (++pm_ctr_vz_clamp_ >= std::max(1, pm_vz_clamp_.period_steps)) {
-                pm_ctr_vz_clamp_ = 0;
-                const float v_env = getVerticalSpeedEnvelopeMps(true);
-                if (std::isfinite(v_env) && v_env > 0.0f) {
-                    const float vz = mekf_->get_velocity().z();  // NED down
-                    const float abs_vz = std::fabs(vz);
-                    const float gate_v = std::max(0.05f, pm_vz_clamp_.gate_scale) * v_env;
-                    if (abs_vz > gate_v) {
-                        const float vz_clamped = (vz >= 0.0f) ? std::min(vz, v_env) : std::max(vz, -v_env);
-                        const float sigma_vz = std::max(
-                            sigmaV_fromSigmaTau_(pm_vz_clamp_.sigma_mult).z(),
-                            pm_vz_clamp_.sigma_min
-                        );
-                        // Only affect z velocity (keep x/y at predicted)
-                        Eigen::Vector3f v_meas = mekf_->get_velocity();
-                        v_meas.z() = vz_clamped;
-                        const float BIG = 1e6f;
-                        Eigen::Vector3f sig(BIG, BIG, sigma_vz);
-                        mekf_->measurement_update_velocity_pseudo(v_meas, sig);
-                    }
-                }
-            }
-        }
-    }
-      
-    static inline float clampf_(float x, float lo, float hi) {
-        return std::max(lo, std::min(hi, x));
-    }
-    
-    Eigen::Vector3f sigmaP_fromSigmaTau_(float sigma_mult) const {
-        const float tau = std::max(getTauApplied(), 1e-3f);
-        const float sigma_floor = std::max(0.05f, acc_noise_floor_sigma_);
-        const float sZ = std::max(sigma_floor, getSigmaApplied());
-        const float sH = sZ * S_factor_;
-    
-        const float k = std::max(0.0f, sigma_mult) * (tau * tau);
-        return Eigen::Vector3f(sH * k, sH * k, sZ * k); // meters
-    }
-    
-    Eigen::Vector3f sigmaV_fromSigmaTau_(float sigma_mult) const {
-        const float tau = std::max(getTauApplied(), 1e-3f);
-        const float sigma_floor = std::max(0.05f, acc_noise_floor_sigma_);
-        const float sZ = std::max(sigma_floor, getSigmaApplied());
-        const float sH = sZ * S_factor_;
-    
-        const float k = std::max(0.0f, sigma_mult) * tau;
-        return Eigen::Vector3f(sH * k, sH * k, sZ * k); // m/s
-    }
 };
 
 template<TrackerType trackerT>
