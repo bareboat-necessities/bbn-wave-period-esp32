@@ -367,7 +367,7 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
         << "mag_bias_x,mag_bias_y,mag_bias_z,"                          // TRUE (uT), BODY-NED
         << "mag_bias_est_x,mag_bias_est_y,mag_bias_est_z,"              // EST  (uT), BODY-NED
         << "mag_bias_err_x,mag_bias_err_y,mag_bias_err_z,"              // EST-TRUE (uT)       
-        << "tau_applied,sigma_a_applied,p0_S_applied,"
+        << "tau_applied,sigma_a_applied,R_p0_applied,"
         << "freq_tracker_hz,Tp_tuner_s,accel_var_tuner,"
         << "disp_scale_m,vel_scale_mps,"
         << "dir_phase,"
