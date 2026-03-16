@@ -622,7 +622,7 @@ class Kalman3D_Wave_4 {
     Vector3 alpha_b_      = Vector3::Zero(); // α^{B'}
     bool    have_prev_omega_ = false;
 
-    T last_dt_ = T(1.0/240);
+    T last_dt_ = T(1.0/200);
 
     // Optional smoothing for alpha (0 = off)
     T alpha_smooth_tau_ = T(0.05); // seconds
