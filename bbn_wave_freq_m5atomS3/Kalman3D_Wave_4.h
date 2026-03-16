@@ -233,7 +233,6 @@ class Kalman3D_Wave_4 {
     const MeasDiag3& lastAccDiag() const noexcept { return last_acc_diag_; }
     const MeasDiag3& lastMagDiag() const noexcept { return last_mag_diag_; }
 
-    // Constructor signatures preserved, additional defaults for linear process noise
     Kalman3D_Wave_4(Vector3 const& sigma_a, Vector3 const& sigma_g, Vector3 const& sigma_m,
                   T Pq0 = T(5e-4), T Pb0 = T(1e-6), T b0 = T(1e-11), T R_p0_noise_var = T(1.5),
                   T gravity_magnitude = T(STD_GRAVITY));
@@ -251,7 +250,7 @@ class Kalman3D_Wave_4 {
 
     void time_update(Vector3 const& gyr, T Ts);
 
-    // Measurement updates preserved (operate on extended state internally)
+    // Measurement updates (operate on extended state internally)
     void measurement_update_acc_only(Vector3 const& acc, T tempC = tempC_ref);
     void measurement_update_mag_only(Vector3 const& mag);
 
