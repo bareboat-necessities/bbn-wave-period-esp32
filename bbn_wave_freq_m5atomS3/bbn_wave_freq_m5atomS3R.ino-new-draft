@@ -523,15 +523,15 @@ private:
     ff.setSFactor(1.0f);
     ff.setTauCoeff(1.4f);
     ff.setSigmaCoeff(0.9f);
-    ff.setRSCoeff(0.3f);
+    ff.setRSCoeff(0.8f);
     ff.setRSXYFactor(0.17f);
     ff.setAccNoiseFloorSigma(ACC_NOISE_FLOOR_SIGMA_DEFAULT);
     ff.setHarmonicPositionDespikeConfig(5, 4.0f);
-    ff.enableClamp(false);
+    ff.enableClamp(true);
     ff.setFreqInputCutoffHz(6.0f);
 
     FF::DriftPseudoCfg pm_vz_zero_on_pos_breach_{false, 1, 0.2f, 0.05f, 1.05f};
-    FF::DriftPseudoCfg pm_pos_zero_{false, 1, 10.0f, 0.4f, 0.1f};
+    FF::DriftPseudoCfg pm_pos_zero_{true, 1, 0.1f, 0.01f, 0.0001f};
     FF::DriftPseudoCfg pm_vz_clamp_{false, 1, 0.5f, 0.03f, 0.95f};
     FF::DriftPseudoCfg pm_harmonic_pos_{false, 1, 16.0f, 0.5f, 0.05f};
 
