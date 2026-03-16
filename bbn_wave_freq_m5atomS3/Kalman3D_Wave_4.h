@@ -126,7 +126,9 @@ inline OUDiscreteCoeffs<T> safe_phi_A_coeffs(T h, T tau) {
     return c;
 }
 
-// Helper: project a symmetric NxN to PSD
+// Helper: symmetrize and regularize an approximately symmetric matrix.
+// For N <= 4 this performs eigenvalue clamping to PSD.
+// For larger N this is only a numerical regularization path, not a true PSD projection.
 template<typename T, int N>
 static inline void project_psd(Eigen::Matrix<T,N,N>& S, T eps = T(1e-12)) {
     // Always symmetrize first (we assume S is "almost" symmetric)
