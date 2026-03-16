@@ -41,7 +41,7 @@ constexpr float RMS_WINDOW_SEC = 60.0f;  // RMS window
 //  Project headers
 #include "WaveFilesSupport.h"
 #include "FrameConversions.h"
-#include "SeaStateFusionFilter.h"
+#include "SeaStateFusionFilter_4.h"
 
 using Eigen::Vector3f;
 using Eigen::Vector2f;
@@ -371,7 +371,7 @@ static void process_wave_file_for_tracker(const std::string &filename, float dt,
         << "dir_vec_x,dir_vec_y,"
         << "dfilt_ax,dfilt_ay\n";
 
-    using Fusion = SeaStateFusion<TrackerType::KALMANF>;
+    using Fusion = SeaStateFusion_4<TrackerType::KALMANF>;
     Fusion fusion;
 
     // Magnetic reference (same each run)
