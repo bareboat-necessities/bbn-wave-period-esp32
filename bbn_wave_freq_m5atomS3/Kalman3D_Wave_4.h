@@ -242,7 +242,7 @@ class Kalman3D_Wave_4 {
     static Eigen::Quaternion<T> quaternion_from_acc(Vector3 const& acc);
 
     // Set the world-frame magnetic reference vector used by the mag measurement model.
-    // Pass NED units. For yaw-only, pass the horizontal field (z = 0).
+    // Pass NED units. 
     void set_mag_world_ref(const Vector3& B_world) {
         v2ref = B_world;    // keep µT magnitude
     }
