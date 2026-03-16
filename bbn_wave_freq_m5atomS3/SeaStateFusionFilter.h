@@ -404,7 +404,26 @@ public:
     }
     void setRSCoeff(float c) {
         if (std::isfinite(c) && c > 0.0f) {
+            const float prev = R_S_coeff_;
             R_S_coeff_ = c;
+
+            // Keep runtime behavior responsive when the coefficient is changed online.
+            // Otherwise RS_applied can remain near its previous value for several
+            // adaptation time constants and look like this setter has no effect.
+            if (std::isfinite(prev) && prev > 0.0f) {
+                const float scale = c / prev;
+
+                if (std::isfinite(tune_.RS_applied) && tune_.RS_applied > 0.0f) {
+                    tune_.RS_applied *= scale;
+                }
+                if (std::isfinite(RS_target_) && RS_target_ > 0.0f) {
+                    RS_target_ *= scale;
+                }
+
+                if (enable_linear_block_) {
+                    apply_RS_tune_();
+                }
+            }
         }
     }
 
