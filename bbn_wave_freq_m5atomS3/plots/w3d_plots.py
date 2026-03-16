@@ -329,7 +329,7 @@ for fname in files:
         ("freq_tracker_hz", "Frequency (Hz)"),
         ("accel_std_combo", r"Accel std and $\sigma_a$ applied ($m/s^2$)"),
         ("tau_applied",     r"$\tau$ applied (s)"),
-        ("R_S_applied",     r"$R_S$ applied (m$\cdot$s)"),
+        ("R_p0_applied",     r"$R_{p0}$ applied"),
     ]
 
     fig, axes = make_subplots(len(tuner_panels), latex_safe(basename) + " (Frequency / Tuner)")
