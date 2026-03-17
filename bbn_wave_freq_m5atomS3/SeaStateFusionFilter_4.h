@@ -71,13 +71,13 @@ constexpr float ACC_NOISE_FLOOR_SIGMA_DEFAULT = 0.12f;
 constexpr float MIN_FREQ_HZ = 0.2f;
 constexpr float MAX_FREQ_HZ = 6.0f;
 
-constexpr float MIN_TAU_S   = 0.02f;  // sec
-constexpr float MAX_TAU_S   = 3.0f;   // sec
-constexpr float MAX_SIGMA_A = 6.0f;
-constexpr float MIN_R_p0    = 0.05f;
-constexpr float MAX_R_p0    = 18.0f;
-constexpr float MIN_R_v0    = 0.01f;
-constexpr float MAX_R_v0    = 6.0f;
+constexpr float MIN_TAU_S     = 0.02f;  // sec
+constexpr float MAX_TAU_S     = 3.0f;   // sec
+constexpr float MAX_SIGMA_A   = 6.0f;
+constexpr float MIN_R_p0_std  = 0.05f;
+constexpr float MAX_R_p0_std  = 18.0f;
+constexpr float MIN_R_v0_std  = 0.01f;
+constexpr float MAX_R_v0_std  = 6.0f;
 
 constexpr float ADAPT_TAU_SEC              = 1.5f;
 constexpr float ADAPT_EVERY_SECS           = 0.1f;
@@ -490,18 +490,18 @@ public:
         max_sigma_a_ = max_sigma_a;
     }
 
-    void setR_p0_Bounds(float min_R_p0, float max_R_p0) {
-        if (!std::isfinite(min_R_p0) || !std::isfinite(max_R_p0)) return;
-        if (min_R_p0 <= 0.0f || max_R_p0 <= min_R_p0) return;
-        MIN_R_p0_ = min_R_p0;
-        MAX_R_p0_ = max_R_p0;
+    void setR_p0_Bounds(float MIN_R_p0_std, float MAX_R_p0_std) {
+        if (!std::isfinite(MIN_R_p0_std) || !std::isfinite(MAX_R_p0_std)) return;
+        if (MIN_R_p0_std <= 0.0f || MAX_R_p0_std <= MIN_R_p0_std) return;
+        MIN_R_p0_std_ = MIN_R_p0_std;
+        MAX_R_p0_std_ = MAX_R_p0_std;
     }
 
-    void setR_v0_Bounds(float min_R_v0, float max_R_v0) {
-        if (!std::isfinite(min_R_v0) || !std::isfinite(max_R_v0)) return;
-        if (min_R_v0 <= 0.0f || max_R_v0 <= min_R_v0) return;
-        MIN_R_v0_ = min_R_v0;
-        MAX_R_v0_ = max_R_v0;
+    void setR_v0_Bounds(float MIN_R_v0_std, float MAX_R_v0_std) {
+        if (!std::isfinite(MIN_R_v0_std) || !std::isfinite(MAX_R_v0_std)) return;
+        if (MIN_R_v0_std <= 0.0f || MAX_R_v0_std <= MIN_R_v0_std) return;
+        MIN_R_v0_std_ = MIN_R_v0_std;
+        MAX_R_v0_std_ = MAX_R_v0_std;
     }
 
     void setAdaptationTimeConstants(float tau_sec) {
@@ -749,7 +749,7 @@ private:
         if (!mekf_) return;
         const float p = (std::isfinite(rp_scale) && rp_scale > 0.0f)
                         ? std::min(rp_scale, 1.0f) : 1.0f;
-        const float R_p0_b = std::min(std::max(tune_.R_p0_applied, MIN_R_p0_), MAX_R_p0_);
+        const float R_p0_b = std::min(std::max(tune_.R_p0_applied, MIN_R_p0_std_), MAX_R_p0_std_);
         const float rp_xy = R_p0_b * p * R_p0_xy_factor_;
         mekf_->set_Rp0_noise_std(Eigen::Vector3f(rp_xy, rp_xy, R_p0_b * p));
     }
@@ -758,7 +758,7 @@ private:
         if (!mekf_) return;
         const float p = (std::isfinite(rv_scale) && rv_scale > 0.0f)
                         ? std::min(rv_scale, 1.0f) : 1.0f;
-        const float R_v0_b = std::min(std::max(tune_.R_v0_applied, MIN_R_v0_), MAX_R_v0_);
+        const float R_v0_b = std::min(std::max(tune_.R_v0_applied, MIN_R_v0_std_), MAX_R_v0_std_);
         mekf_->set_Rv0_noise_std(Eigen::Vector3f::Constant(R_v0_b * p));
     }
 
@@ -839,8 +839,8 @@ private:
         float R_p0_raw = R_p0_coeff_ * sigma_target_ * tau_target_ * tau_target_;
         float R_v0_raw = R_v0_coeff_ * sigma_target_ * tau_target_;
         if (enable_clamp_) {
-            R_p0_target_ = std::min(std::max(R_p0_raw, MIN_R_p0_), MAX_R_p0_);
-            R_v0_target_ = std::min(std::max(R_v0_raw, MIN_R_v0_), MAX_R_v0_);
+            R_p0_target_ = std::min(std::max(R_p0_raw, MIN_R_p0_std_), MAX_R_p0_std_);
+            R_v0_target_ = std::min(std::max(R_v0_raw, MIN_R_v0_std_), MAX_R_v0_std_);
         } else {
             R_p0_target_ = R_p0_raw;
             R_v0_target_ = R_v0_raw;
@@ -994,10 +994,10 @@ private:
     float min_tau_s_              = MIN_TAU_S;
     float max_tau_s_              = MAX_TAU_S;
     float max_sigma_a_            = MAX_SIGMA_A;
-    float MIN_R_p0_               = MIN_R_p0;
-    float MAX_R_p0_               = MAX_R_p0;
-    float MIN_R_v0_               = MIN_R_v0;
-    float MAX_R_v0_               = MAX_R_v0;
+    float MIN_R_p0_std_               = MIN_R_p0_std;
+    float MAX_R_p0_std_               = MAX_R_p0_std;
+    float MIN_R_v0_std_               = MIN_R_v0_std;
+    float MAX_R_v0_std_               = MAX_R_v0_std;
     float adapt_tau_sec_          = ADAPT_TAU_SEC;
     float adapt_every_secs_       = ADAPT_EVERY_SECS;
     float online_tune_warmup_sec_ = ONLINE_TUNE_WARMUP_SEC;
