@@ -67,7 +67,7 @@ constexpr float FREQ_GUESS = 0.3f;
 #define ZERO_CROSSINGS_STEEPNESS_TIME 0.21f
 
 enum class TrackerType { ARANOVSKIY = 0, KALMANF = 1, ZEROCROSS = 2 };
-#include "SeaStateFusionFilter.h"
+#include "SeaStateFusionFilter_4.h"
 
 #ifndef MAG_DELAY_SEC
   #define MAG_DELAY_SEC 8.0f
@@ -241,7 +241,7 @@ public:
 
 private:
   using UI = atoms3r_ical::M5Ui;
-  using Fusion = SeaStateFusion<TrackerType::KALMANF>;
+  using Fusion = SeaStateFusion_4<TrackerType::KALMANF>;
 
   bool use_graphics_ = (SEA_STATE_UI_DEFAULT_GRAPHICS != 0);
 
@@ -520,25 +520,14 @@ private:
     ff.enableLinearBlock(WANT_LINEAR_BLOCK);
     ff.enableTuner(true);
     ff.setWithMag(true);
-    ff.setSFactor(1.0f);
+    ff.setSFactor(1.4f);
     ff.setTauCoeff(1.4f);
     ff.setSigmaCoeff(0.9f);
-    ff.setRSCoeff(0.8f);
+    ff.setRSCoeff(0.07f);
     ff.setRSXYFactor(0.17f);
     ff.setAccNoiseFloorSigma(ACC_NOISE_FLOOR_SIGMA_DEFAULT);
-    ff.setHarmonicPositionDespikeConfig(5, 4.0f);
     ff.enableClamp(true);
     ff.setFreqInputCutoffHz(6.0f);
-
-    FF::DriftPseudoCfg pm_vz_zero_on_pos_breach_{false, 1, 0.2f, 0.05f, 1.05f};
-    FF::DriftPseudoCfg pm_pos_zero_{true, 1, 0.1f, 0.01f, 0.0001f};
-    FF::DriftPseudoCfg pm_vz_clamp_{false, 1, 0.5f, 0.03f, 0.95f};
-    FF::DriftPseudoCfg pm_harmonic_pos_{false, 1, 16.0f, 0.5f, 0.05f};
-
-    ff.setPseudoVzZeroOnPosBreachCfg(pm_vz_zero_on_pos_breach_);
-    ff.setPseudoPosZeroCfg(pm_pos_zero_);
-    ff.setPseudoVzClampCfg(pm_vz_clamp_);
-    ff.setPseudoHarmonicPosCfg(pm_harmonic_pos_);
 
     rot_inited_   = false;
     rot_dpm_filt_ = 0.0f;
