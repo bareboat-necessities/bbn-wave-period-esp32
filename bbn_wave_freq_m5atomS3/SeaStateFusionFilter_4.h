@@ -1023,7 +1023,7 @@ private:
 
     float R_p0_coeff_   = 1.6f;
     float R_v0_coeff_   = 1.4f;
-    float tau_coeff_    = 1.45f;
+    float tau_coeff_    = 1.5f;
     float sigma_coeff_  = 0.85f;  // Real noise inflates estimated sigma, to get more realistic sigma for OU we reduce it.
 
     std::unique_ptr<Kalman3D_Wave_4<float>>  mekf_;
