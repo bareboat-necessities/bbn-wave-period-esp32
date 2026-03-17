@@ -202,10 +202,10 @@ public:
                         const Eigen::Vector3f& sigma_g,
                         const Eigen::Vector3f& sigma_m,
                         float Pq0, float Pb0,
-                        float b0, float R_p0_noise, float R_v0_noise,
+                        float b0, float R_p0_var_init, float R_v0_var_init,
                         float gravity_magnitude) 
     {
-        mekf_ = std::make_unique<Kalman3D_Wave_4<float>>(sigma_a, sigma_g, sigma_m, Pq0, Pb0, b0, R_p0_noise, R_v0_noise, gravity_magnitude);
+        mekf_ = std::make_unique<Kalman3D_Wave_4<float>>(sigma_a, sigma_g, sigma_m, Pq0, Pb0, b0, R_p0_var_init, R_v0_var_init, gravity_magnitude);
         enterCold_();      // applies freeze + warmup Racc + disables linear block
         apply_ou_tune_();
         mekf_->set_exact_att_bias_Qd(true);
@@ -490,18 +490,18 @@ public:
         max_sigma_a_ = max_sigma_a;
     }
 
-    void setR_p0_Bounds(float MIN_R_p0_std, float MAX_R_p0_std) {
-        if (!std::isfinite(MIN_R_p0_std) || !std::isfinite(MAX_R_p0_std)) return;
-        if (MIN_R_p0_std <= 0.0f || MAX_R_p0_std <= MIN_R_p0_std) return;
-        MIN_R_p0_std_ = MIN_R_p0_std;
-        MAX_R_p0_std_ = MAX_R_p0_std;
+    void setR_p0_Bounds(float min_R_p0_std, float max_R_p0_std) {
+        if (!std::isfinite(min_R_p0_std) || !std::isfinite(max_R_p0_std)) return;
+        if (min_R_p0_std <= 0.0f || max_R_p0_std <= min_R_p0_std) return;
+        MIN_R_p0_std_ = min_R_p0_std;
+        MAX_R_p0_std_ = max_R_p0_std;
     }
 
-    void setR_v0_Bounds(float MIN_R_v0_std, float MAX_R_v0_std) {
-        if (!std::isfinite(MIN_R_v0_std) || !std::isfinite(MAX_R_v0_std)) return;
-        if (MIN_R_v0_std <= 0.0f || MAX_R_v0_std <= MIN_R_v0_std) return;
-        MIN_R_v0_std_ = MIN_R_v0_std;
-        MAX_R_v0_std_ = MAX_R_v0_std;
+    void setR_v0_Bounds(float min_R_v0_std, float max_R_v0_std) {
+        if (!std::isfinite(min_R_v0_std) || !std::isfinite(max_R_v0_std)) return;
+        if (min_R_v0_std <= 0.0f || max_R_v0_std <= min_R_v0_std) return;
+        MIN_R_v0_std_ = min_R_v0_std;
+        MAX_R_v0_std_ = max_R_v0_std;
     }
 
     void setAdaptationTimeConstants(float tau_sec) {
@@ -527,10 +527,10 @@ public:
     }
 
     void setFreezeAccBiasUntilLive(bool en) { freeze_acc_bias_until_live_ = en; }
-    void setWarmupRacc(float r) { if (std::isfinite(r) && r > 0.0f) Racc_warmup_std_ = r; }
+    void setWarmupRaccStd(float r) { if (std::isfinite(r) && r > 0.0f) Racc_warmup_std_ = r; }
 
     // For SeaStateFusionFilter_4 to restore Racc automatically
-    void setNominalRacc(const Eigen::Vector3f& r) { Racc_nominal_std_ = r; }
+    void setNominalRaccStd(const Eigen::Vector3f& r) { Racc_nominal_std_ = r; }
 
     //  Exposed getters
     inline float getFreqHz()            const noexcept { return freq_hz_; }        // fast branch
@@ -1110,7 +1110,7 @@ public:
         // Configure internal impl without reassign
         impl_.setWithMag(cfg.with_mag);
         impl_.setFreezeAccBiasUntilLive(cfg.freeze_acc_bias_until_live);
-        impl_.setWarmupRacc(cfg.Racc_warmup);
+        impl_.setWarmupRaccStd(cfg.Racc_warmup);
         impl_.setMagDelaySec(cfg.mag_delay_sec);
         impl_.setOnlineTuneWarmupSec(cfg.online_tune_warmup_sec);
 
@@ -1118,7 +1118,7 @@ public:
         last_impl_startup_stage_ = impl_.getStartupStage();
 
         // IMPORTANT: allow warmup to restore nominal accel measurement noise
-        impl_.setNominalRacc(cfg.sigma_a);
+        impl_.setNominalRaccStd(cfg.sigma_a);
     }
 
     // One IMU sample
