@@ -79,7 +79,7 @@ constexpr float MAX_R_p0_std  = 18.0f;
 constexpr float MIN_R_v0_std  = 0.01f;
 constexpr float MAX_R_v0_std  = 6.0f;
 
-constexpr float ADAPT_TAU_SEC              = 1.5f;
+constexpr float ADAPT_TAU_SEC              = 1.45f;
 constexpr float ADAPT_EVERY_SECS           = 0.1f;
 constexpr float ADAPT_R_p0_MULT            = 5.0f;   // dimensionless
 constexpr float ADAPT_R_v0_MULT            = 5.0f;   // dimensionless
