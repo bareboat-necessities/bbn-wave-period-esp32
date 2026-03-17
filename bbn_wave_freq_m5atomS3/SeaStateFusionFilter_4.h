@@ -857,8 +857,8 @@ private:
         const float alpha_R_p0 = 1.0f - std::exp(-dt / R_p0_sec);
         const float alpha_R_v0 = 1.0f - std::exp(-dt / R_v0_sec);
     
-        tune_.tau_applied   += alpha      * (tau_t   - tune_.tau_applied);
-        tune_.sigma_applied += alpha      * (sigma_t - tune_.sigma_applied);
+        tune_.tau_applied       += alpha      * (tau_t   - tune_.tau_applied);
+        tune_.sigma_applied     += alpha      * (sigma_t - tune_.sigma_applied);
         tune_.R_p0_std_applied  += alpha_R_p0 * (R_p0_t  - tune_.R_p0_std_applied);
         tune_.R_v0_std_applied  += alpha_R_v0 * (R_v0_t  - tune_.R_v0_std_applied);
     
@@ -952,9 +952,9 @@ private:
 
     // Warmup behavior
     bool  freeze_acc_bias_until_live_ = true;
-    float Racc_warmup_std_                = 0.5f;   // big accel noise during warmup
+    float Racc_warmup_std_            = 0.5f;   // big accel noise during warmup
     bool  warmup_Racc_active_         = false;
-    Eigen::Vector3f Racc_nominal_std_     = Eigen::Vector3f::Constant(0.0f); // 0 => don't touch
+    Eigen::Vector3f Racc_nominal_std_ = Eigen::Vector3f::Constant(0.0f); // 0 => don't touch
 
     bool accel_bias_locked_ = true;
     int  mag_updates_applied_ = 0;
@@ -994,10 +994,10 @@ private:
     float min_tau_s_              = MIN_TAU_S;
     float max_tau_s_              = MAX_TAU_S;
     float max_sigma_a_            = MAX_SIGMA_A;
-    float MIN_R_p0_std_               = MIN_R_p0_std;
-    float MAX_R_p0_std_               = MAX_R_p0_std;
-    float MIN_R_v0_std_               = MIN_R_v0_std;
-    float MAX_R_v0_std_               = MAX_R_v0_std;
+    float MIN_R_p0_std_           = MIN_R_p0_std;
+    float MAX_R_p0_std_           = MAX_R_p0_std;
+    float MIN_R_v0_std_           = MIN_R_v0_std;
+    float MAX_R_v0_std_           = MAX_R_v0_std;
     float adapt_tau_sec_          = ADAPT_TAU_SEC;
     float adapt_every_secs_       = ADAPT_EVERY_SECS;
     float online_tune_warmup_sec_ = ONLINE_TUNE_WARMUP_SEC;
@@ -1021,13 +1021,13 @@ private:
     // Runtime-configurable accel noise floor (1σ), m/s²
     float acc_noise_floor_sigma_ = ACC_NOISE_FLOOR_SIGMA_DEFAULT;
 
-    float R_p0_coeff_   = 1.3f;
-    float R_v0_coeff_   = 1.3f;
+    float R_p0_coeff_   = 1.4f;
+    float R_v0_coeff_   = 1.4f;
     float tau_coeff_    = 1.5f;
     float sigma_coeff_  = 0.9f;  // Real noise inflates estimated sigma, to get more realistic sigma for OU we reduce it.
 
     std::unique_ptr<Kalman3D_Wave_4<float>>  mekf_;
-    KalmanWaveDirection                    dir_filter_{2.0f * static_cast<float>(M_PI) * FREQ_GUESS};
+    KalmanWaveDirection                      dir_filter_{2.0f * static_cast<float>(M_PI) * FREQ_GUESS};
 
     FreqInputLPF        freq_input_lpf_;   // LPF used only for tracker input
     StillnessAdapter    freq_stillness_;   // Detector of "still" mode
