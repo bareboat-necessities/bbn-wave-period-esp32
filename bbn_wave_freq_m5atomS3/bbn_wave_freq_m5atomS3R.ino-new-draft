@@ -474,10 +474,10 @@ private:
   void resetFusion_() {
     constexpr bool WANT_LINEAR_BLOCK = true;
 
-    constexpr float IMU_TUNE_REF_HZ = 100.0f;
-    constexpr float MAG_TUNE_REF_HZ = 30.0f;
+    constexpr float IMU_TUNE_REF_HZ = 200.0f;
+    constexpr float MAG_TUNE_REF_HZ = 25.0f;
 
-    constexpr float acc_sigma_ref_mps2 = 0.14f;
+    constexpr float acc_sigma_ref_mps2 = 0.12f;
     constexpr float gyr_sigma_ref_rps  = 0.00135f;
     constexpr float mag_sigma_ref_uT   = 1.80f;
 
@@ -523,7 +523,7 @@ private:
     ff.setSFactor(1.4f);
     ff.setTauCoeff(1.4f);
     ff.setSigmaCoeff(0.9f);
-    ff.setRSCoeff(0.07f);
+    ff.setRSCoeff(0.1f);
     ff.setRSXYFactor(0.17f);
     ff.setAccNoiseFloorSigma(ACC_NOISE_FLOOR_SIGMA_DEFAULT);
     ff.enableClamp(true);
@@ -593,7 +593,7 @@ private:
 
   void updateFilter_(const BoschAGSample& s) {
     dt_ = computeFusionDtFromFifoTimestamp_(s);
-    constexpr float tempC = 25.0f;
+    constexpr float tempC = 35.0f;
 
     const Vector3f a_s(s.ax, s.ay, s.az);
     const Vector3f w_s(s.gx, s.gy, s.gz);
