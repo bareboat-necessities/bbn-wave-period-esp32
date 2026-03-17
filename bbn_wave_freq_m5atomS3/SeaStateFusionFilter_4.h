@@ -1022,7 +1022,7 @@ private:
     float acc_noise_floor_sigma_ = ACC_NOISE_FLOOR_SIGMA_DEFAULT;
 
     float R_p0_coeff_   = 1.15f;
-    float R_v0_coeff_   = 1.35f;
+    float R_v0_coeff_   = 1.05f;
     float tau_coeff_    = 1.5f;
     float sigma_coeff_  = 0.9f;  // Real noise inflates estimated sigma, to get more realistic sigma for OU we reduce it.
 
