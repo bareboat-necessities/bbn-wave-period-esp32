@@ -355,14 +355,14 @@ public:
     }
 
     // Anisotropy configuration (runtime)
-    // S-factor scales horizontal vs vertical stationary std of a_w.
-    // RS XY factor scales pseudo-measurement noise in X/Y vs Z.
-    void setSFactor(float s) {
-        if (std::isfinite(s) && s > 0.0f) {
-            S_factor_ = s;
+    // P-factor scales horizontal vs vertical stationary std of a_w.
+    // R_p0 XY factor scales pseudo-measurement noise in X/Y vs Z.
+    void setPFactor(float p) {
+        if (std::isfinite(p) && p > 0.0f) {
+            P_factor_ = p;
         }
     }
-    void setRSXYFactor(float k) {
+    void setR_p0_XYFactor(float k) {
         if (std::isfinite(k)) {
             R_S_xy_factor_ = std::min(std::max(k, 0.0f), 1.0f);
         }
@@ -706,7 +706,7 @@ private:
         // so don’t let sigma collapse to ~0.
         const float sigma_floor = std::max(0.05f, acc_noise_floor_sigma_);
         const float sZ = std::max(sigma_floor, tune_.sigma_applied);
-        const float sH = sZ * S_factor_;
+        const float sH = sZ * P_factor_;
         mekf_->set_aw_stationary_std(Eigen::Vector3f(sH, sH, sZ));
     }
 
@@ -959,7 +959,7 @@ private:
 
     // Runtime-configurable anisotropy knobs
     float R_S_xy_factor_ = 0.17f;  // [0..1] scales XY pseudo-meas vs Z
-    float S_factor_      = 1.5f;   // (>0) scales Σ_aw horizontal std vs vertical
+    float P_factor_      = 1.5f;   // (>0) scales Σ_aw horizontal std vs vertical
 
     TrackingPolicy                  tracker_policy_{};
     FirstOrderIIRSmoother<float>    freq_fast_smoother_{FREQ_SMOOTHER_DT, 3.5f};   // ~3.5 s to 90% step
