@@ -871,23 +871,16 @@ class Kalman3D_Wave_4 {
         Pext.template block<NL,NA>(OFF_V, 0).setZero();
     }
 
-template<int C>
-EIGEN_STRONG_INLINE void freeze_base_rows_(Eigen::Matrix<T,NX,C>& M) const {
-    // Freeze attitude error + optional gyro bias
-    M.template block<BASE_N, C>(0, 0).setZero();
-}
-
-EIGEN_STRONG_INLINE void freeze_linear_rows_(MatrixNX3& M) const {
-    // Linear block is [v,p,a_w] = 9 states starting at OFF_V
-    M.template block<9,3>(OFF_V, 0).setZero();
-}
-
-template<int C>
-EIGEN_STRONG_INLINE void freeze_acc_bias_rows_(Eigen::Matrix<T,NX,C>& M) const {
-    if constexpr (with_accel_bias) {
-        M.template block<3, C>(OFF_BA, 0).setZero();
+    EIGEN_STRONG_INLINE void freeze_linear_rows_(MatrixNX3& M) const {
+        // Linear block is [v,p,a_w] = 9 states starting at OFF_V
+        M.template block<9,3>(OFF_V, 0).setZero();
     }
-}
+
+    EIGEN_STRONG_INLINE void freeze_acc_bias_rows_(MatrixNX3& M) const {
+        if constexpr (with_accel_bias) {
+            M.template block<3,3>(OFF_BA, 0).setZero();
+        }
+    }
 
     // Steady wind heel model (roll about BODY X)
     // wind_heel_rad_ : current steady heel in radians (hull frame)
@@ -1997,12 +1990,21 @@ void Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::measurement_update_pos
 {
     if (!linear_block_enabled_) return;
 
-    constexpr int off_P = OFF_P; // position block
+	constexpr int off_P = OFF_P; // position block
 
+    // Predicted position (world, NED)
     const Vector3 p_pred = xext.template segment<3>(off_P);
-    const Vector3 r = p_meas - p_pred;
-    if (!r.allFinite()) return;
+    Vector3 r = p_meas - p_pred;          // innovation (meters)
 
+    if (!r.allFinite()) {
+        return;
+    }
+
+    // Innovation covariance S = H P Hᵀ + R, with H selecting the p-block.
+    // Here H is [0 ... I_3 ... 0], so:
+    //
+    //   S = P_pp + R
+    //
     Matrix3& S_mat = S_scratch_;
     S_mat = Pext.template block<3,3>(off_P, off_P);
 
@@ -2015,10 +2017,11 @@ void Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::measurement_update_pos
     R_meas(2,2) = sz * sz;
     S_mat.noalias() += R_meas;
 
-    // IMPORTANT: PCt must remain the true P*C^T for Joseph update.
+    // Cross-covariance PCᵀ = P(:,p) (N×3)
     MatrixNX3& PCt = PCt_scratch_;
     PCt.noalias() = Pext.template block<NX,3>(0, off_P);
 
+    // Gain K = PCᵀ S⁻¹
     Eigen::LDLT<Matrix3> ldlt;
     const T noise_scale = R_meas.norm();
     if (!safe_ldlt3_(S_mat, ldlt, noise_scale)) {
@@ -2028,16 +2031,11 @@ void Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::measurement_update_pos
     MatrixNX3& K = K_scratch_;
     K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
 
-    // Freeze attitude/gyro-bias rows and accel-bias rows in K ONLY.
-    freeze_base_rows_(K);
-    if constexpr (with_accel_bias) {
-        freeze_acc_bias_rows_(K);
-    }
+    xext.noalias() += K * r;           // State update
+    joseph_update3_(K, S_mat, PCt);    // Covariance update (Joseph form, 3D)
 
-    xext.noalias() += K * r;
-    joseph_update3_(K, S_mat, PCt);
-
-    // No need to inject quaternion correction; K base rows are zero.
+    // Attitude may have been nudged via cross-covariance → apply correction
+    applyQuaternionCorrectionFromErrorState();
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
@@ -2049,8 +2047,10 @@ void Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::measurement_update_vel
     constexpr int off_V = OFF_V; // velocity block
 
     const Vector3 v_pred = xext.template segment<3>(off_V);
-    const Vector3 r = v_meas - v_pred;
-    if (!r.allFinite()) return;
+    const Vector3 r = v_meas - v_pred; // innovation (m/s)
+    if (!r.allFinite()) {
+        return;
+    }
 
     Matrix3& S_mat = S_scratch_;
     S_mat = Pext.template block<3,3>(off_V, off_V);
@@ -2064,7 +2064,6 @@ void Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::measurement_update_vel
     R_meas(2,2) = sz * sz;
     S_mat.noalias() += R_meas;
 
-    // IMPORTANT: keep true PCt = P*C^T
     MatrixNX3& PCt = PCt_scratch_;
     PCt.noalias() = Pext.template block<NX,3>(0, off_V);
 
@@ -2077,16 +2076,10 @@ void Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::measurement_update_vel
     MatrixNX3& K = K_scratch_;
     K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
 
-    // Freeze attitude/gyro-bias rows and accel-bias rows in K ONLY.
-    freeze_base_rows_(K);
-    if constexpr (with_accel_bias) {
-        freeze_acc_bias_rows_(K);
-    }
-
     xext.noalias() += K * r;
     joseph_update3_(K, S_mat, PCt);
 
-    // No quaternion injection needed; K base rows are zero.
+    applyQuaternionCorrectionFromErrorState();
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
@@ -2095,39 +2088,40 @@ void Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::measurement_update_ver
 {
     if (!linear_block_enabled_) return;
 
-    constexpr int idx_vz = OFF_V + 2; // z velocity in NED
+    constexpr int idx_vz = OFF_V + 2; // z (down) axis in NED
 
-    if (!std::isfinite(vz_meas)) return;
+    if (!std::isfinite(vz_meas)) {
+        return;
+    }
 
     const T r = vz_meas - xext(idx_vz);
-    if (!std::isfinite(r)) return;
+    if (!std::isfinite(r)) {
+        return;
+    }
 
     const T sigma = std::max(T(0), sigma_meas);
     const T R = sigma * sigma;
     const T S = Pext(idx_vz, idx_vz) + R;
 
-    if (!(S > T(0)) || !std::isfinite(S)) return;
+    if (!(S > T(0)) || !std::isfinite(S)) {
+        return;
+    }
 
-    // IMPORTANT: keep true PCt = P*c^T
     Eigen::Matrix<T, NX, 1> PCt;
     PCt.noalias() = Pext.col(idx_vz);
 
     Eigen::Matrix<T, NX, 1> K;
     K.noalias() = PCt / S;
 
-    // Freeze attitude/gyro-bias and accel-bias in K ONLY.
-    K.template segment<BASE_N>(0).setZero();
-    if constexpr (with_accel_bias) {
-        K.template segment<3>(OFF_BA).setZero();
-    }
-
     xext.noalias() += K * r;
 
-    // Joseph scalar update with true PCt
+    // Joseph-form scalar update: P = P - K*PCt' - PCt*K' + K*S*K'
     Pext.noalias() -= K * PCt.transpose();
     Pext.noalias() -= PCt * K.transpose();
     Pext.noalias() += K * S * K.transpose();
     Pext = T(0.5) * (Pext + Pext.transpose());
+
+    applyQuaternionCorrectionFromErrorState();
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
