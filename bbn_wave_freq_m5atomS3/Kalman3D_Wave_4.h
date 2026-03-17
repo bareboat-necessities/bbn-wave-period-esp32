@@ -462,7 +462,7 @@ class Kalman3D_Wave_4 {
 	    Racc = sigma_acc.array().square().matrix().asDiagonal();
 	}
 
-    // Magnetometer measurement noise (std per axis, μT or unitless)
+    // Magnetometer measurement noise (std per axis, μT)
     void set_Rmag(const Vector3& sigma_mag) {
         Rmag = sigma_mag.array().square().matrix().asDiagonal();
     }
@@ -581,7 +581,7 @@ class Kalman3D_Wave_4 {
     Matrix<T, NX, 1> xext; // [ δθ(3), (gyro bias 3 optional), v(3), p(3), a_w(3), (accel bias 3 optional) ]
     MatrixNX Pext;
 
-    Vector3 last_gyr_bias_corrected{};  // Last gyro
+    Vector3 last_gyr_bias_corrected{};  // last bias-corrected gyro in B'
 
     T sigma_bacc0_ = T(0.004);          // initial accel bias std
     Matrix3 Q_bacc_ = Matrix3::Identity() * T(1e-6);
@@ -600,7 +600,7 @@ class Kalman3D_Wave_4 {
 
     // World-acceleration OU process a_w dynamics parameters
     T tau_aw = T(2.1);            // correlation time [s], tune 1–3.5 s for sea states
-    Matrix3 Sigma_aw_stat = Matrix3::Identity() * T(2.2*2.2); // stationary variance diag [ (m/s^2)^2 ]
+    Matrix3 Sigma_aw_stat = Matrix3::Identity() * T(2.2*2.2); // stationary covariance of a_w [ (m/s^2)^2 ]
 
     int pseudo_update_counter_ = 0;   // counts time_update calls
     static constexpr int PSEUDO_UPDATE_PERIOD = 3; // every N-th update
@@ -1194,7 +1194,7 @@ Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::initialize_Q(
               typename Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::Vector3 sigma_g, T b0) {
     MatrixBaseN Q; Q.setZero();
     if constexpr (with_gyro_bias) {
-        Q.template topLeftCorner<3,3>() = sigma_g.array().square().matrix().asDiagonal(); // gyro RW
+        Q.template topLeftCorner<3,3>() = sigma_g.array().square().matrix().asDiagonal(); // gyro noise covariance driving attitude error
         Q.template bottomRightCorner<3,3>() = Matrix3::Identity() * b0;                   // bias RW
     } else {
         Q = sigma_g.array().square().matrix().asDiagonal();
@@ -1245,13 +1245,13 @@ void Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::initialize_from_acc_ma
     Vector3 acc_n = acc / anorm;
 
     // Build WORLD axes expressed in BODY coords
-    Vector3 z_world = -acc_n;                         // world Z (down) in body coord
+    Vector3 z_world = -acc_n;     // world Z (down) in body coord
     Vector3 mag_h   = mag - (mag.dot(z_world)) * z_world;
     if (mag_h.norm() < T(1e-8)) {
         throw std::runtime_error("Magnetometer vector parallel to gravity — cannot initialize yaw");
     }
     mag_h.normalize();
-    Vector3 x_world = mag_h;                          // world X (north) in body coords
+    Vector3 x_world = mag_h;      // chosen horizontal magnetic-reference direction in body coords
     Vector3 y_world = z_world.cross(x_world).normalized();
 
     // R_wb: world→body rotation (columns = world axes in body coords)
