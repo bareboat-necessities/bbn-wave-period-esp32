@@ -73,8 +73,8 @@ constexpr float MAX_FREQ_HZ = 6.0f;
 constexpr float MIN_TAU_S   = 0.02f;
 constexpr float MAX_TAU_S   = 3.0f;
 constexpr float MAX_SIGMA_A = 6.0f;
-constexpr float MIN_R_S     = 0.05f;
-constexpr float MAX_R_S     = 18.0f;
+constexpr float MIN_R_p0    = 0.05f;
+constexpr float MAX_R_p0    = 18.0f;
 
 constexpr float ADAPT_TAU_SEC              = 1.5f;
 constexpr float ADAPT_EVERY_SECS           = 0.1f;
@@ -467,8 +467,8 @@ public:
     void setRSBounds(float min_RS, float max_RS) {
         if (!std::isfinite(min_RS) || !std::isfinite(max_RS)) return;
         if (min_RS <= 0.0f || max_RS <= min_RS) return;
-        min_R_S_ = min_RS;
-        max_R_S_ = max_RS;
+        MIN_R_p0_ = min_RS;
+        MAX_R_p0_ = max_RS;
     }
 
     void setAdaptationTimeConstants(float tau_sec) {
@@ -715,7 +715,7 @@ private:
         const float s = (std::isfinite(rs_scale) && rs_scale > 0.0f)
                         ? std::min(rs_scale, 1.0f)
                         : 1.0f;
-        const float RSb = std::min(std::max(tune_.RS_applied, min_R_S_), max_R_S_);
+        const float RSb = std::min(std::max(tune_.RS_applied, MIN_R_p0_), MAX_R_p0_);
         const float rs_xy = RSb * s * R_S_xy_factor_;
         mekf_->set_Rp0_noise(Eigen::Vector3f(
             rs_xy,
@@ -802,7 +802,7 @@ private:
                        * tau_target_ * tau_target_;
 
         if (enable_clamp_) {
-            RS_target_ = std::min(std::max(RS_raw, min_R_S_), max_R_S_);
+            RS_target_ = std::min(std::max(RS_raw, MIN_R_p0_), MAX_R_p0_);
         } else {
             RS_target_ = RS_raw;
         }
@@ -950,8 +950,8 @@ private:
     float min_tau_s_              = MIN_TAU_S;
     float max_tau_s_              = MAX_TAU_S;
     float max_sigma_a_            = MAX_SIGMA_A;
-    float min_R_S_                = MIN_R_S;
-    float max_R_S_                = MAX_R_S;
+    float MIN_R_p0_                = MIN_R_p0;
+    float MAX_R_p0_                = MAX_R_p0;
     float adapt_tau_sec_          = ADAPT_TAU_SEC;
     float adapt_every_secs_       = ADAPT_EVERY_SECS;
     float online_tune_warmup_sec_ = ONLINE_TUNE_WARMUP_SEC;
