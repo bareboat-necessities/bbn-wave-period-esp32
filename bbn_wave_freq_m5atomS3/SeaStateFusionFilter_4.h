@@ -78,7 +78,7 @@ constexpr float MAX_R_p0    = 18.0f;
 
 constexpr float ADAPT_TAU_SEC              = 1.5f;
 constexpr float ADAPT_EVERY_SECS           = 0.1f;
-constexpr float ADAPT_RS_MULT              = 5.0f;   // dimensionless 
+constexpr float ADAPT_R_p0_MULT              = 5.0f;   // dimensionless 
 constexpr float ONLINE_TUNE_WARMUP_SEC     = 5.0f;
 constexpr float MAG_DELAY_SEC              = 8.0f;
 
@@ -88,7 +88,7 @@ constexpr float FREQ_SMOOTHER_DT = 1.0f / 200.0f;
 struct TuneState {
     float tau_applied   = 1.1f;    // s
     float sigma_applied = 1e-2f;    // m/s²
-    float RS_applied    = 0.1f;     // m
+    float R_p0_applied    = 0.1f;     // m
 };
 
 //  Tracker policy traits
@@ -303,7 +303,7 @@ public:
         // Keep linear-block R_S tuning responsive in Live mode instead of
         // waiting for slow adaptation cadence.
         if (startup_stage_ == StartupStage::Live && enable_linear_block_) {
-            apply_RS_tune_();
+            apply_R_p0_tune_();
         }
     
         const float omega = 2.0f * static_cast<float>(M_PI) * freq_hz_;
@@ -384,20 +384,20 @@ public:
             R_S_coeff_ = c;
 
             // Keep runtime behavior responsive when the coefficient is changed online.
-            // Otherwise RS_applied can remain near its previous value for several
+            // Otherwise R_p0_applied can remain near its previous value for several
             // adaptation time constants and look like this setter has no effect.
             if (std::isfinite(prev) && prev > 0.0f) {
                 const float scale = c / prev;
 
-                if (std::isfinite(tune_.RS_applied) && tune_.RS_applied > 0.0f) {
-                    tune_.RS_applied *= scale;
+                if (std::isfinite(tune_.R_p0_applied) && tune_.R_p0_applied > 0.0f) {
+                    tune_.R_p0_applied *= scale;
                 }
-                if (std::isfinite(RS_target_) && RS_target_ > 0.0f) {
-                    RS_target_ *= scale;
+                if (std::isfinite(R_p0_target_) && R_p0_target_ > 0.0f) {
+                    R_p0_target_ *= scale;
                 }
 
                 if (enable_linear_block_) {
-                    apply_RS_tune_();
+                    apply_R_p0_tune_();
                 }
             }
         }
@@ -505,10 +505,10 @@ public:
     inline float getFreqRawHz()     const noexcept { return f_raw; }
     inline float getTauApplied()    const noexcept { return tune_.tau_applied; }
     inline float getSigmaApplied()  const noexcept { return tune_.sigma_applied; }
-    inline float getRSApplied()     const noexcept { return tune_.RS_applied; }
+    inline float getRSApplied()     const noexcept { return tune_.R_p0_applied; }
     inline float getTauTarget()     const noexcept { return tau_target_;   }
     inline float getSigmaTarget()   const noexcept { return sigma_target_; }
-    inline float getRSTarget()      const noexcept { return RS_target_;    }
+    inline float getRSTarget()      const noexcept { return R_p0_target_;    }
 
     // Use slow frequency as a more stable "period" proxy
     inline float getPeriodSec() const noexcept {
@@ -710,12 +710,12 @@ private:
         mekf_->set_aw_stationary_std(Eigen::Vector3f(sH, sH, sZ));
     }
 
-    void apply_RS_tune_(float rs_scale = 1.0f) {
+    void apply_R_p0_tune_(float rs_scale = 1.0f) {
         if (!mekf_) return;
         const float s = (std::isfinite(rs_scale) && rs_scale > 0.0f)
                         ? std::min(rs_scale, 1.0f)
                         : 1.0f;
-        const float RSb = std::min(std::max(tune_.RS_applied, MIN_R_p0_), MAX_R_p0_);
+        const float RSb = std::min(std::max(tune_.R_p0_applied, MIN_R_p0_), MAX_R_p0_);
         const float rs_xy = RSb * s * R_S_xy_factor_;
         mekf_->set_Rp0_noise(Eigen::Vector3f(
             rs_xy,
@@ -798,34 +798,34 @@ private:
             sigma_target_ = std::max(sigma_target_, std::max(0.05f, acc_noise_floor_sigma_));
         }
       
-        float RS_raw = R_S_coeff_ * sigma_target_
+        float R_p0_raw = R_S_coeff_ * sigma_target_
                        * tau_target_ * tau_target_;
 
         if (enable_clamp_) {
-            RS_target_ = std::min(std::max(RS_raw, MIN_R_p0_), MAX_R_p0_);
+            R_p0_target_ = std::min(std::max(R_p0_raw, MIN_R_p0_), MAX_R_p0_);
         } else {
-            RS_target_ = RS_raw;
+            R_p0_target_ = R_p0_raw;
         }
-        adapt_mekf(dt, tau_target_, sigma_target_, RS_target_);
+        adapt_mekf(dt, tau_target_, sigma_target_, R_p0_target_);
     }
     
-    void adapt_mekf(float dt, float tau_t, float sigma_t, float RS_t) {
+    void adapt_mekf(float dt, float tau_t, float sigma_t, float R_p0_t) {
         const float alpha = 1.0f - std::exp(-dt / adapt_tau_sec_);
     
         // R_S smoothing depends on tau (tau_t is already clamped upstream)
-        const float RS_sec   = ADAPT_RS_MULT * tau_t;     // or tune_.tau_applied if preferred
-        const float alpha_RS = 1.0f - std::exp(-dt / RS_sec);
+        const float R_p0_sec   = ADAPT_R_p0_MULT * tau_t;     // or tune_.tau_applied if preferred
+        const float alpha_RS = 1.0f - std::exp(-dt / R_p0_sec);
     
         tune_.tau_applied   += alpha    * (tau_t   - tune_.tau_applied);
         tune_.sigma_applied += alpha    * (sigma_t - tune_.sigma_applied);
-        tune_.RS_applied    += alpha_RS * (RS_t    - tune_.RS_applied);
+        tune_.R_p0_applied  += alpha_RS * (R_p0_t    - tune_.R_p0_applied);
     
         if (time_ - last_adapt_time_sec_ > adapt_every_secs_) {
             if (tuner_.isFreqReady()) {
                 apply_ou_tune_();
             }
             if (startup_stage_ == StartupStage::Live && enable_linear_block_) {
-                apply_RS_tune_();
+                apply_R_p0_tune_();
             }
             last_adapt_time_sec_ = time_;
         }
@@ -899,7 +899,7 @@ private:
             warmup_Racc_active_ = false;
         }
         apply_ou_tune_();
-        if (enable_linear_block_) apply_RS_tune_();
+        if (enable_linear_block_) apply_R_p0_tune_();
       
     }
 
@@ -969,7 +969,7 @@ private:
 
     float tau_target_   = NAN;
     float sigma_target_ = NAN;
-    float RS_target_    = NAN;
+    float R_p0_target_    = NAN;
 
     // Runtime-configurable accel noise floor (1σ), m/s²
     float acc_noise_floor_sigma_ = ACC_NOISE_FLOOR_SIGMA_DEFAULT;
