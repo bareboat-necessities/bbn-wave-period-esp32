@@ -92,8 +92,8 @@ constexpr float FREQ_SMOOTHER_DT = 1.0f / 200.0f;
 struct TuneState {
     float tau_applied   = 1.1f;      // s
     float sigma_applied = 1e-2f;     // m/s²
-    float R_p0_applied  = 0.1f;      // (m)² - variance
-    float R_v0_applied  = 0.1f;      // (m/s)² - variance
+    float R_p0_applied  = 0.1f;      // m 
+    float R_v0_applied  = 0.1f;      // m/s
 };
 
 //  Tracker policy traits
@@ -347,8 +347,8 @@ public:
     
                 // Restore nominal Racc only when bias learning is allowed.
                 if (warmup_Racc_active_) {
-                    if (Racc_nominal_.allFinite() && Racc_nominal_.maxCoeff() > 0.0f) {
-                        mekf_->set_Racc(Racc_nominal_);
+                    if (Racc_nominal_std_.allFinite() && Racc_nominal_std_.maxCoeff() > 0.0f) {
+                        mekf_->set_Racc_std(Racc_nominal_std_);
                         warmup_Racc_active_ = false;
                     }
                 }
@@ -527,10 +527,10 @@ public:
     }
 
     void setFreezeAccBiasUntilLive(bool en) { freeze_acc_bias_until_live_ = en; }
-    void setWarmupRacc(float r) { if (std::isfinite(r) && r > 0.0f) Racc_warmup_ = r; }
+    void setWarmupRacc(float r) { if (std::isfinite(r) && r > 0.0f) Racc_warmup_std_ = r; }
 
     // For SeaStateFusionFilter_4 to restore Racc automatically
-    void setNominalRacc(const Eigen::Vector3f& r) { Racc_nominal_ = r; }
+    void setNominalRacc(const Eigen::Vector3f& r) { Racc_nominal_std_ = r; }
 
     //  Exposed getters
     inline float getFreqHz()        const noexcept { return freq_hz_; }        // fast branch
@@ -751,7 +751,7 @@ private:
                         ? std::min(rp_scale, 1.0f) : 1.0f;
         const float R_p0_b = std::min(std::max(tune_.R_p0_applied, MIN_R_p0_), MAX_R_p0_);
         const float rp_xy = R_p0_b * p * R_p0_xy_factor_;
-        mekf_->set_Rp0_noise(Eigen::Vector3f(rp_xy, rp_xy, R_p0_b * p));
+        mekf_->set_Rp0_noise_std(Eigen::Vector3f(rp_xy, rp_xy, R_p0_b * p));
     }
     
     void apply_R_v0_tune_(float rv_scale = 1.0f) {
@@ -759,7 +759,7 @@ private:
         const float p = (std::isfinite(rv_scale) && rv_scale > 0.0f)
                         ? std::min(rv_scale, 1.0f) : 1.0f;
         const float R_v0_b = std::min(std::max(tune_.R_v0_applied, MIN_R_v0_), MAX_R_v0_);
-        mekf_->set_Rv0_noise(Eigen::Vector3f::Constant(R_v0_b * p));
+        mekf_->set_Rv0_noise_std(Eigen::Vector3f::Constant(R_v0_b * p));
     }
 
     void update_tuner(float dt, float a_vert_inertial, float freq_hz_for_tuner) {
@@ -917,7 +917,7 @@ private:
         // warmup_Racc_active_ 
         if (freeze_acc_bias_until_live_) {
             mekf_->set_acc_bias_updates_enabled(false);
-            mekf_->set_Racc(Eigen::Vector3f::Constant(Racc_warmup_));
+            mekf_->set_Racc_std(Eigen::Vector3f::Constant(Racc_warmup_std_));
             warmup_Racc_active_ = true;
         }
     }
@@ -935,8 +935,8 @@ private:
             const bool allow_bias = !accel_bias_locked_;
             mekf_->set_acc_bias_updates_enabled(allow_bias);
 
-            if (warmup_Racc_active_ && Racc_nominal_.allFinite() && Racc_nominal_.maxCoeff() > 0.0f) {
-                mekf_->set_Racc(Racc_nominal_);
+            if (warmup_Racc_active_ && Racc_nominal_std_.allFinite() && Racc_nominal_std_.maxCoeff() > 0.0f) {
+                mekf_->set_Racc_std(Racc_nominal_std_);
             }
             warmup_Racc_active_ = false;
         }
@@ -952,9 +952,9 @@ private:
 
     // Warmup behavior
     bool  freeze_acc_bias_until_live_ = true;
-    float Racc_warmup_                = 0.5f;   // big accel noise during warmup
+    float Racc_warmup_std_                = 0.5f;   // big accel noise during warmup
     bool  warmup_Racc_active_         = false;
-    Eigen::Vector3f Racc_nominal_     = Eigen::Vector3f::Constant(0.0f); // 0 => don't touch
+    Eigen::Vector3f Racc_nominal_std_     = Eigen::Vector3f::Constant(0.0f); // 0 => don't touch
 
     bool accel_bias_locked_ = true;
     int  mag_updates_applied_ = 0;
