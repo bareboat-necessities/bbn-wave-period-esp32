@@ -871,16 +871,23 @@ class Kalman3D_Wave_4 {
         Pext.template block<NL,NA>(OFF_V, 0).setZero();
     }
 
-    EIGEN_STRONG_INLINE void freeze_linear_rows_(MatrixNX3& M) const {
-        // Linear block is [v,p,a_w] = 9 states starting at OFF_V
-        M.template block<9,3>(OFF_V, 0).setZero();
-    }
+template<int C>
+EIGEN_STRONG_INLINE void freeze_base_rows_(Eigen::Matrix<T,NX,C>& M) const {
+    // Freeze attitude error + optional gyro bias
+    M.template block<BASE_N, C>(0, 0).setZero();
+}
 
-    EIGEN_STRONG_INLINE void freeze_acc_bias_rows_(MatrixNX3& M) const {
-        if constexpr (with_accel_bias) {
-            M.template block<3,3>(OFF_BA, 0).setZero();
-        }
+EIGEN_STRONG_INLINE void freeze_linear_rows_(MatrixNX3& M) const {
+    // Linear block is [v,p,a_w] = 9 states starting at OFF_V
+    M.template block<9,3>(OFF_V, 0).setZero();
+}
+
+template<int C>
+EIGEN_STRONG_INLINE void freeze_acc_bias_rows_(Eigen::Matrix<T,NX,C>& M) const {
+    if constexpr (with_accel_bias) {
+        M.template block<3, C>(OFF_BA, 0).setZero();
     }
+}
 
     // Steady wind heel model (roll about BODY X)
     // wind_heel_rad_ : current steady heel in radians (hull frame)
@@ -1990,21 +1997,17 @@ void Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::measurement_update_pos
 {
     if (!linear_block_enabled_) return;
 
-	constexpr int off_P = OFF_P; // position block
+    constexpr int off_P = OFF_P; // position block
 
     // Predicted position (world, NED)
     const Vector3 p_pred = xext.template segment<3>(off_P);
-    Vector3 r = p_meas - p_pred;          // innovation (meters)
+    const Vector3 r = p_meas - p_pred; // innovation (meters)
 
     if (!r.allFinite()) {
         return;
     }
 
-    // Innovation covariance S = H P Hᵀ + R, with H selecting the p-block.
-    // Here H is [0 ... I_3 ... 0], so:
-    //
-    //   S = P_pp + R
-    //
+    // Innovation covariance S = H P Hᵀ + R, with H selecting p-block.
     Matrix3& S_mat = S_scratch_;
     S_mat = Pext.template block<3,3>(off_P, off_P);
 
@@ -2017,9 +2020,16 @@ void Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::measurement_update_pos
     R_meas(2,2) = sz * sz;
     S_mat.noalias() += R_meas;
 
-    // Cross-covariance PCᵀ = P(:,p) (N×3)
+    // Cross-covariance PCᵀ = P(:,p) (NX×3)
     MatrixNX3& PCt = PCt_scratch_;
     PCt.noalias() = Pext.template block<NX,3>(0, off_P);
+
+    // Drift pseudo should update linear block only:
+    // freeze attitude / gyro bias, and also freeze accel bias.
+    freeze_base_rows_(PCt);
+    if constexpr (with_accel_bias) {
+        freeze_acc_bias_rows_(PCt);
+    }
 
     // Gain K = PCᵀ S⁻¹
     Eigen::LDLT<Matrix3> ldlt;
@@ -2031,11 +2041,15 @@ void Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::measurement_update_pos
     MatrixNX3& K = K_scratch_;
     K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
 
+    freeze_base_rows_(K);
+    if constexpr (with_accel_bias) {
+        freeze_acc_bias_rows_(K);
+    }
+
     xext.noalias() += K * r;           // State update
     joseph_update3_(K, S_mat, PCt);    // Covariance update (Joseph form, 3D)
 
-    // Attitude may have been nudged via cross-covariance → apply correction
-    applyQuaternionCorrectionFromErrorState();
+    // No quaternion injection here: base rows are frozen.
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
@@ -2067,6 +2081,13 @@ void Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::measurement_update_vel
     MatrixNX3& PCt = PCt_scratch_;
     PCt.noalias() = Pext.template block<NX,3>(0, off_V);
 
+    // Drift pseudo should update linear block only:
+    // freeze attitude / gyro bias, and also freeze accel bias.
+    freeze_base_rows_(PCt);
+    if constexpr (with_accel_bias) {
+        freeze_acc_bias_rows_(PCt);
+    }
+
     Eigen::LDLT<Matrix3> ldlt;
     const T noise_scale = R_meas.norm();
     if (!safe_ldlt3_(S_mat, ldlt, noise_scale)) {
@@ -2076,10 +2097,15 @@ void Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::measurement_update_vel
     MatrixNX3& K = K_scratch_;
     K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
 
+    freeze_base_rows_(K);
+    if constexpr (with_accel_bias) {
+        freeze_acc_bias_rows_(K);
+    }
+
     xext.noalias() += K * r;
     joseph_update3_(K, S_mat, PCt);
 
-    applyQuaternionCorrectionFromErrorState();
+    // No quaternion injection here: base rows are frozen.
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
