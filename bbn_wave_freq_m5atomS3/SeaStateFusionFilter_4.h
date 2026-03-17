@@ -86,14 +86,14 @@ constexpr float MAG_DELAY_SEC              = 8.0f;
 constexpr float FREQ_SMOOTHER_DT = 1.0f / 200.0f;
 
 struct TuneState {
-    float tau_applied   = 1.1f;    // s
-    float sigma_applied = 1e-2f;    // m/s²
-    float R_p0_applied    = 0.1f;     // m
+    float tau_applied   = 1.1f;      // s
+    float sigma_applied = 1e-2f;     // m/s²
+    float R_p0_applied  = 0.1f;      // m
 };
 
 //  Tracker policy traits
 template<TrackerType>
-struct TrackerPolicy; // primary template (undefined)
+struct TrackerPolicy;   // primary template (undefined)
 
 // Aranovskiy
 template<>
@@ -871,13 +871,12 @@ private:
         mag_updates_applied_ = 0;  
         first_mag_update_time_  = NAN;
       
-        // optionally: warmup_Racc_active_ 
+        // warmup_Racc_active_ 
         if (freeze_acc_bias_until_live_) {
             mekf_->set_acc_bias_updates_enabled(false);
             mekf_->set_Racc(Eigen::Vector3f::Constant(Racc_warmup_));
             warmup_Racc_active_ = true;
         }
-
     }
 
     void enterLive_() {
@@ -900,7 +899,6 @@ private:
         }
         apply_ou_tune_();
         if (enable_linear_block_) apply_R_p0_tune_();
-      
     }
 
     StartupStage startup_stage_    = StartupStage::Cold;
@@ -908,13 +906,13 @@ private:
 
     // Warmup behavior
     bool  freeze_acc_bias_until_live_ = true;
-    float Racc_warmup_               = 0.5f;   // big accel noise during warmup
+    float Racc_warmup_                = 0.5f;   // big accel noise during warmup
     bool  warmup_Racc_active_         = false;
     Eigen::Vector3f Racc_nominal_     = Eigen::Vector3f::Constant(0.0f); // 0 => don't touch
 
     bool accel_bias_locked_ = true;
     int  mag_updates_applied_ = 0;
-    static constexpr int MAG_UPDATES_TO_UNLOCK = 40;  // tune as you like
+    static constexpr int MAG_UPDATES_TO_UNLOCK = 40;  // tune as needed
 
     //  Members
     bool   with_mag_;
@@ -938,7 +936,7 @@ private:
 
     float speed_env_mult_ = 1.0f;   // v_env ≈ speed_env_mult * ω * z_env
 
-    // Controls whether the extended linear block [v,p,S,a_w] of Kalman3D_Wave_4
+    // Controls whether the extended linear block [v,p,a_w] of Kalman3D_Wave_4
     // is ever enabled. When false, the underlying filter runs as a pure
     // attitude/bias QMEKF (linear states frozen, no OU, no p/v pseudo-measurements),
     // while all frequency tracking / tuner / direction logic still operates.
