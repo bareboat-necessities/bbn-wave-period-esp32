@@ -90,7 +90,10 @@ constexpr float MAG_DELAY_SEC              = 8.0f;
 constexpr float FREQ_SMOOTHER_DT = 1.0f / 200.0f;
 
 struct TuneState {
-    float sigma_applied = 1e-2f;     // m/s²
+    float tau_applied      = 1.1f;   // s
+    float sigma_applied    = 1e-2f;  // m/s^2
+    float R_p0_std_applied = 0.1f;   // m
+    float R_v0_std_applied = 0.1f;   // m/s
 };
 
 //  Tracker policy traits
@@ -378,8 +381,13 @@ public:
         if (std::isfinite(c) && c > 0.0f) {
             const float prev = R_p0_coeff_;
             R_p0_coeff_ = c;
+    
             if (std::isfinite(prev) && prev > 0.0f) {
                 const float scale = c / prev;
+    
+                if (std::isfinite(tune_.R_p0_std_applied) && tune_.R_p0_std_applied > 0.0f) {
+                    tune_.R_p0_std_applied *= scale;
+                }
                 if (std::isfinite(R_p0_std_target_) && R_p0_std_target_ > 0.0f) {
                     R_p0_std_target_ *= scale;
                 }
@@ -389,17 +397,22 @@ public:
             }
         }
     }
-    void setR_v0_Coeff(float c) {
+    void setR_p0_Coeff(float c) {
         if (std::isfinite(c) && c > 0.0f) {
-            const float prev = R_v0_coeff_;
-            R_v0_coeff_ = c;
+            const float prev = R_p0_coeff_;
+            R_p0_coeff_ = c;
+    
             if (std::isfinite(prev) && prev > 0.0f) {
                 const float scale = c / prev;
-                if (std::isfinite(R_v0_std_target_) && R_v0_std_target_ > 0.0f) {
-                    R_v0_std_target_ *= scale;
+    
+                if (std::isfinite(tune_.R_p0_std_applied) && tune_.R_p0_std_applied > 0.0f) {
+                    tune_.R_p0_std_applied *= scale;
+                }
+                if (std::isfinite(R_p0_std_target_) && R_p0_std_target_ > 0.0f) {
+                    R_p0_std_target_ *= scale;
                 }
                 if (enable_linear_block_) {
-                    apply_R_v0_tune_();
+                    apply_R_p0_tune_();
                 }
             }
         }
@@ -518,19 +531,16 @@ public:
     inline float getR_v0_std_target()   const noexcept { return R_v0_std_target_; }
 
     inline float getTauApplied() const noexcept {
-        return mekf_ ? mekf_->get_aw_time_constant() : NAN;
+        return tune_.tau_applied;
     }
     inline float getSigmaApplied() const noexcept {
         return tune_.sigma_applied;
     }
     inline float getR_p0_std_applied() const noexcept {
-        if (!mekf_) return NAN;
-        // z is the base std; x/y may be anisotropically reduced
-        return mekf_->get_Rp0_noise_std().z();
+        return tune_.R_p0_std_applied;
     }
     inline float getR_v0_std_applied() const noexcept {
-        if (!mekf_) return NAN;
-        return mekf_->get_Rv0_noise_std().z();
+        return tune_.R_v0_std_applied;
     }
 
     // Use slow frequency as a more stable "period" proxy
@@ -544,7 +554,7 @@ public:
     inline float getHeaveAbs() const noexcept { if (!mekf_) return NAN; return std::fabs(mekf_->get_position().z()); }
 
     inline float getDisplacementScale(bool smoothed = true) const noexcept {
-        const float tau   = smoothed ? getTauApplied() : tau_target_;
+        const float tau   = smoothed ? tune_.tau_applied   : tau_target_;
         const float sigma = smoothed ? tune_.sigma_applied : sigma_target_;
         if (!std::isfinite(sigma) || !std::isfinite(tau)) return NAN;
         constexpr float C_HS = 2.0f * std::sqrt(2.0f) / (M_PI * M_PI);
@@ -552,7 +562,7 @@ public:
     }
     
     float getVerticalSpeedEnvelopeMps(bool smoothed = true) const noexcept {
-        const float tau   = smoothed ? getTauApplied() : tau_target_;
+        const float tau   = smoothed ? tune_.tau_applied   : tau_target_;
         const float sigma = smoothed ? tune_.sigma_applied : sigma_target_;
         if (!(tau > 1e-6f) || !std::isfinite(tau) || !std::isfinite(sigma)) return NAN;
         constexpr float K = std::sqrt(2.0f) / M_PI;
@@ -729,20 +739,25 @@ private:
 
     void apply_R_p0_tune_(float rp_scale = 1.0f) {
         if (!mekf_) return;
-        if (!std::isfinite(R_p0_std_target_) || !(R_p0_std_target_ > 0.0f)) return;
+        if (!std::isfinite(tune_.R_p0_std_applied) || !(tune_.R_p0_std_applied > 0.0f)) return;
+    
         const float p = (std::isfinite(rp_scale) && rp_scale > 0.0f)
                         ? std::min(rp_scale, 1.0f) : 1.0f;
-        const float R_p0_b = std::min(std::max(R_p0_std_target_, MIN_R_p0_std_), MAX_R_p0_std_);
+    
+        const float R_p0_b = std::min(std::max(tune_.R_p0_std_applied, MIN_R_p0_std_), MAX_R_p0_std_);
         const float rp_xy  = R_p0_b * p * R_p0_xy_factor_;
+    
         mekf_->command_sigma_p0(Eigen::Vector3f(rp_xy, rp_xy, R_p0_b * p));
     }
     
     void apply_R_v0_tune_(float rv_scale = 1.0f) {
         if (!mekf_) return;
-        if (!std::isfinite(R_v0_std_target_) || !(R_v0_std_target_ > 0.0f)) return;
+        if (!std::isfinite(tune_.R_v0_std_applied) || !(tune_.R_v0_std_applied > 0.0f)) return;
+    
         const float p = (std::isfinite(rv_scale) && rv_scale > 0.0f)
                         ? std::min(rv_scale, 1.0f) : 1.0f;
-        const float R_v0_b = std::min(std::max(R_v0_std_target_, MIN_R_v0_std_), MAX_R_v0_std_);
+    
+        const float R_v0_b = std::min(std::max(tune_.R_v0_std_applied, MIN_R_v0_std_), MAX_R_v0_std_);
         mekf_->command_sigma_v0(Eigen::Vector3f::Constant(R_v0_b * p));
     }
 
@@ -833,21 +848,33 @@ private:
     }
     
     void adapt_mekf(float dt, float tau_t, float sigma_t, float R_p0_t, float R_v0_t) {
-        const float alpha = 1.0f - std::exp(-dt / adapt_tau_sec_);
+        const float alpha_sigma = 1.0f - std::exp(-dt / adapt_tau_sec_);
+        const float alpha_tau   = alpha_sigma;
     
-        // Only outer EMA for sigma_aw tuning
-        tune_.sigma_applied += alpha * (sigma_t - tune_.sigma_applied);
+        // Lighter smoothing for pseudo-measurement stds than before,
+        // but still not raw/jittery.
+        const float R_p0_sec   = std::max(0.25f * tau_t, 0.15f);
+        const float R_v0_sec   = std::max(0.25f * tau_t, 0.10f);
+        const float alpha_R_p0 = 1.0f - std::exp(-dt / R_p0_sec);
+        const float alpha_R_v0 = 1.0f - std::exp(-dt / R_v0_sec);
     
-        // Push direct targets into Kalman; Kalman's log-RW filter does the smoothing
+        // Outer smoothing
+        tune_.tau_applied      += alpha_tau   * (tau_t   - tune_.tau_applied);
+        tune_.sigma_applied    += alpha_sigma * (sigma_t - tune_.sigma_applied);
+        tune_.R_p0_std_applied += alpha_R_p0  * (R_p0_t  - tune_.R_p0_std_applied);
+        tune_.R_v0_std_applied += alpha_R_v0  * (R_v0_t  - tune_.R_v0_std_applied);
+    
+        // Push smoothed commands into Kalman; Kalman RW still provides inner filtering/readback
         if (mekf_) {
-            mekf_->command_tau_aw(tau_t);
+            mekf_->command_tau_aw(tune_.tau_applied);
+    
             if (startup_stage_ == StartupStage::Live && enable_linear_block_) {
                 apply_R_p0_tune_();
                 apply_R_v0_tune_();
             }
         }
     
-        // Slower cadence only for sigma_aw -> Sigma_aw_stat application
+        // Slower cadence only for sigma -> Sigma_aw_stat application
         if (time_ - last_adapt_time_sec_ > adapt_every_secs_) {
             if (tuner_.isFreqReady()) {
                 apply_ou_tune_();
