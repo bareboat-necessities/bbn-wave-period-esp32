@@ -90,10 +90,7 @@ constexpr float MAG_DELAY_SEC              = 8.0f;
 constexpr float FREQ_SMOOTHER_DT = 1.0f / 200.0f;
 
 struct TuneState {
-    float tau_applied   = 1.1f;      // s
     float sigma_applied = 1e-2f;     // m/s²
-    float R_p0_std_applied  = 0.1f;      // m 
-    float R_v0_std_applied  = 0.1f;      // m/s
 };
 
 //  Tracker policy traits
@@ -304,13 +301,6 @@ public:
         if (enable_tuner_) {
             update_tuner(dt, a_vert_up, f_after_still);
         }
-
-        // Keep linear-block R_p0 / R_v0 tuning responsive in Live mode instead of
-        // waiting for slow adaptation cadence.
-        if (startup_stage_ == StartupStage::Live && enable_linear_block_) {
-            apply_R_p0_tune_();
-            apply_R_v0_tune_();
-        }
     
         const float omega = 2.0f * static_cast<float>(M_PI) * freq_hz_;
       
@@ -388,16 +378,8 @@ public:
         if (std::isfinite(c) && c > 0.0f) {
             const float prev = R_p0_coeff_;
             R_p0_coeff_ = c;
-
-            // Keep runtime behavior responsive when the coefficient is changed online.
-            // Otherwise R_p0_std_applied can remain near its previous value for several
-            // adaptation time constants and look like this setter has no effect.
             if (std::isfinite(prev) && prev > 0.0f) {
                 const float scale = c / prev;
-
-                if (std::isfinite(tune_.R_p0_std_applied) && tune_.R_p0_std_applied > 0.0f) {
-                    tune_.R_p0_std_applied *= scale;
-                }
                 if (std::isfinite(R_p0_std_target_) && R_p0_std_target_ > 0.0f) {
                     R_p0_std_target_ *= scale;
                 }
@@ -411,14 +393,8 @@ public:
         if (std::isfinite(c) && c > 0.0f) {
             const float prev = R_v0_coeff_;
             R_v0_coeff_ = c;
-    
-            // Keep runtime behavior responsive when the coefficient is changed online.
             if (std::isfinite(prev) && prev > 0.0f) {
                 const float scale = c / prev;
-    
-                if (std::isfinite(tune_.R_v0_std_applied) && tune_.R_v0_std_applied > 0.0f) {
-                    tune_.R_v0_std_applied *= scale;
-                }
                 if (std::isfinite(R_v0_std_target_) && R_v0_std_target_ > 0.0f) {
                     R_v0_std_target_ *= scale;
                 }
@@ -536,14 +512,26 @@ public:
     inline float getFreqHz()            const noexcept { return freq_hz_; }        // fast branch
     inline float getFreqSlowHz()        const noexcept { return freq_hz_slow_; }   // slow branch
     inline float getFreqRawHz()         const noexcept { return f_raw; }
-    inline float getTauApplied()        const noexcept { return tune_.tau_applied; }
-    inline float getSigmaApplied()      const noexcept { return tune_.sigma_applied; }
-    inline float getR_p0_std_applied()  const noexcept { return tune_.R_p0_std_applied; }
-    inline float getR_v0_std_applied()  const noexcept { return tune_.R_v0_std_applied; }
     inline float getTauTarget()         const noexcept { return tau_target_;   }
     inline float getSigmaTarget()       const noexcept { return sigma_target_; }
     inline float getR_p0_std_target()   const noexcept { return R_p0_std_target_; }
     inline float getR_v0_std_target()   const noexcept { return R_v0_std_target_; }
+
+    inline float getTauApplied() const noexcept {
+        return mekf_ ? mekf_->get_aw_time_constant() : NAN;
+    }
+    inline float getSigmaApplied() const noexcept {
+        return tune_.sigma_applied;
+    }
+    inline float getR_p0_std_applied() const noexcept {
+        if (!mekf_) return NAN;
+        // z is the base std; x/y may be anisotropically reduced
+        return mekf_->get_Rp0_noise_std().z();
+    }
+    inline float getR_v0_std_applied() const noexcept {
+        if (!mekf_) return NAN;
+        return mekf_->get_Rv0_noise_std().z();
+    }
 
     // Use slow frequency as a more stable "period" proxy
     inline float getPeriodSec() const noexcept {
@@ -735,10 +723,6 @@ private:
 
     void apply_ou_tune_() {
         if (!mekf_) return;
-        mekf_->set_aw_time_constant(tune_.tau_applied);
-    
-        // In attitude-only mode (linear frozen), Σ_aw still matters (marginalization path),
-        // so don’t let sigma collapse to ~0.
         const float sigma_floor = std::max(0.05f, acc_noise_floor_sigma_);
         const float sZ = std::max(sigma_floor, tune_.sigma_applied);
         const float sH = sZ * P_factor_;
@@ -747,19 +731,21 @@ private:
 
     void apply_R_p0_tune_(float rp_scale = 1.0f) {
         if (!mekf_) return;
+        if (!std::isfinite(R_p0_std_target_) || !(R_p0_std_target_ > 0.0f)) return;
         const float p = (std::isfinite(rp_scale) && rp_scale > 0.0f)
                         ? std::min(rp_scale, 1.0f) : 1.0f;
-        const float R_p0_b = std::min(std::max(tune_.R_p0_std_applied, MIN_R_p0_std_), MAX_R_p0_std_);
-        const float rp_xy = R_p0_b * p * R_p0_xy_factor_;
-        mekf_->set_Rp0_noise_std(Eigen::Vector3f(rp_xy, rp_xy, R_p0_b * p));
+        const float R_p0_b = std::min(std::max(R_p0_std_target_, MIN_R_p0_std_), MAX_R_p0_std_);
+        const float rp_xy  = R_p0_b * p * R_p0_xy_factor_;
+        mekf_->command_sigma_p0(Eigen::Vector3f(rp_xy, rp_xy, R_p0_b * p));
     }
     
     void apply_R_v0_tune_(float rv_scale = 1.0f) {
         if (!mekf_) return;
+        if (!std::isfinite(R_v0_std_target_) || !(R_v0_std_target_ > 0.0f)) return;
         const float p = (std::isfinite(rv_scale) && rv_scale > 0.0f)
                         ? std::min(rv_scale, 1.0f) : 1.0f;
-        const float R_v0_b = std::min(std::max(tune_.R_v0_std_applied, MIN_R_v0_std_), MAX_R_v0_std_);
-        mekf_->set_Rv0_noise_std(Eigen::Vector3f::Constant(R_v0_b * p));
+        const float R_v0_b = std::min(std::max(R_v0_std_target_, MIN_R_v0_std_), MAX_R_v0_std_);
+        mekf_->command_sigma_v0(Eigen::Vector3f::Constant(R_v0_b * p));
     }
 
     void update_tuner(float dt, float a_vert_inertial, float freq_hz_for_tuner) {
@@ -851,24 +837,22 @@ private:
     void adapt_mekf(float dt, float tau_t, float sigma_t, float R_p0_t, float R_v0_t) {
         const float alpha = 1.0f - std::exp(-dt / adapt_tau_sec_);
     
-        // R_p0 / R_v0 smoothing depend on tau
-        const float R_p0_sec   = ADAPT_R_p0_MULT * tau_t;
-        const float R_v0_sec   = ADAPT_R_v0_MULT * tau_t;
-        const float alpha_R_p0 = 1.0f - std::exp(-dt / R_p0_sec);
-        const float alpha_R_v0 = 1.0f - std::exp(-dt / R_v0_sec);
+        // Only outer EMA for sigma_aw tuning
+        tune_.sigma_applied += alpha * (sigma_t - tune_.sigma_applied);
     
-        tune_.tau_applied   += alpha      * (tau_t   - tune_.tau_applied);
-        tune_.sigma_applied += alpha      * (sigma_t - tune_.sigma_applied);
-        tune_.R_p0_std_applied  += alpha_R_p0 * (R_p0_t  - tune_.R_p0_std_applied);
-        tune_.R_v0_std_applied  += alpha_R_v0 * (R_v0_t  - tune_.R_v0_std_applied);
-    
-        if (time_ - last_adapt_time_sec_ > adapt_every_secs_) {
-            if (tuner_.isFreqReady()) {
-                apply_ou_tune_();
-            }
+        // Push direct targets into Kalman; Kalman's log-RW filter does the smoothing
+        if (mekf_) {
+            mekf_->command_tau_aw(tau_t);
             if (startup_stage_ == StartupStage::Live && enable_linear_block_) {
                 apply_R_p0_tune_();
                 apply_R_v0_tune_();
+            }
+        }
+    
+        // Slower cadence only for sigma_aw -> Sigma_aw_stat application
+        if (time_ - last_adapt_time_sec_ > adapt_every_secs_) {
+            if (tuner_.isFreqReady()) {
+                apply_ou_tune_();
             }
             last_adapt_time_sec_ = time_;
         }
