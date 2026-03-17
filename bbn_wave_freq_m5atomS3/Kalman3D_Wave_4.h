@@ -560,6 +560,14 @@ class Kalman3D_Wave_4 {
 	[[nodiscard]] T get_aw_time_constant() const {
 		return tau_aw;
 	}
+
+	[[nodiscard]] Vector3 get_aw_stationary_std() const {
+	    Vector3 s;
+	    s.x() = std::sqrt(std::max(T(0), Sigma_aw_stat(0,0)));
+	    s.y() = std::sqrt(std::max(T(0), Sigma_aw_stat(1,1)));
+	    s.z() = std::sqrt(std::max(T(0), Sigma_aw_stat(2,2)));
+	    return s;
+	}
 	
 	[[nodiscard]] Vector3 get_Racc_std() const {
 		Vector3 s;
