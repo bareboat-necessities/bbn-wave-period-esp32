@@ -232,7 +232,7 @@ class Kalman3D_Wave_4 {
     const MeasDiag3& lastMagDiag() const noexcept { return last_mag_diag_; }
 
     Kalman3D_Wave_4(Vector3 const& sigma_a, Vector3 const& sigma_g, Vector3 const& sigma_m,
-                  T Pq0 = T(5e-4), T Pb0 = T(1e-6), T b0 = T(1e-11), T R_p0_noise_var = T(1.5),
+                  T Pq0 = T(5e-4), T Pb0 = T(1e-6), T b0 = T(1e-11), T R_p0_noise_var = T(1.5), T R_v0_noise_var = T(0.3),
                   T gravity_magnitude = T(STD_GRAVITY));
 
     // Initialization / measurement API
@@ -456,6 +456,28 @@ class Kalman3D_Wave_4 {
         R_p0 = S;
     }
 
+	// Covariances for periodic velocity-zero pseudo-measurement
+	void set_Rv0_noise(const Vector3& sigma_v0) {
+	    if (param_rw_enabled_) { param_rw_update_sigma_v0_cmd_(sigma_v0); return; }
+	    R_v0 = sigma_v0.array().square().matrix().asDiagonal();
+	    R_v0 = T(0.5) * (R_v0 + R_v0.transpose());
+	}
+	
+	void set_Rv0_noise_matrix(const Matrix3& R) {
+	    Matrix3 S = T(0.5) * (R + R.transpose());
+	    project_psd<T,3>(S, T(1e-8));
+	
+	    if (param_rw_enabled_) {
+	        Vector3 sig;
+	        sig.x() = std::sqrt(std::max(T(0), S(0,0)));
+	        sig.y() = std::sqrt(std::max(T(0), S(1,1)));
+	        sig.z() = std::sqrt(std::max(T(0), S(2,2)));
+	        param_rw_update_sigma_v0_cmd_(sig);
+	        return;
+	    }
+	    R_v0 = S;
+	}
+		
     // Accelerometer measurement noise (std in m/s² per axis)
 	void set_Racc(const Vector3& sigma_acc) {
 	    if (param_rw_enabled_) { param_rw_update_sigma_acc_cmd_(sigma_acc); return; }
@@ -508,21 +530,31 @@ class Kalman3D_Wave_4 {
 	    }
 	}
 	
-	// Optional tuning (log-domain stds)
-	void set_param_rw_process_std_log(Vector3 sigma_acc_rw_log, Vector3 sigma_p0_rw_log, T tau_rw_log) {
+	// Optional tuning (log-domain stds)	
+	void set_param_rw_process_std_log(Vector3 sigma_acc_rw_log,
+	                                  Vector3 sigma_p0_rw_log,
+	                                  Vector3 sigma_v0_rw_log,
+	                                  T tau_rw_log) {
 	    log_sigma_acc_f_.q = sigma_acc_rw_log.array().square().matrix();
-	    log_sigma_p0_f_.q   = sigma_p0_rw_log.array().square().matrix();
+	    log_sigma_p0_f_.q  = sigma_p0_rw_log.array().square().matrix();
+	    log_sigma_v0_f_.q  = sigma_v0_rw_log.array().square().matrix();
 	    log_tau_aw_f_.q    = tau_rw_log * tau_rw_log;
 	}
 	
-	void set_param_cmd_std_log(Vector3 sigma_acc_cmd_log, Vector3 sigma_p0_cmd_log, T tau_cmd_log) {
+	void set_param_cmd_std_log(Vector3 sigma_acc_cmd_log,
+	                           Vector3 sigma_p0_cmd_log,
+	                           Vector3 sigma_v0_cmd_log,
+	                           T tau_cmd_log) {
 	    log_sigma_acc_f_.r = sigma_acc_cmd_log.array().square().matrix();
-	    log_sigma_p0_f_.r   = sigma_p0_cmd_log.array().square().matrix();
+	    log_sigma_p0_f_.r  = sigma_p0_cmd_log.array().square().matrix();
+	    log_sigma_v0_f_.r  = sigma_v0_cmd_log.array().square().matrix();
 	    log_tau_aw_f_.r    = tau_cmd_log * tau_cmd_log;
 	}
 	
 	// Feed “commands” from an external adaptation
 	void command_sigma_acc(const Vector3& sigma_acc_cmd) { param_rw_update_sigma_acc_cmd_(sigma_acc_cmd); }
+	void command_sigma_p0 (const Vector3& sigma_p0_cmd)  { param_rw_update_sigma_p0_cmd_(sigma_p0_cmd); }
+	void command_sigma_v0 (const Vector3& sigma_v0_cmd)  { param_rw_update_sigma_v0_cmd_(sigma_v0_cmd); }
 	void command_tau_aw   (T tau_cmd)                    { param_rw_update_tau_cmd_(tau_cmd); }
 	
 	// Convenience
@@ -594,9 +626,10 @@ class Kalman3D_Wave_4 {
     // Constant matrices
     Matrix3 Rmag;
     MatrixBaseN Qbase; // Q for attitude & bias
-
-    Matrix3 Racc; // Accelerometer noise (diagonal) stored as Matrix3
-    Matrix3 R_p0;  // Position-zero pseudo-measurement noise
+	
+	Matrix3 Racc; // Accelerometer noise (diagonal) stored as Matrix3
+	Matrix3 R_p0; // Position-zero pseudo-measurement noise
+	Matrix3 R_v0; // Velocity-zero pseudo-measurement noise
 
     // World-acceleration OU process a_w dynamics parameters
     T tau_aw = T(2.1);            // correlation time [s], tune 1–3.5 s for sea states
@@ -1030,16 +1063,15 @@ class Kalman3D_Wave_4 {
 	bool param_rw_enabled_ = true;
 	
 	// Log-parameters we filter:
-	//  - log(sigma_acc)  -> used to build Racc
-	//  - log(sigma_p0)    -> used to build R_p0 (diag)
-	//  - log(tau_aw)     -> used for OU time constant
-	RWVec3Diag log_sigma_acc_f_;
-	RWVec3Diag log_sigma_p0_f_;
-	RWScalar   log_tau_aw_f_;
+	RWVec3Diag log_sigma_acc_f_;  //  - log(sigma_acc) -> used to build Racc
+	RWVec3Diag log_sigma_p0_f_;   //  - log(sigma_p0)  -> used to build R_p0 (diag)
+	RWVec3Diag log_sigma_v0_f_;   //  - log(sigma_v0)  -> used to build R_v0 (diag)
+	RWScalar   log_tau_aw_f_;     //  - log(tau_aw)    -> used for OU time constant
 	
 	// Safety clamps (physical units)
 	T sigma_acc_min_ = T(1e-4), sigma_acc_max_ = T(50);   // m/s^2
-	T sigma_p0_min_   = T(1e-6), sigma_p0_max_   = T(1e6);  // m (position pseudo-measurement std bounds)
+	T sigma_p0_min_  = T(1e-6), sigma_p0_max_  = T(1e6);  // m
+	T sigma_v0_min_  = T(1e-6), sigma_v0_max_  = T(1e6);  // m/s
 	T tau_min_       = T(1e-3), tau_max_       = T(60);   // s
 	
 	EIGEN_STRONG_INLINE void refresh_model_params_from_filtered_() {
@@ -1054,6 +1086,12 @@ class Kalman3D_Wave_4 {
 	    R_p0 = sigma_p0.array().square().matrix().asDiagonal();
 	    R_p0 = T(0.5) * (R_p0 + R_p0.transpose());
 	
+	    // sigma_v0 -> R_v0 (diag)
+	    Vector3 sigma_v0 = log_sigma_v0_f_.x.array().exp().matrix();
+	    sigma_v0 = clamp_pos_vec_(sigma_v0, sigma_v0_min_, sigma_v0_max_);
+	    R_v0 = sigma_v0.array().square().matrix().asDiagonal();
+	    R_v0 = T(0.5) * (R_v0 + R_v0.transpose());
+	
 	    // tau_aw
 	    T tau = std::exp(log_tau_aw_f_.x);
 	    tau = clamp_pos_(tau, tau_min_, tau_max_);
@@ -1064,6 +1102,7 @@ class Kalman3D_Wave_4 {
 	    if (!param_rw_enabled_) return;
 	    log_sigma_acc_f_.predict(dt);
 	    log_sigma_p0_f_.predict(dt);
+	    log_sigma_v0_f_.predict(dt);
 	    log_tau_aw_f_.predict(dt);
 	    refresh_model_params_from_filtered_();
 	}
@@ -1089,7 +1128,18 @@ class Kalman3D_Wave_4 {
 	    log_sigma_p0_f_.update(z);
 	    refresh_model_params_from_filtered_();
 	}
-	
+
+	EIGEN_STRONG_INLINE void param_rw_update_sigma_v0_cmd_(const Vector3& sigma_v0_cmd) {
+	    if (!param_rw_enabled_) {
+	        set_Rv0_noise(sigma_v0_cmd);
+	        return;
+	    }
+	    Vector3 s = clamp_pos_vec_(sigma_v0_cmd, sigma_v0_min_, sigma_v0_max_);
+	    Vector3 z = s.array().log().matrix();
+	    log_sigma_v0_f_.update(z);
+	    refresh_model_params_from_filtered_();
+	}
+
 	EIGEN_STRONG_INLINE void param_rw_update_tau_cmd_(T tau_cmd) {
 	    if (!param_rw_enabled_) {
 	        set_aw_time_constant(tau_cmd);
@@ -1109,7 +1159,7 @@ Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::Kalman3D_Wave_4(
     Vector3 const& sigma_a,
     Vector3 const& sigma_g,
     Vector3 const& sigma_m,
-    T Pq0, T Pb0, T b0, T R_p0_noise_var, T gravity_magnitude)
+    T Pq0, T Pb0, T b0, T R_p0_noise_var, T R_v0_noise_var, T gravity_magnitude)
   : Qbase(initialize_Q(sigma_g, b0)),
     gravity_magnitude_(gravity_magnitude),
     Racc(sigma_a.array().square().matrix().asDiagonal()),
@@ -1118,6 +1168,7 @@ Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::Kalman3D_Wave_4(
     qref.setIdentity();  // quaternion init
 
     R_p0 = Matrix3::Identity() * R_p0_noise_var;
+    R_v0 = Matrix3::Identity() * R_v0_noise_var;
 
     // initialize base / extended states
     MatrixBaseN Pbase;
@@ -1155,37 +1206,45 @@ Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::Kalman3D_Wave_4(
 	    sigma_acc0.y() = std::sqrt(std::max(T(0), Racc(1,1)));
 	    sigma_acc0.z() = std::sqrt(std::max(T(0), Racc(2,2)));
 	
-	    // R_p0 in the ctor is "variance" scalar; convert to std
+	    // R_p0 and R_v0 ctor args are variances; convert to std
 	    const T sigma_p00 = std::sqrt(std::max(T(1e-12), R_p0_noise_var));
+	    const T sigma_v00 = std::sqrt(std::max(T(1e-12), R_v0_noise_var));
 	    Vector3 sigma_p00v = Vector3::Constant(sigma_p00);
+	    Vector3 sigma_v00v = Vector3::Constant(sigma_v00);
 	
 	    log_sigma_acc_f_.x = clamp_pos_vec_(sigma_acc0, sigma_acc_min_, sigma_acc_max_).array().log().matrix();
-	    log_sigma_p0_f_.x   = clamp_pos_vec_(sigma_p00v,  sigma_p0_min_,   sigma_p0_max_  ).array().log().matrix();
+	    log_sigma_p0_f_.x  = clamp_pos_vec_(sigma_p00v, sigma_p0_min_, sigma_p0_max_).array().log().matrix();
+	    log_sigma_v0_f_.x  = clamp_pos_vec_(sigma_v00v, sigma_v0_min_, sigma_v0_max_).array().log().matrix();
 	    log_tau_aw_f_.x    = std::log(clamp_pos_(tau_aw, tau_min_, tau_max_));
 	
 	    // Reasonable default uncertainties (in log-domain)
 	    log_sigma_acc_f_.P = Vector3::Constant(T(0.10) * T(0.10)); // ~10% 1σ
-	    log_sigma_p0_f_.P   = Vector3::Constant(T(0.15) * T(0.15)); // ~15% 1σ
+	    log_sigma_p0_f_.P  = Vector3::Constant(T(0.15) * T(0.15)); // ~15% 1σ
+	    log_sigma_v0_f_.P  = Vector3::Constant(T(0.15) * T(0.15)); // ~15% 1σ
 	    log_tau_aw_f_.P    = T(0.20) * T(0.20);                    // ~20% 1σ
 	
 	    // Default RW diffusion (log units per sqrt(s)) -> variance per second
 	    const T rw_sig_acc = T(0.02); // ~2%/sqrt(s)
-	    const T rw_sig_p0   = T(0.02);
+	    const T rw_sig_p0  = T(0.02);
+	    const T rw_sig_v0  = T(0.02);
 	    const T rw_tau     = T(0.01);
 	
 	    log_sigma_acc_f_.q = Vector3::Constant(rw_sig_acc * rw_sig_acc);
-	    log_sigma_p0_f_.q   = Vector3::Constant(rw_sig_p0   * rw_sig_p0);
+	    log_sigma_p0_f_.q  = Vector3::Constant(rw_sig_p0  * rw_sig_p0);
+	    log_sigma_v0_f_.q  = Vector3::Constant(rw_sig_v0  * rw_sig_v0);
 	    log_tau_aw_f_.q    = rw_tau * rw_tau;
 	
 	    // Default command noise (how noisy the external adapter is), log-domain
 	    const T cmd_sig_acc = T(0.10); // ~10%
-	    const T cmd_sig_p0   = T(0.15); // ~15%
+	    const T cmd_sig_p0  = T(0.15); // ~15%
+	    const T cmd_sig_v0  = T(0.15); // ~15%
 	    const T cmd_tau     = T(0.20); // ~20%
 	
 	    log_sigma_acc_f_.r = Vector3::Constant(cmd_sig_acc * cmd_sig_acc);
-	    log_sigma_p0_f_.r   = Vector3::Constant(cmd_sig_p0   * cmd_sig_p0);
+	    log_sigma_p0_f_.r  = Vector3::Constant(cmd_sig_p0  * cmd_sig_p0);
+	    log_sigma_v0_f_.r  = Vector3::Constant(cmd_sig_v0  * cmd_sig_v0);
 	    log_tau_aw_f_.r    = cmd_tau * cmd_tau;
-	}			
+	}
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
@@ -1356,7 +1415,7 @@ void Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::time_update(
 {
     last_dt_ = Ts;   // Remember last dt
 
-	// Commanded parameters random-walk prediction (updates Racc, R_p0, tau_aw smoothly)
+	// Commanded parameters random-walk prediction (updates Racc, R_p0, R_v0, tau_aw smoothly)
 	param_rw_predict_(Ts);		
 
     // De-heel gyro into virtual frame B' using current wind_heel_rad_
