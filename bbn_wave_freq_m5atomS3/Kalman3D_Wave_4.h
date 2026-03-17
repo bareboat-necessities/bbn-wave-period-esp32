@@ -636,7 +636,7 @@ class Kalman3D_Wave_4 {
     Matrix3 Sigma_aw_stat = Matrix3::Identity() * T(2.2*2.2); // stationary covariance of a_w [ (m/s^2)^2 ]
 
     int pseudo_update_counter_ = 0;   // counts time_update calls
-    static constexpr int PSEUDO_UPDATE_PERIOD = 1; // every N-th update
+    static constexpr int PSEUDO_UPDATE_PERIOD = 3; // every N-th update
 
     bool linear_block_enabled_ = true;
     bool acc_bias_updates_enabled_ = true;
