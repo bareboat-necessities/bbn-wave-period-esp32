@@ -1021,8 +1021,8 @@ private:
     // Runtime-configurable accel noise floor (1σ), m/s²
     float acc_noise_floor_sigma_ = ACC_NOISE_FLOOR_SIGMA_DEFAULT;
 
-    float R_p0_coeff_   = 1.6f;
-    float R_v0_coeff_   = 1.5f;
+    float R_p0_coeff_   = 1.5f;
+    float R_v0_coeff_   = 1.4f;
     float tau_coeff_    = 1.5f;
     float sigma_coeff_  = 0.8f;  // Real noise inflates estimated sigma, to get more realistic sigma for OU we reduce it.
 
