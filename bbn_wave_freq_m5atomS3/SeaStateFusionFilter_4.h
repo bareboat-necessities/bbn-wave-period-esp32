@@ -1022,9 +1022,9 @@ private:
     float acc_noise_floor_sigma_ = ACC_NOISE_FLOOR_SIGMA_DEFAULT;
 
     float R_p0_coeff_   = 1.5f;
-    float R_v0_coeff_   = 1.3f;
-    float tau_coeff_    = 1.4f;
-    float sigma_coeff_  = 0.9f;  // Real noise inflates estimated sigma, to get more realistic sigma for OU we reduce it.
+    float R_v0_coeff_   = 1.4f;
+    float tau_coeff_    = 1.5f;
+    float sigma_coeff_  = 0.85f;  // Real noise inflates estimated sigma, to get more realistic sigma for OU we reduce it.
 
     std::unique_ptr<Kalman3D_Wave_4<float>>  mekf_;
     KalmanWaveDirection                      dir_filter_{2.0f * static_cast<float>(M_PI) * FREQ_GUESS};
