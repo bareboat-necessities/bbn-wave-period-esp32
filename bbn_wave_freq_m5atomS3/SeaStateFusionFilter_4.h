@@ -378,10 +378,10 @@ public:
             sigma_coeff_ = c;
         }
     }
-    void setRSCoeff(float c) {
+    void setR_p0_Coeff(float c) {
         if (std::isfinite(c) && c > 0.0f) {
-            const float prev = R_S_coeff_;
-            R_S_coeff_ = c;
+            const float prev = R_p0_coeff_;
+            R_p0_coeff_ = c;
 
             // Keep runtime behavior responsive when the coefficient is changed online.
             // Otherwise R_p0_applied can remain near its previous value for several
@@ -798,7 +798,7 @@ private:
             sigma_target_ = std::max(sigma_target_, std::max(0.05f, acc_noise_floor_sigma_));
         }
       
-        float R_p0_raw = R_S_coeff_ * sigma_target_
+        float R_p0_raw = R_p0_coeff_ * sigma_target_
                        * tau_target_ * tau_target_;
 
         if (enable_clamp_) {
@@ -974,7 +974,7 @@ private:
     // Runtime-configurable accel noise floor (1σ), m/s²
     float acc_noise_floor_sigma_ = ACC_NOISE_FLOOR_SIGMA_DEFAULT;
 
-    float R_S_coeff_    = 1.15f;
+    float R_p0_coeff_    = 1.15f;
     float tau_coeff_    = 1.5f;
     float sigma_coeff_  = 0.9f;  // Real noise inflates estimated sigma, to get more realistic sigma for OU we reduce it.
 
