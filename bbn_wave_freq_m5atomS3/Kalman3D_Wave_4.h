@@ -557,6 +557,34 @@ class Kalman3D_Wave_4 {
 	void command_sigma_v0 (const Vector3& sigma_v0_cmd)  { param_rw_update_sigma_v0_cmd_(sigma_v0_cmd); }
 	void command_tau_aw   (T tau_cmd)                    { param_rw_update_tau_cmd_(tau_cmd); }
 	
+	[[nodiscard]] T get_aw_time_constant() const {
+		return tau_aw;
+	}
+	
+	[[nodiscard]] Vector3 get_Racc_std() const {
+		Vector3 s;
+		s.x() = std::sqrt(std::max(T(0), Racc(0,0)));
+		s.y() = std::sqrt(std::max(T(0), Racc(1,1)));
+		s.z() = std::sqrt(std::max(T(0), Racc(2,2)));
+		return s;
+	}
+	
+	[[nodiscard]] Vector3 get_Rp0_noise_std() const {
+		Vector3 s;
+		s.x() = std::sqrt(std::max(T(0), R_p0(0,0)));
+		s.y() = std::sqrt(std::max(T(0), R_p0(1,1)));
+		s.z() = std::sqrt(std::max(T(0), R_p0(2,2)));
+		return s;
+	}
+	
+	[[nodiscard]] Vector3 get_Rv0_noise_std() const {
+		Vector3 s;
+		s.x() = std::sqrt(std::max(T(0), R_v0(0,0)));
+		s.y() = std::sqrt(std::max(T(0), R_v0(1,1)));
+		s.z() = std::sqrt(std::max(T(0), R_v0(2,2)));
+		return s;
+	}
+		
 	// Convenience
 	void apply_adaptive_params(const Vector3& sigma_acc_cmd, T tau_cmd) {
 	    command_sigma_acc(sigma_acc_cmd);
