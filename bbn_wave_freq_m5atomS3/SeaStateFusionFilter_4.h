@@ -78,7 +78,7 @@ constexpr float MAX_R_p0    = 18.0f;
 
 constexpr float ADAPT_TAU_SEC              = 1.5f;
 constexpr float ADAPT_EVERY_SECS           = 0.1f;
-constexpr float ADAPT_R_p0_MULT              = 5.0f;   // dimensionless 
+constexpr float ADAPT_R_p0_MULT            = 5.0f;   // dimensionless 
 constexpr float ONLINE_TUNE_WARMUP_SEC     = 5.0f;
 constexpr float MAG_DELAY_SEC              = 8.0f;
 
@@ -710,17 +710,17 @@ private:
         mekf_->set_aw_stationary_std(Eigen::Vector3f(sH, sH, sZ));
     }
 
-    void apply_R_p0_tune_(float rs_scale = 1.0f) {
+    void apply_R_p0_tune_(float rp_scale = 1.0f) {
         if (!mekf_) return;
-        const float s = (std::isfinite(rs_scale) && rs_scale > 0.0f)
-                        ? std::min(rs_scale, 1.0f)
+        const float p = (std::isfinite(rp_scale) && rp_scale > 0.0f)
+                        ? std::min(rp_scale, 1.0f)
                         : 1.0f;
-        const float RSb = std::min(std::max(tune_.R_p0_applied, MIN_R_p0_), MAX_R_p0_);
-        const float rs_xy = RSb * s * R_p0_xy_factor_;
+        const float R_p0_b = std::min(std::max(tune_.R_p0_applied, MIN_R_p0_), MAX_R_p0_);
+        const float rp_xy = R_p0_b * p * R_p0_xy_factor_;
         mekf_->set_Rp0_noise(Eigen::Vector3f(
-            rs_xy,
-            rs_xy,
-            RSb * s
+            rp_xy,
+            rp_xy,
+            R_p0_b * p
         ));
     }
 
@@ -940,7 +940,7 @@ private:
 
     // Controls whether the extended linear block [v,p,S,a_w] of Kalman3D_Wave_4
     // is ever enabled. When false, the underlying filter runs as a pure
-    // attitude/bias QMEKF (linear states frozen, no OU, no S pseudo-measurements),
+    // attitude/bias QMEKF (linear states frozen, no OU, no p/v pseudo-measurements),
     // while all frequency tracking / tuner / direction logic still operates.
     bool enable_linear_block_ = true;
 
