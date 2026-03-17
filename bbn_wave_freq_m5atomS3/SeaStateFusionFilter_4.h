@@ -197,10 +197,10 @@ public:
                         const Eigen::Vector3f& sigma_g,
                         const Eigen::Vector3f& sigma_m,
                         float Pq0, float Pb0,
-                        float b0, float R_S_noise,
+                        float b0, float R_p0_noise, float R_v0_noise,
                         float gravity_magnitude) 
     {
-        mekf_ = std::make_unique<Kalman3D_Wave_4<float>>(sigma_a, sigma_g, sigma_m, Pq0, Pb0, b0, R_S_noise, gravity_magnitude);
+        mekf_ = std::make_unique<Kalman3D_Wave_4<float>>(sigma_a, sigma_g, sigma_m, Pq0, Pb0, b0, R_p0_noise, R_v0_noise, gravity_magnitude);
         enterCold_();      // applies freeze + warmup Racc + disables linear block
         apply_ou_tune_();
         mekf_->set_exact_att_bias_Qd(true);
