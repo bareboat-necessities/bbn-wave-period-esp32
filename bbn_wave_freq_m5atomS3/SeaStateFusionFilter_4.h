@@ -397,22 +397,22 @@ public:
             }
         }
     }
-    void setR_p0_Coeff(float c) {
+    void setR_v0_Coeff(float c) {
         if (std::isfinite(c) && c > 0.0f) {
-            const float prev = R_p0_coeff_;
-            R_p0_coeff_ = c;
+            const float prev = R_v0_coeff_;
+            R_v0_coeff_ = c;
     
             if (std::isfinite(prev) && prev > 0.0f) {
                 const float scale = c / prev;
     
-                if (std::isfinite(tune_.R_p0_std_applied) && tune_.R_p0_std_applied > 0.0f) {
-                    tune_.R_p0_std_applied *= scale;
+                if (std::isfinite(tune_.R_v0_std_applied) && tune_.R_v0_std_applied > 0.0f) {
+                    tune_.R_v0_std_applied *= scale;
                 }
-                if (std::isfinite(R_p0_std_target_) && R_p0_std_target_ > 0.0f) {
-                    R_p0_std_target_ *= scale;
+                if (std::isfinite(R_v0_std_target_) && R_v0_std_target_ > 0.0f) {
+                    R_v0_std_target_ *= scale;
                 }
                 if (enable_linear_block_) {
-                    apply_R_p0_tune_();
+                    apply_R_v0_tune_();
                 }
             }
         }
