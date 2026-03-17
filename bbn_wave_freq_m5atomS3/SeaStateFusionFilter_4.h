@@ -536,10 +536,10 @@ public:
     inline float getFreqHz()            const noexcept { return freq_hz_; }        // fast branch
     inline float getFreqSlowHz()        const noexcept { return freq_hz_slow_; }   // slow branch
     inline float getFreqRawHz()         const noexcept { return f_raw; }
-    inline float getTauApplied()        const noexcept { return tune_.tau_applied; }
-    inline float getSigmaApplied()      const noexcept { return tune_.sigma_applied; }
-    inline float getR_p0_std_applied()  const noexcept { return tune_.R_p0_std_applied; }
-    inline float getR_v0_std_applied()  const noexcept { return tune_.R_v0_std_applied; }
+    inline float getTauApplied()        const noexcept { return mekf_ ? mekf_->get_aw_time_constant() : NAN; }
+    inline float getSigmaApplied()      const noexcept { return mekf_ ? mekf_->get_aw_stationary_std().z() : NAN; }
+    inline float getR_p0_std_applied()  const noexcept { return mekf_ ? mekf_->get_Rp0_noise_std().z() : NAN; }
+    inline float getR_v0_std_applied()  const noexcept { return mekf_ ? mekf_->get_Rv0_noise_std().z() : NAN; }
     inline float getTauTarget()         const noexcept { return tau_target_;   }
     inline float getSigmaTarget()       const noexcept { return sigma_target_; }
     inline float getR_p0_std_target()   const noexcept { return R_p0_std_target_; }
