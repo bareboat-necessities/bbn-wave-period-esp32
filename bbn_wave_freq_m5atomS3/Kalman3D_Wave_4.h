@@ -1660,19 +1660,26 @@ void Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::time_update(
 
     symmetrize_Pext_();   // Symmetry hygiene
 
-    // Periodic position-zero pseudo-measurement drift correction
-    if (linear_block_enabled_) {
-        if (++pseudo_update_counter_ >= PSEUDO_UPDATE_PERIOD) {
-            Vector3 sigma_p0;
-            sigma_p0.x() = std::sqrt(std::max(T(0), R_p0(0,0)));
-            sigma_p0.y() = std::sqrt(std::max(T(0), R_p0(1,1)));
-            sigma_p0.z() = std::sqrt(std::max(T(0), R_p0(2,2)));
-            measurement_update_position_pseudo(Vector3::Zero(), sigma_p0);
-            pseudo_update_counter_ = 0;
-        }
-    } else {
-        pseudo_update_counter_ = 0;
-    }
+	// Periodic position-zero + velocity-zero pseudo-measurement drift correction
+	if (linear_block_enabled_) {
+	    if (++pseudo_update_counter_ >= PSEUDO_UPDATE_PERIOD) {
+	        Vector3 sigma_p0;
+	        sigma_p0.x() = std::sqrt(std::max(T(0), R_p0(0,0)));
+	        sigma_p0.y() = std::sqrt(std::max(T(0), R_p0(1,1)));
+	        sigma_p0.z() = std::sqrt(std::max(T(0), R_p0(2,2)));
+	
+	        Vector3 sigma_v0;
+	        sigma_v0.x() = std::sqrt(std::max(T(0), R_v0(0,0)));
+	        sigma_v0.y() = std::sqrt(std::max(T(0), R_v0(1,1)));
+	        sigma_v0.z() = std::sqrt(std::max(T(0), R_v0(2,2)));
+	
+	        measurement_update_position_pseudo(Vector3::Zero(), sigma_p0);
+	        measurement_update_velocity_pseudo(Vector3::Zero(), sigma_v0);
+	        pseudo_update_counter_ = 0;
+	    }
+	} else {
+	    pseudo_update_counter_ = 0;
+	}
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
