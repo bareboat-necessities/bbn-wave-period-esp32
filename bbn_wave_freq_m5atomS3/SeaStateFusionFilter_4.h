@@ -29,6 +29,7 @@
   – τ (tau):  OU process time constant ≈ ½ · T  (half the dominant period of acceleration)
   – σₐ:       Stationary acceleration standard deviation, EWMA-tracked online
   – R_p0:     Pseudo-measurement noise controlling p drift suppression
+  – R_v0:     Pseudo-measurement noise controlling v drift suppression
   – R_p0_xy:  Reduced in X/Y (anisotropic weighting for vertical-dominant seas)
   
   Adaptive update:  exponential smoothing toward targets over ADAPT_TAU_SEC
@@ -75,10 +76,13 @@ constexpr float MAX_TAU_S   = 3.0f;   // sec
 constexpr float MAX_SIGMA_A = 6.0f;
 constexpr float MIN_R_p0    = 0.05f;
 constexpr float MAX_R_p0    = 18.0f;
+constexpr float MIN_R_v0    = 0.01f;
+constexpr float MAX_R_v0    = 6.0f;
 
 constexpr float ADAPT_TAU_SEC              = 1.5f;
 constexpr float ADAPT_EVERY_SECS           = 0.1f;
-constexpr float ADAPT_R_p0_MULT            = 5.0f;   // dimensionless 
+constexpr float ADAPT_R_p0_MULT            = 5.0f;   // dimensionless
+constexpr float ADAPT_R_v0_MULT            = 5.0f;   // dimensionless
 constexpr float ONLINE_TUNE_WARMUP_SEC     = 5.0f;
 constexpr float MAG_DELAY_SEC              = 8.0f;
 
@@ -88,7 +92,8 @@ constexpr float FREQ_SMOOTHER_DT = 1.0f / 200.0f;
 struct TuneState {
     float tau_applied   = 1.1f;      // s
     float sigma_applied = 1e-2f;     // m/s²
-    float R_p0_applied  = 0.1f;      // m
+    float R_p0_applied  = 0.1f;      // (m)² - variance
+    float R_v0_applied  = 0.1f;      // (m/s)² - variance
 };
 
 //  Tracker policy traits
@@ -300,10 +305,11 @@ public:
             update_tuner(dt, a_vert_up, f_after_still);
         }
 
-        // Keep linear-block R_p0 tuning responsive in Live mode instead of
+        // Keep linear-block R_p0 / R_v0 tuning responsive in Live mode instead of
         // waiting for slow adaptation cadence.
         if (startup_stage_ == StartupStage::Live && enable_linear_block_) {
             apply_R_p0_tune_();
+            apply_R_v0_tune_();
         }
     
         const float omega = 2.0f * static_cast<float>(M_PI) * freq_hz_;
@@ -395,9 +401,29 @@ public:
                 if (std::isfinite(R_p0_target_) && R_p0_target_ > 0.0f) {
                     R_p0_target_ *= scale;
                 }
-
                 if (enable_linear_block_) {
                     apply_R_p0_tune_();
+                }
+            }
+        }
+    }
+    void setR_v0_Coeff(float c) {
+        if (std::isfinite(c) && c > 0.0f) {
+            const float prev = R_v0_coeff_;
+            R_v0_coeff_ = c;
+    
+            // Keep runtime behavior responsive when the coefficient is changed online.
+            if (std::isfinite(prev) && prev > 0.0f) {
+                const float scale = c / prev;
+    
+                if (std::isfinite(tune_.R_v0_applied) && tune_.R_v0_applied > 0.0f) {
+                    tune_.R_v0_applied *= scale;
+                }
+                if (std::isfinite(R_v0_target_) && R_v0_target_ > 0.0f) {
+                    R_v0_target_ *= scale;
+                }
+                if (enable_linear_block_) {
+                    apply_R_v0_tune_();
                 }
             }
         }
@@ -471,6 +497,13 @@ public:
         MAX_R_p0_ = max_R_p0;
     }
 
+    void setR_v0_Bounds(float min_R_v0, float max_R_v0) {
+        if (!std::isfinite(min_R_v0) || !std::isfinite(max_R_v0)) return;
+        if (min_R_v0 <= 0.0f || max_R_v0 <= min_R_v0) return;
+        MIN_R_v0_ = min_R_v0;
+        MAX_R_v0_ = max_R_v0;
+    }
+
     void setAdaptationTimeConstants(float tau_sec) {
         if (std::isfinite(tau_sec) && tau_sec > 0.0f)   adapt_tau_sec_   = tau_sec;
      }
@@ -506,9 +539,11 @@ public:
     inline float getTauApplied()    const noexcept { return tune_.tau_applied; }
     inline float getSigmaApplied()  const noexcept { return tune_.sigma_applied; }
     inline float getR_p0_Applied()  const noexcept { return tune_.R_p0_applied; }
+    inline float getR_v0_Applied()  const noexcept { return tune_.R_v0_applied; }
     inline float getTauTarget()     const noexcept { return tau_target_;   }
     inline float getSigmaTarget()   const noexcept { return sigma_target_; }
-    inline float getR_p0_Target()   const noexcept { return R_p0_target_;    }
+    inline float getR_p0_Target()   const noexcept { return R_p0_target_; }
+    inline float getR_v0_Target()   const noexcept { return R_v0_target_; }
 
     // Use slow frequency as a more stable "period" proxy
     inline float getPeriodSec() const noexcept {
@@ -713,15 +748,18 @@ private:
     void apply_R_p0_tune_(float rp_scale = 1.0f) {
         if (!mekf_) return;
         const float p = (std::isfinite(rp_scale) && rp_scale > 0.0f)
-                        ? std::min(rp_scale, 1.0f)
-                        : 1.0f;
+                        ? std::min(rp_scale, 1.0f) : 1.0f;
         const float R_p0_b = std::min(std::max(tune_.R_p0_applied, MIN_R_p0_), MAX_R_p0_);
         const float rp_xy = R_p0_b * p * R_p0_xy_factor_;
-        mekf_->set_Rp0_noise(Eigen::Vector3f(
-            rp_xy,
-            rp_xy,
-            R_p0_b * p
-        ));
+        mekf_->set_Rp0_noise(Eigen::Vector3f(rp_xy, rp_xy, R_p0_b * p));
+    }
+    
+    void apply_R_v0_tune_(float rv_scale = 1.0f) {
+        if (!mekf_) return;
+        const float p = (std::isfinite(rv_scale) && rv_scale > 0.0f)
+                        ? std::min(rv_scale, 1.0f) : 1.0f;
+        const float R_v0_b = std::min(std::max(tune_.R_v0_applied, MIN_R_v0_), MAX_R_v0_);
+        mekf_->set_Rv0_noise(Eigen::Vector3f::Constant(R_v0_b * p));
     }
 
     void update_tuner(float dt, float a_vert_inertial, float freq_hz_for_tuner) {
@@ -798,27 +836,31 @@ private:
             sigma_target_ = std::max(sigma_target_, std::max(0.05f, acc_noise_floor_sigma_));
         }
       
-        float R_p0_raw = R_p0_coeff_ * sigma_target_
-                       * tau_target_ * tau_target_;
-
+        float R_p0_raw = R_p0_coeff_ * sigma_target_ * tau_target_ * tau_target_;
+        float R_v0_raw = R_v0_coeff_ * sigma_target_ * tau_target_;
         if (enable_clamp_) {
             R_p0_target_ = std::min(std::max(R_p0_raw, MIN_R_p0_), MAX_R_p0_);
+            R_v0_target_ = std::min(std::max(R_v0_raw, MIN_R_v0_), MAX_R_v0_);
         } else {
             R_p0_target_ = R_p0_raw;
+            R_v0_target_ = R_v0_raw;
         }
-        adapt_mekf(dt, tau_target_, sigma_target_, R_p0_target_);
+        adapt_mekf(dt, tau_target_, sigma_target_, R_p0_target_, R_v0_target_);
     }
     
-    void adapt_mekf(float dt, float tau_t, float sigma_t, float R_p0_t) {
+    void adapt_mekf(float dt, float tau_t, float sigma_t, float R_p0_t, float R_v0_t) {
         const float alpha = 1.0f - std::exp(-dt / adapt_tau_sec_);
     
-        // R_p0 smoothing depends on tau (tau_t is already clamped upstream)
-        const float R_p0_sec   = ADAPT_R_p0_MULT * tau_t;     // or tune_.tau_applied if preferred
+        // R_p0 / R_v0 smoothing depend on tau
+        const float R_p0_sec   = ADAPT_R_p0_MULT * tau_t;
+        const float R_v0_sec   = ADAPT_R_v0_MULT * tau_t;
         const float alpha_R_p0 = 1.0f - std::exp(-dt / R_p0_sec);
+        const float alpha_R_v0 = 1.0f - std::exp(-dt / R_v0_sec);
     
         tune_.tau_applied   += alpha      * (tau_t   - tune_.tau_applied);
         tune_.sigma_applied += alpha      * (sigma_t - tune_.sigma_applied);
         tune_.R_p0_applied  += alpha_R_p0 * (R_p0_t  - tune_.R_p0_applied);
+        tune_.R_v0_applied  += alpha_R_v0 * (R_v0_t  - tune_.R_v0_applied);
     
         if (time_ - last_adapt_time_sec_ > adapt_every_secs_) {
             if (tuner_.isFreqReady()) {
@@ -826,6 +868,7 @@ private:
             }
             if (startup_stage_ == StartupStage::Live && enable_linear_block_) {
                 apply_R_p0_tune_();
+                apply_R_v0_tune_();
             }
             last_adapt_time_sec_ = time_;
         }
@@ -898,7 +941,10 @@ private:
             warmup_Racc_active_ = false;
         }
         apply_ou_tune_();
-        if (enable_linear_block_) apply_R_p0_tune_();
+        if (enable_linear_block_) {
+            apply_R_p0_tune_();
+            apply_R_v0_tune_();
+        }
     }
 
     StartupStage startup_stage_    = StartupStage::Cold;
@@ -950,6 +996,8 @@ private:
     float max_sigma_a_            = MAX_SIGMA_A;
     float MIN_R_p0_               = MIN_R_p0;
     float MAX_R_p0_               = MAX_R_p0;
+    float MIN_R_v0_               = MIN_R_v0;
+    float MAX_R_v0_               = MAX_R_v0;
     float adapt_tau_sec_          = ADAPT_TAU_SEC;
     float adapt_every_secs_       = ADAPT_EVERY_SECS;
     float online_tune_warmup_sec_ = ONLINE_TUNE_WARMUP_SEC;
@@ -968,11 +1016,13 @@ private:
     float tau_target_   = NAN;
     float sigma_target_ = NAN;
     float R_p0_target_  = NAN;
+    float R_v0_target_  = NAN;
 
     // Runtime-configurable accel noise floor (1σ), m/s²
     float acc_noise_floor_sigma_ = ACC_NOISE_FLOOR_SIGMA_DEFAULT;
 
     float R_p0_coeff_   = 1.15f;
+    float R_v0_coeff_   = 1.1f;
     float tau_coeff_    = 1.5f;
     float sigma_coeff_  = 0.9f;  // Real noise inflates estimated sigma, to get more realistic sigma for OU we reduce it.
 
