@@ -9,7 +9,6 @@
   Purpose:
     • Estimate acceleration variance σ_a² (time-domain EWMA)
     • Smooth externally provided frequency f_in (Hz) via EMA
-    • Compute R_S estimate = σ_a τ³ where τ = 1 / (2f) (half period)
 
   Notes:
     • K_periods is a dimensionless factor controlling the variance horizon:
@@ -95,15 +94,6 @@ public:
         return (f > 1e-9f) ? (1.0f / f) : 0.0f;
     }
 
-    // R_S estimate = σ_a τ³ where τ = 1 / (2f) (half period)
-    inline float getR_S_est() const {
-        const float sigma_a = getAccelStd();
-        const float f = Freq_smoothed.get();
-        if (f <= 1e-6f || sigma_a <= 0.0f) return 0.0f;
-        const float tau = 0.5f / f;
-        return sigma_a * (tau * tau * tau);
-    }
-
     inline bool isReady() const { return A_var.isReady() && Freq_smoothed.isReady(); }
     inline bool isFreqReady() const { return Freq_smoothed.isReady(); }
     inline bool isVarReady()  const { return A_var.isReady(); }
@@ -152,6 +142,6 @@ static inline void SeaStateAutoTuner_test() {
 
     std::cerr << "[AutoTuner] σ_a=" << tuner.getAccelStd()
               << " m/s², f=" << tuner.getFrequencyHz()
-              << " Hz, R_S=" << tuner.getR_S_est() << "\n";
+              << " Hz\n";
 }
 #endif
