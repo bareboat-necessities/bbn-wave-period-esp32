@@ -1252,10 +1252,10 @@ Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::Kalman3D_Wave_4(
 	    log_tau_aw_f_.P    = T(0.20) * T(0.20);                    // ~20% 1σ
 	
 	    // Default RW diffusion (log units per sqrt(s)) -> variance per second
-	    const T rw_sig_acc = T(0.02); // ~2%/sqrt(s)
-	    const T rw_sig_p0  = T(0.02);
-	    const T rw_sig_v0  = T(0.02);
-	    const T rw_tau     = T(0.01);
+		const T rw_sig_acc = T(0.01);
+		const T rw_sig_p0  = T(0.01);
+		const T rw_sig_v0  = T(0.01);
+		const T rw_tau     = T(0.003);
 	
 	    log_sigma_acc_f_.q = Vector3::Constant(rw_sig_acc * rw_sig_acc);
 	    log_sigma_p0_f_.q  = Vector3::Constant(rw_sig_p0  * rw_sig_p0);
@@ -1263,10 +1263,10 @@ Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::Kalman3D_Wave_4(
 	    log_tau_aw_f_.q    = rw_tau * rw_tau;
 	
 	    // Default command noise (how noisy the external adapter is), log-domain
-	    const T cmd_sig_acc = T(0.10); // ~10%
-	    const T cmd_sig_p0  = T(0.15); // ~15%
-	    const T cmd_sig_v0  = T(0.15); // ~15%
-	    const T cmd_tau     = T(0.20); // ~20%
+		const T cmd_sig_acc = T(0.15);
+		const T cmd_sig_p0  = T(0.35);
+		const T cmd_sig_v0  = T(0.35);
+		const T cmd_tau     = T(0.45);
 	
 	    log_sigma_acc_f_.r = Vector3::Constant(cmd_sig_acc * cmd_sig_acc);
 	    log_sigma_p0_f_.r  = Vector3::Constant(cmd_sig_p0  * cmd_sig_p0);
