@@ -849,24 +849,22 @@ private:
     
     void adapt_mekf(float dt, float tau_t, float sigma_t, float R_p0_t, float R_v0_t) {
         const float alpha_sigma = 1.0f - std::exp(-dt / adapt_tau_sec_);
-        const float alpha_tau   = alpha_sigma;
     
-        // Lighter smoothing for pseudo-measurement stds than before,
-        // but still not raw/jittery.
-        const float R_p0_sec   = std::max(0.25f * tau_t, 0.15f);
-        const float R_v0_sec   = std::max(0.25f * tau_t, 0.10f);
+        // Keep only light outer smoothing for pseudo-measurement stds.
+        const float R_p0_sec   = std::max(0.20f * tau_t, 0.10f);
+        const float R_v0_sec   = std::max(0.20f * tau_t, 0.08f);
         const float alpha_R_p0 = 1.0f - std::exp(-dt / R_p0_sec);
         const float alpha_R_v0 = 1.0f - std::exp(-dt / R_v0_sec);
     
-        // Outer smoothing
-        tune_.tau_applied      += alpha_tau   * (tau_t   - tune_.tau_applied);
-        tune_.sigma_applied    += alpha_sigma * (sigma_t - tune_.sigma_applied);
-        tune_.R_p0_std_applied += alpha_R_p0  * (R_p0_t  - tune_.R_p0_std_applied);
-        tune_.R_v0_std_applied += alpha_R_v0  * (R_v0_t  - tune_.R_v0_std_applied);
+        // Outer smoothing only where it helps.
+        tune_.tau_applied      = tau_t; // readback = target, no extra outer lag
+        tune_.sigma_applied   += alpha_sigma * (sigma_t - tune_.sigma_applied);
+        tune_.R_p0_std_applied += alpha_R_p0 * (R_p0_t - tune_.R_p0_std_applied);
+        tune_.R_v0_std_applied += alpha_R_v0 * (R_v0_t - tune_.R_v0_std_applied);
     
-        // Push smoothed commands into Kalman; Kalman RW still provides inner filtering/readback
         if (mekf_) {
-            mekf_->command_tau_aw(tune_.tau_applied);
+            // Let Kalman's internal log-RW be the only tau smoother.
+            mekf_->command_tau_aw(tau_t);
     
             if (startup_stage_ == StartupStage::Live && enable_linear_block_) {
                 apply_R_p0_tune_();
