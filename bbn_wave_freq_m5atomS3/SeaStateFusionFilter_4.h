@@ -28,8 +28,8 @@
   Where
   – τ (tau):  OU process time constant ≈ ½ · T  (half the dominant period of acceleration)
   – σₐ:       Stationary acceleration standard deviation, EWMA-tracked online
-  – Rₛ:       Pseudo-measurement noise controlling integral drift suppression
-  – Rₛ_xy:    Reduced in X/Y (anisotropic weighting for vertical-dominant seas)
+  – R_p0:     Pseudo-measurement noise controlling p drift suppression
+  – R_p0_xy:  Reduced in X/Y (anisotropic weighting for vertical-dominant seas)
   
   Adaptive update:  exponential smoothing toward targets over ADAPT_TAU_SEC
 
@@ -464,7 +464,7 @@ public:
         max_sigma_a_ = max_sigma_a;
     }
 
-    void setRSBounds(float min_R_p0, float max_R_p0) {
+    void setR_p0_Bounds(float min_R_p0, float max_R_p0) {
         if (!std::isfinite(min_R_p0) || !std::isfinite(max_R_p0)) return;
         if (min_R_p0 <= 0.0f || max_R_p0 <= min_R_p0) return;
         MIN_R_p0_ = min_R_p0;
@@ -818,7 +818,7 @@ private:
     
         tune_.tau_applied   += alpha      * (tau_t   - tune_.tau_applied);
         tune_.sigma_applied += alpha      * (sigma_t - tune_.sigma_applied);
-        tune_.R_p0_applied  += alpha_R_p0 * (R_p0_t    - tune_.R_p0_applied);
+        tune_.R_p0_applied  += alpha_R_p0 * (R_p0_t  - tune_.R_p0_applied);
     
         if (time_ - last_adapt_time_sec_ > adapt_every_secs_) {
             if (tuner_.isFreqReady()) {
@@ -950,8 +950,8 @@ private:
     float min_tau_s_              = MIN_TAU_S;
     float max_tau_s_              = MAX_TAU_S;
     float max_sigma_a_            = MAX_SIGMA_A;
-    float MIN_R_p0_                = MIN_R_p0;
-    float MAX_R_p0_                = MAX_R_p0;
+    float MIN_R_p0_               = MIN_R_p0;
+    float MAX_R_p0_               = MAX_R_p0;
     float adapt_tau_sec_          = ADAPT_TAU_SEC;
     float adapt_every_secs_       = ADAPT_EVERY_SECS;
     float online_tune_warmup_sec_ = ONLINE_TUNE_WARMUP_SEC;
@@ -959,7 +959,7 @@ private:
 
     // Runtime-configurable anisotropy knobs
     float R_p0_xy_factor_ = 0.17f;  // [0..1] scales XY pseudo-meas vs Z
-    float P_factor_      = 1.5f;   // (>0) scales Σ_aw horizontal std vs vertical
+    float P_factor_       = 1.5f;   // (>0) scales Σ_aw horizontal std vs vertical
 
     TrackingPolicy                  tracker_policy_{};
     FirstOrderIIRSmoother<float>    freq_fast_smoother_{FREQ_SMOOTHER_DT, 3.5f};   // ~3.5 s to 90% step
