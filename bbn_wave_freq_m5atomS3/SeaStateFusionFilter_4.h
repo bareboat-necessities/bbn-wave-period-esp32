@@ -464,11 +464,11 @@ public:
         max_sigma_a_ = max_sigma_a;
     }
 
-    void setRSBounds(float min_RS, float max_RS) {
-        if (!std::isfinite(min_RS) || !std::isfinite(max_RS)) return;
-        if (min_RS <= 0.0f || max_RS <= min_RS) return;
-        MIN_R_p0_ = min_RS;
-        MAX_R_p0_ = max_RS;
+    void setRSBounds(float min_R_p0, float max_R_p0) {
+        if (!std::isfinite(min_R_p0) || !std::isfinite(max_R_p0)) return;
+        if (min_R_p0 <= 0.0f || max_R_p0 <= min_R_p0) return;
+        MIN_R_p0_ = min_R_p0;
+        MAX_R_p0_ = max_R_p0;
     }
 
     void setAdaptationTimeConstants(float tau_sec) {
@@ -812,13 +812,13 @@ private:
     void adapt_mekf(float dt, float tau_t, float sigma_t, float R_p0_t) {
         const float alpha = 1.0f - std::exp(-dt / adapt_tau_sec_);
     
-        // R_S smoothing depends on tau (tau_t is already clamped upstream)
+        // R_p0 smoothing depends on tau (tau_t is already clamped upstream)
         const float R_p0_sec   = ADAPT_R_p0_MULT * tau_t;     // or tune_.tau_applied if preferred
-        const float alpha_RS = 1.0f - std::exp(-dt / R_p0_sec);
+        const float alpha_R_p0 = 1.0f - std::exp(-dt / R_p0_sec);
     
-        tune_.tau_applied   += alpha    * (tau_t   - tune_.tau_applied);
-        tune_.sigma_applied += alpha    * (sigma_t - tune_.sigma_applied);
-        tune_.R_p0_applied  += alpha_RS * (R_p0_t    - tune_.R_p0_applied);
+        tune_.tau_applied   += alpha      * (tau_t   - tune_.tau_applied);
+        tune_.sigma_applied += alpha      * (sigma_t - tune_.sigma_applied);
+        tune_.R_p0_applied  += alpha_R_p0 * (R_p0_t    - tune_.R_p0_applied);
     
         if (time_ - last_adapt_time_sec_ > adapt_every_secs_) {
             if (tuner_.isFreqReady()) {
