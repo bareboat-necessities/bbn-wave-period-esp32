@@ -505,10 +505,10 @@ public:
     inline float getFreqRawHz()     const noexcept { return f_raw; }
     inline float getTauApplied()    const noexcept { return tune_.tau_applied; }
     inline float getSigmaApplied()  const noexcept { return tune_.sigma_applied; }
-    inline float getRSApplied()     const noexcept { return tune_.R_p0_applied; }
+    inline float getR_p0_Applied()  const noexcept { return tune_.R_p0_applied; }
     inline float getTauTarget()     const noexcept { return tau_target_;   }
     inline float getSigmaTarget()   const noexcept { return sigma_target_; }
-    inline float getRSTarget()      const noexcept { return R_p0_target_;    }
+    inline float getR_p0_Target()   const noexcept { return R_p0_target_;    }
 
     // Use slow frequency as a more stable "period" proxy
     inline float getPeriodSec() const noexcept {
@@ -969,12 +969,12 @@ private:
 
     float tau_target_   = NAN;
     float sigma_target_ = NAN;
-    float R_p0_target_    = NAN;
+    float R_p0_target_  = NAN;
 
     // Runtime-configurable accel noise floor (1σ), m/s²
     float acc_noise_floor_sigma_ = ACC_NOISE_FLOOR_SIGMA_DEFAULT;
 
-    float R_p0_coeff_    = 1.15f;
+    float R_p0_coeff_   = 1.15f;
     float tau_coeff_    = 1.5f;
     float sigma_coeff_  = 0.9f;  // Real noise inflates estimated sigma, to get more realistic sigma for OU we reduce it.
 
