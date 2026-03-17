@@ -300,7 +300,7 @@ public:
             update_tuner(dt, a_vert_up, f_after_still);
         }
 
-        // Keep linear-block R_S tuning responsive in Live mode instead of
+        // Keep linear-block R_p0 tuning responsive in Live mode instead of
         // waiting for slow adaptation cadence.
         if (startup_stage_ == StartupStage::Live && enable_linear_block_) {
             apply_R_p0_tune_();
@@ -428,8 +428,8 @@ public:
     // When flag == false:
     //   • Kalman3D_Wave_4::set_linear_block_enabled(false) is enforced,
     //   • startup stages still progress (Cold → TunerWarm → Live),
-    //   • tuner still runs and exposes tau/sigma/R_S targets & metrics,
-    //   • but OU / v/p/S/a_w propagation and S-pseudo-measurements are never used.
+    //   • tuner still runs and exposes tau/sigma/R_p0/R_v0 targets & metrics,
+    //   • but OU / v/p/a_w propagation and pseudo-measurements are never used.
     //
     // When flag == true (default):
     //   • the linear block is enabled 
