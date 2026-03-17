@@ -434,8 +434,8 @@ class Kalman3D_Wave_4 {
         has_cross_cov_a_xy = true;
     }
 
-    // Covariances for periodic position-zero pseudo-measurement
-    void set_Rp0_noise(const Vector3& sigma_p0) {
+    // Covariances for periodic position-zero pseudo-measurement from std dev
+    void set_Rp0_noise_std(const Vector3& sigma_p0) {
         if (param_rw_enabled_) { param_rw_update_sigma_p0_cmd_(sigma_p0); return; }
         R_p0 = sigma_p0.array().square().matrix().asDiagonal();
         R_p0 = T(0.5) * (R_p0 + R_p0.transpose());
@@ -456,8 +456,8 @@ class Kalman3D_Wave_4 {
         R_p0 = S;
     }
 
-	// Covariances for periodic velocity-zero pseudo-measurement
-	void set_Rv0_noise(const Vector3& sigma_v0) {
+	// Covariances for periodic velocity-zero pseudo-measurement from std dev
+	void set_Rv0_noise_std(const Vector3& sigma_v0) {
 	    if (param_rw_enabled_) { param_rw_update_sigma_v0_cmd_(sigma_v0); return; }
 	    R_v0 = sigma_v0.array().square().matrix().asDiagonal();
 	    R_v0 = T(0.5) * (R_v0 + R_v0.transpose());
@@ -1120,7 +1120,7 @@ class Kalman3D_Wave_4 {
 	
 	EIGEN_STRONG_INLINE void param_rw_update_sigma_p0_cmd_(const Vector3& sigma_p0_cmd) {
 	    if (!param_rw_enabled_) {
-	        set_Rp0_noise(sigma_p0_cmd);
+	        set_Rp0_noise_std(sigma_p0_cmd);
 	        return;
 	    }
 	    Vector3 s = clamp_pos_vec_(sigma_p0_cmd, sigma_p0_min_, sigma_p0_max_);
@@ -1131,7 +1131,7 @@ class Kalman3D_Wave_4 {
 
 	EIGEN_STRONG_INLINE void param_rw_update_sigma_v0_cmd_(const Vector3& sigma_v0_cmd) {
 	    if (!param_rw_enabled_) {
-	        set_Rv0_noise(sigma_v0_cmd);
+	        set_Rv0_noise_std(sigma_v0_cmd);
 	        return;
 	    }
 	    Vector3 s = clamp_pos_vec_(sigma_v0_cmd, sigma_v0_min_, sigma_v0_max_);
