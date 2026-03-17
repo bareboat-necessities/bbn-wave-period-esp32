@@ -364,7 +364,7 @@ public:
     }
     void setR_p0_XYFactor(float k) {
         if (std::isfinite(k)) {
-            R_S_xy_factor_ = std::min(std::max(k, 0.0f), 1.0f);
+            R_p0_xy_factor_ = std::min(std::max(k, 0.0f), 1.0f);
         }
     }
 
@@ -716,7 +716,7 @@ private:
                         ? std::min(rs_scale, 1.0f)
                         : 1.0f;
         const float RSb = std::min(std::max(tune_.R_p0_applied, MIN_R_p0_), MAX_R_p0_);
-        const float rs_xy = RSb * s * R_S_xy_factor_;
+        const float rs_xy = RSb * s * R_p0_xy_factor_;
         mekf_->set_Rp0_noise(Eigen::Vector3f(
             rs_xy,
             rs_xy,
@@ -958,7 +958,7 @@ private:
     float mag_delay_sec_          = MAG_DELAY_SEC;
 
     // Runtime-configurable anisotropy knobs
-    float R_S_xy_factor_ = 0.17f;  // [0..1] scales XY pseudo-meas vs Z
+    float R_p0_xy_factor_ = 0.17f;  // [0..1] scales XY pseudo-meas vs Z
     float P_factor_      = 1.5f;   // (>0) scales Σ_aw horizontal std vs vertical
 
     TrackingPolicy                  tracker_policy_{};
