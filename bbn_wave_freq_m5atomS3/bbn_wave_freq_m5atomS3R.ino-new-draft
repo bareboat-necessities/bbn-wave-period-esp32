@@ -520,11 +520,12 @@ private:
     ff.enableLinearBlock(WANT_LINEAR_BLOCK);
     ff.enableTuner(true);
     ff.setWithMag(true);
-    ff.setSFactor(1.4f);
+    ff.setPFactor(1.4f);
     ff.setTauCoeff(1.4f);
     ff.setSigmaCoeff(0.9f);
-    ff.setRSCoeff(0.1f);
-    ff.setRSXYFactor(0.17f);
+    ff.setR_v0_Coeff(0.5f);
+    ff.setR_p0_Coeff(0.1f);
+    ff.setR_p0_XYFactor(0.17f);
     ff.setAccNoiseFloorSigma(ACC_NOISE_FLOOR_SIGMA_DEFAULT);
     ff.enableClamp(true);
     ff.setFreqInputCutoffHz(6.0f);
