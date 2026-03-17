@@ -1674,7 +1674,7 @@ void Kalman3D_Wave_4<T, with_gyro_bias, with_accel_bias>::time_update(
 	        sigma_v0.z() = std::sqrt(std::max(T(0), R_v0(2,2)));
 	
 	        measurement_update_position_pseudo(Vector3::Zero(), sigma_p0);
-	        measurement_update_velocity_pseudo(Vector3::Zero(), sigma_v0);
+	        // TODO: measurement_update_velocity_pseudo(Vector3::Zero(), sigma_v0);
 	        pseudo_update_counter_ = 0;
 	    }
 	} else {
