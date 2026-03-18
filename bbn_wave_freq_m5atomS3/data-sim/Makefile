@@ -36,10 +36,10 @@ w3d_sim: w3d_sim.o
 w3d_sim_adapt_2: w3d_sim_adapt_2.o
 	$(CC) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
-w3d_sim_adapt_3: w3d_sim_adapt_3.o
+w3d_sim_adapt_3: w3d_sim_adapt_3.o W3dSimCommon.o
 	$(CC) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
-w3d_sim_adapt_4: w3d_sim_adapt_4.o
+w3d_sim_adapt_4: w3d_sim_adapt_4.o W3dSimCommon.o
 	$(CC) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
 tunings: tunings.o
