@@ -64,6 +64,11 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y make g++ libeigen3-dev texlive-xetex texlive-latex-recommended texlive-fonts-recommended texlive-latex-extra texlive-fonts-extra dvipng
+    - name: Run host-side regression tests
+      run: |
+        cd "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/tests
+        make check
+
     - name: Download sim data from vTest release
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
