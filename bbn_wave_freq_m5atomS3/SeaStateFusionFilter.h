@@ -64,6 +64,24 @@
 
 // Shared constants
 
+extern const float g_std;
+
+#ifndef FREQ_GUESS
+#define FREQ_GUESS 0.3f
+#endif
+
+#ifndef ZERO_CROSSINGS_SCALE
+#define ZERO_CROSSINGS_SCALE 1.0f
+#endif
+
+#ifndef ZERO_CROSSINGS_DEBOUNCE_TIME
+#define ZERO_CROSSINGS_DEBOUNCE_TIME 0.12f
+#endif
+
+#ifndef ZERO_CROSSINGS_STEEPNESS_TIME
+#define ZERO_CROSSINGS_STEEPNESS_TIME 0.21f
+#endif
+
 // Estimated vertical accel noise floor (1σ), m/s².
 // Tweak from bench data with IMU sitting still.
 constexpr float ACC_NOISE_FLOOR_SIGMA_DEFAULT = 0.12f; 
