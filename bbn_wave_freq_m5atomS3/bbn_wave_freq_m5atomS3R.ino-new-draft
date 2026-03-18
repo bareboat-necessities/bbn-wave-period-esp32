@@ -68,6 +68,7 @@ constexpr float FREQ_GUESS = 0.3f;
 
 enum class TrackerType { ARANOVSKIY = 0, KALMANF = 1, ZEROCROSS = 2 };
 #include "SeaStateFusionFilter_4.h"
+#include "AdaptiveWaveDetrender.h"
 
 #ifndef MAG_DELAY_SEC
   #define MAG_DELAY_SEC 8.0f
@@ -284,6 +285,14 @@ private:
   float heave_m_         = 0.0f;
   float wave_envelope_m_ = 0.0f;
   float wave_hz_         = FREQ_GUESS;
+
+  AdaptiveWaveDetrender z_detrender_{};
+  AdaptiveWaveDetrender::Output z_det_out_{};
+
+  float heave_raw_m_        = 0.0f;   // raw heave from fusion position.z()
+  float heave_baseline_m_   = 0.0f;   // slow baseline actually subtracted
+  float heave_wave_raw_m_   = 0.0f;   // raw residual = heave_raw - baseline
+  float heave_wave_clean_m_ = 0.0f;   // cleaned residual for plotting/output
 
   bool  mag_ok_      = false;
   bool  mag_fresh_   = false;
@@ -521,8 +530,8 @@ private:
     ff.enableTuner(true);
     ff.setWithMag(true);
     ff.setPFactor(1.4f);
-    ff.setTauCoeff(1.4f);
-    ff.setSigmaCoeff(0.9f);
+    ff.setTauCoeff(1.5f);
+    ff.setSigmaCoeff(0.85f);
     ff.setR_v0_Coeff(0.5f);
     ff.setR_p0_Coeff(0.1f);
     ff.setR_p0_XYFactor(0.17f);
@@ -548,6 +557,49 @@ private:
     stale_frame_count_ = 0;
     have_last_fusion_time24_ = false;
     last_fusion_time24_      = 0;
+
+    AdaptiveWaveDetrender::Config zcfg;
+    zcfg.init_wave_freq_hz = FREQ_GUESS;   // startup guess
+    zcfg.min_wave_freq_hz  = 0.02f;        // long swell
+    zcfg.max_wave_freq_hz  = 1.20f;        // short chop
+
+    // Slow baseline tracker
+    zcfg.baseline_cutoff_fraction = 0.25f;
+    zcfg.min_baseline_cutoff_hz   = 0.003f;
+    zcfg.max_baseline_cutoff_hz   = 0.25f;
+
+    // Frequency learning from slope
+    zcfg.freq_smooth_tau_s = 12.0f;
+    zcfg.slope_lpf_tau_s   = 0.20f;
+    zcfg.slope_rms_tau_s   = 8.0f;
+
+    // Because input is heave in meters, this threshold is in m/s
+    zcfg.threshold_rms_fraction  = 0.15f;
+    zcfg.min_slope_threshold_abs = 0.002f;
+    zcfg.max_slope_threshold_abs = 1.0e9f;
+
+    zcfg.startup_hold_s     = 2.0f;
+    zcfg.freq_timeout_cycles = 3.0f;
+
+    // Extra cleanup on the residual only
+    zcfg.enable_wave_cleanup   = true;
+    zcfg.cleanup_cutoff_fraction = 1.0f;
+    zcfg.min_cleanup_cutoff_hz = 0.003f;
+    zcfg.max_cleanup_cutoff_hz = 0.50f;
+    zcfg.cleanup_stages        = 2;   // try 2 if LF wobble still leaks through
+
+    zcfg.min_dt_s = 1.0e-4f;
+    zcfg.max_dt_s = 0.25f;            // generous guard for missed samples
+    zcfg.output_abs_limit = 0.0f;     // disabled
+
+    z_detrender_.setConfig(zcfg);
+    z_detrender_.reset(0.0f);
+
+    z_det_out_ = AdaptiveWaveDetrender::Output{};
+    heave_raw_m_        = 0.0f;
+    heave_baseline_m_   = 0.0f;
+    heave_wave_raw_m_   = 0.0f;
+    heave_wave_clean_m_ = 0.0f;
   }
 
 #if SEA_STATE_ENABLE_WIZARD
@@ -694,9 +746,27 @@ private:
     if (!rot_inited_) { rot_inited_ = true; rot_dpm_filt_ = rot_dpm_meas; }
     else              { rot_dpm_filt_ += alpha_r * (rot_dpm_meas - rot_dpm_filt_); }
 
-    heave_m_         = -fusion_.raw().mekf().get_position().z();
+    heave_m_         = -fusion_.raw().mekf().get_position().z();  // positive-up
     wave_envelope_m_ =  fusion_.raw().getDisplacementScale();
     wave_hz_         =  fusion_.raw().getFreqHz();
+
+    heave_raw_m_ = heave_m_;
+
+    const bool ext_freq_valid =
+        fusion_.isLive() &&
+        std::isfinite(wave_hz_) &&
+        (wave_hz_ >= z_detrender_.config().min_wave_freq_hz) &&
+        (wave_hz_ <= z_detrender_.config().max_wave_freq_hz);
+
+    // Option A: blend in SeaStateFusion frequency estimate
+    z_det_out_ = z_detrender_.update(heave_raw_m_, dt_, wave_hz_, ext_freq_valid);
+
+    // Option B: let the detrender learn frequency entirely by itself
+    // z_det_out_ = z_detrender_.update(heave_raw_m_, dt_);
+
+    heave_baseline_m_   = z_det_out_.baseline_slow;
+    heave_wave_raw_m_   = z_det_out_.wave_raw;
+    heave_wave_clean_m_ = z_det_out_.wave_clean;
   }
 
   void drawHomeStatic_() {
@@ -777,10 +847,12 @@ private:
     const float mag_target_ms = static_cast<float>(magPollMs_());
 
 #if ARDUINO_PLOTTER
-    Serial.printf("Hcm:%+.3f\twaveEnvelopeCM:%+.3f\timuStale:%u\n",
-                  static_cast<double>(heave_m_ * 100.0f),
-                  static_cast<double>(wave_envelope_m_ * 100.0f),
-                  static_cast<unsigned>(stale_frame_count_));
+    Serial.printf(
+      "HrawCm:%+.3f\tHbaseCm:%+.3f\tHwaveRawCm:%+.3f\tHwaveCleanCm:%+.3f\n",
+      static_cast<double>(heave_raw_m_        * 100.0f),
+      static_cast<double>(heave_baseline_m_   * 100.0f),
+      static_cast<double>(heave_wave_raw_m_   * 100.0f),
+      static_cast<double>(heave_wave_clean_m_ * 100.0f));
 #else
     Serial.printf(
       "FIFO batch=%u | dt_imu_ms=%.2f | mag_valid=%u | dt_mag_ms=%s%.2f (target~%.2f) | acc_ned[m/s^2] N=%.3f E=%.3f D=%.3f | gyro_ned[rad/s] N=%.3f E=%.3f D=%.3f | mag_ned[uT] N=%.2f E=%.2f D=%.2f\n",
