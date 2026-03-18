@@ -10,3 +10,4 @@ python3 w3d_plots.py
 python3 reg_spectra_plots.py
 python3 fusion_diag_plots.py
 
+python3 adaptive_wave_detrender_plot.py
