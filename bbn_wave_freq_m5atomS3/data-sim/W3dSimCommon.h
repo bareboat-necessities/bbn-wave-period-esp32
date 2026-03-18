@@ -31,6 +31,103 @@ inline float diffDeg(float est_deg, float ref_deg) {
     return wrapDeg(est_deg - ref_deg);
 }
 
+static inline float deg_to_rad(float d) { return d * float(M_PI / 180.0); }
+static inline float rad_to_deg(float r) { return r * float(180.0 / M_PI); }
+
+inline float wrapAxialDeg90(float a) {
+    a = std::fmod(a + 180.0f, 360.0f);
+    if (a < 0) a += 360.0f;
+    a -= 180.0f;
+    if (a > 90.0f) a -= 180.0f;
+    if (a < -90.0f) a += 180.0f;
+    return a;
+}
+
+inline float dirDegGeneratorSignedFromVec(const Vector2f& v) {
+    float deg = rad_to_deg(std::atan2(v.x(), v.y()));
+    return wrapAxialDeg90(deg);
+}
+
+inline float p0_s_from_sigma_tau(float sigma_a, float tau) {
+    if (!std::isfinite(sigma_a) || !std::isfinite(tau)) return NAN;
+    return sigma_a * tau * tau;
+}
+
+template<typename T>
+inline T mean_vec(const std::vector<T>& v) {
+    if (v.empty()) return T(NAN);
+    T s = 0;
+    for (const auto& x : v) s += x;
+    return s / T(v.size());
+}
+
+template<typename T>
+inline T median_vec(std::vector<T> v) {
+    if (v.empty()) return T(NAN);
+    size_t n = v.size();
+    std::nth_element(v.begin(), v.begin() + n / 2, v.end());
+    if (n % 2) return v[n / 2];
+    auto lo = *std::max_element(v.begin(), v.begin() + n / 2);
+    auto hi = v[n / 2];
+    return (lo + hi) / T(2);
+}
+
+template<typename T>
+inline T percentile_vec(std::vector<T> v, double p01) {
+    if (v.empty()) return T(NAN);
+    if (p01 <= 0) return *std::min_element(v.begin(), v.end());
+    if (p01 >= 1) return *std::max_element(v.begin(), v.end());
+    std::sort(v.begin(), v.end());
+    double idx = p01 * (v.size() - 1);
+    size_t i = size_t(std::floor(idx));
+    double frac = idx - double(i);
+    if (i + 1 >= v.size()) return v[i];
+    return T(v[i] * (1.0 - frac) + v[i + 1] * frac);
+}
+
+struct CircStats {
+    float mean_deg = NAN;
+    float std_deg = NAN;
+};
+
+inline CircStats circular_stats_180(const std::vector<float>& degs) {
+    CircStats cs;
+    if (degs.empty()) return cs;
+
+    double C = 0, S = 0;
+    for (float d : degs) {
+        const double a2 = 2.0 * deg_to_rad(d);
+        C += std::cos(a2);
+        S += std::sin(a2);
+    }
+    C /= double(degs.size());
+    S /= double(degs.size());
+
+    const double R = std::sqrt(C * C + S * S);
+    const double a2_mean = std::atan2(S, C);
+
+    float md = float(rad_to_deg(0.5 * a2_mean));
+    md = wrapAxialDeg90(md);
+    cs.mean_deg = md;
+    cs.std_deg = (R > 1e-12)
+        ? float(rad_to_deg(0.5 * std::sqrt(std::max(0.0, -2.0 * std::log(R)))))
+        : 90.0f;
+    cs.std_deg = std::min(cs.std_deg, 90.0f);
+    return cs;
+}
+
+class RMSReport {
+public:
+    void add(float value) { sum_sq_ += value * value; count_++; }
+    float rms() const { return count_ ? std::sqrt(sum_sq_ / float(count_)) : NAN; }
+
+private:
+    float sum_sq_ = 0.0f;
+    size_t count_ = 0;
+};
+
+extern const float g_std;
+
 
 struct ImuNoiseModel {
     std::mt19937 rng;
@@ -187,6 +284,21 @@ struct W3dSimulationRunResult {
     float final_accel_variance = NAN;
 };
 
+struct W3dFailureLimits {
+    float err_limit_percent_z_jonswap = 0.0f;
+    float err_limit_percent_z_pmstokes = 0.0f;
+    float err_limit_yaw_deg = 0.0f;
+    float err_limit_percent_3d_jonswap = 0.0f;
+    float err_limit_percent_3d_pmstokes = 0.0f;
+    float acc_z_bias_percent = 0.0f;
+    float bias_3d_percent = 0.0f;
+};
+
+struct W3dSummaryLabels {
+    const char* target = "RS_target";
+    const char* applied = "RS_applied";
+};
+
 class W3dSimulationRunner {
 public:
     W3dSimulationRunner(W3dSimulationOptions options,
@@ -202,3 +314,48 @@ private:
     SimulationNoiseModels noise_models_;
     IW3dFusionAdapter& fusion_adapter_;
 };
+
+void print_summary_and_fail_if_needed(const W3dSimulationRunResult& result,
+                                      float dt,
+                                      const W3dFailureLimits& limits,
+                                      const W3dSummaryLabels& labels = {});
+
+std::vector<std::string> collect_wave_data_files(const std::filesystem::path& directory);
+
+template <typename AdapterT>
+inline std::optional<W3dSimulationRunResult> process_wave_file_for_tracker(const std::string& filename,
+                                                                           float dt,
+                                                                           bool with_mag,
+                                                                           bool add_noise,
+                                                                           float mag_odr_hz)
+{
+    const float acc_sigma = 1.51e-3f * g_std;
+    const float gyr_sigma = 0.00157f;
+    const float acc_bias_range = 5e-3f * g_std;
+    const float gyr_bias_range = 0.05f * float(M_PI / 180.0f);
+    const float acc_bias_rw = 0.0005f;
+    const float gyr_bias_rw = 0.00001f;
+    const float mag_sigma_uT = (mag_odr_hz <= 20.0f) ? 0.30f : 0.60f;
+
+    SimulationNoiseModels noise_models;
+    noise_models.accel_noise = make_imu_noise_model(acc_sigma, acc_bias_range, acc_bias_rw, 1234);
+    noise_models.gyro_noise = make_imu_noise_model(gyr_sigma, gyr_bias_range, gyr_bias_rw, 5678);
+    noise_models.mag_noise = make_mag_noise_model(mag_sigma_uT, 2.0f, 0.01f, 0.015f, 0.010f, 1.0f, 9012);
+
+    const Vector3f sigma_a_init(2.8f * acc_sigma, 2.8f * acc_sigma, 2.8f * acc_sigma);
+    const Vector3f sigma_g(2.0f * gyr_sigma, 2.0f * gyr_sigma, 2.0f * gyr_sigma);
+    const float sigma_m_uT = 1.2f * mag_sigma_uT;
+    const Vector3f sigma_m(sigma_m_uT, sigma_m_uT, sigma_m_uT);
+    const Vector3f mag_world_a = MagSim_WMM::mag_world_aero();
+
+    AdapterT adapter(with_mag, sigma_a_init, sigma_g, sigma_m, mag_world_a);
+    W3dSimulationOptions options;
+    options.dt = dt;
+    options.with_mag = with_mag;
+    options.add_noise = add_noise;
+    options.mag_odr_hz = mag_odr_hz;
+    options.temperature_c = 35.0f;
+
+    W3dSimulationRunner runner(options, std::move(noise_models), adapter);
+    return runner.run(filename);
+}
