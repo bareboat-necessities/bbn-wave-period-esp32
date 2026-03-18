@@ -1,4 +1,3 @@
-// AdaptiveWaveDetrender.h
 #pragma once
 
 #include <Arduino.h>
@@ -421,9 +420,7 @@ private:
     time_s_ += dt_s;
     current_input_ = x;
 
-    // ------------------------------------------------------------
-    // 1) Learn dominant wave frequency from slope/velocity proxy.
-    // ------------------------------------------------------------
+    // Learn dominant wave frequency from slope/velocity proxy.
     const float slope_raw = (x - x_prev_) / dt_s;
 
     const float a_slope = expAlphaFromTau_(dt_s, cfg_.slope_lpf_tau_s);
@@ -444,9 +441,7 @@ private:
       blendExternalFrequency_(external_wave_freq_hz, dt_s);
     }
 
-    // ------------------------------------------------------------
-    // 2) Update the actual slow baseline that is subtracted.
-    // ------------------------------------------------------------
+    // Update the actual slow baseline that is subtracted.
     const float fc_base = currentBaselineCutoffHz_();
     const float a_base = expf(-2.0f * kPi_ * fc_base * dt_s);
 
@@ -454,10 +449,7 @@ private:
 
     float wave_raw = x - baseline_slow_;
 
-    // ------------------------------------------------------------
-    // 3) Optional cleanup on the residual ONLY.
-    //    Does not affect baseline_slow_.
-    // ------------------------------------------------------------
+    // Cleanup on the residual ONLY. Does not affect baseline_slow_.
     float wave_clean = wave_raw;
 
     if (cfg_.enable_wave_cleanup) {
