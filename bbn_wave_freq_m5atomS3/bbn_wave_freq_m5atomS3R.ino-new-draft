@@ -837,7 +837,7 @@ private:
     const bool valid = fusion_.isLive();
     nmea_hdm(SEA_STATE_NMEA_TALKER, heading_deg_);
     nmea_xdr_pitch_roll(SEA_STATE_NMEA_TALKER, pitch_deg_, roll_deg_);
-    nmea_xdr_heave(SEA_STATE_NMEA_TALKER, heave_m_);
+    nmea_xdr_heave(SEA_STATE_NMEA_TALKER, heave_wave_clean_m_);
     nmea_xdr_freq(SEA_STATE_NMEA_TALKER, wave_hz_);
     nmea_rot(SEA_STATE_NMEA_TALKER, rot_dpm_filt_, valid);
 #else
@@ -848,10 +848,9 @@ private:
 
 #if ARDUINO_PLOTTER
     Serial.printf(
-      "HrawCm:%+.3f\tHbaseCm:%+.3f\tHwaveRawCm:%+.3f\tHwaveCleanCm:%+.3f\n",
+      "HrawCm:%+.3f\tHwaveEnvelopeCm:%+.3f\tHwaveCleanCm:%+.3f\n",
       static_cast<double>(heave_raw_m_        * 100.0f),
-      static_cast<double>(heave_baseline_m_   * 100.0f),
-      static_cast<double>(heave_wave_raw_m_   * 100.0f),
+      static_cast<double>(wave_envelope_m_ * 100.0f),
       static_cast<double>(heave_wave_clean_m_ * 100.0f));
 #else
     Serial.printf(
