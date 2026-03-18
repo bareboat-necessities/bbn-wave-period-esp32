@@ -48,13 +48,23 @@ public:
     // Frequency validity timeout, measured in cycles of current wave frequency.
     float freq_timeout_cycles = 3.0f;
 
-    // Optional cleanup on residual wave channel.
-    // This does NOT affect baseline subtraction.
-    // If disabled, wave_clean == wave_raw.
-    bool  enable_wave_cleanup = false;
-    float cleanup_cutoff_fraction = 3.0f;  // cutoff = cleanup_cutoff_fraction * f_wave
-    float min_cleanup_cutoff_hz   = 0.05f;
-    float max_cleanup_cutoff_hz   = 3.0f;
+    // Extra cleanup on wave_raw ONLY.
+    // This is an additional causal high-pass cascade applied to wave_raw.
+    // It does NOT affect baseline_slow.
+    //
+    //   f_cleanup = clamp(cleanup_cutoff_fraction * f_baseline,
+    //                     min_cleanup_cutoff_hz,
+    //                     max_cleanup_cutoff_hz)
+    //
+    // cleanup_stages = 0 -> disabled (wave_clean == wave_raw)
+    // cleanup_stages = 1 -> one extra HP stage
+    // cleanup_stages = 2 -> stronger LF suppression
+    // cleanup_stages = 3 -> even stronger, but more phase lag / attenuation
+    bool    enable_wave_cleanup = true;
+    float   cleanup_cutoff_fraction = 1.0f;  // relative to f_baseline
+    float   min_cleanup_cutoff_hz   = 0.003f;
+    float   max_cleanup_cutoff_hz   = 0.50f;
+    uint8_t cleanup_stages          = 1;
 
     // dt guards
     float min_dt_s = 1.0e-4f;
@@ -66,9 +76,9 @@ public:
 
   struct Output {
     float input = 0.0f;                // latest input sample
-    float baseline_slow = 0.0f;        // the actual smooth baseline being subtracted
+    float baseline_slow = 0.0f;        // actual smooth baseline being subtracted
     float wave_raw = 0.0f;             // input - baseline_slow
-    float wave_clean = 0.0f;           // optional cleaned version of wave_raw
+    float wave_clean = 0.0f;           // extra-cleaned causal HP output from wave_raw
     float wave_freq_hz = 0.0f;         // learned dominant wave frequency
     float wave_period_s = 0.0f;        // 1 / wave_freq_hz
     float baseline_cutoff_hz = 0.0f;   // current adaptive baseline cutoff
@@ -107,7 +117,6 @@ public:
     x_prev_ = 0.0f;
 
     baseline_slow_ = 0.0f;
-    wave_clean_state_ = 0.0f;
 
     slope_filt_ = 0.0f;
     slope_prev_ = 0.0f;
@@ -126,6 +135,8 @@ public:
 
     last_wave_raw_ = 0.0f;
     last_wave_clean_ = 0.0f;
+
+    zeroCleanupStates_();
 
     last_output_ = buildOutput_();
   }
@@ -140,7 +151,6 @@ public:
     x_prev_ = x0;
 
     baseline_slow_ = x0;
-    wave_clean_state_ = 0.0f;
 
     slope_filt_ = 0.0f;
     slope_prev_ = 0.0f;
@@ -160,16 +170,15 @@ public:
     last_wave_raw_ = 0.0f;
     last_wave_clean_ = 0.0f;
 
+    zeroCleanupStates_();
+
     last_output_ = buildOutput_();
   }
 
-  // Main update: learn frequency internally from the input signal.
   Output update(float x, float dt_s) {
     return updateImpl_(x, dt_s, 0.0f, false);
   }
 
-  // Optional overload: blend in an external dominant frequency estimate [Hz].
-  // The baseline cutoff will then use the blended frequency estimate.
   Output update(float x, float dt_s, float external_wave_freq_hz, bool external_valid) {
     return updateImpl_(x, dt_s, external_wave_freq_hz, external_valid);
   }
@@ -180,11 +189,13 @@ public:
   float currentWaveFreqHz() const { return f_used_hz_; }
   float currentWavePeriodS() const { return 1.0f / maxf_(f_used_hz_, 1.0e-6f); }
   float currentBaselineCutoffHz() const { return currentBaselineCutoffHz_(); }
+  float currentCleanupCutoffHz() const { return currentCleanupCutoffHz_(); }
   bool frequencyValid() const { return isFrequencyValid_(); }
   const Output& lastOutput() const { return last_output_; }
 
 private:
   static constexpr float kPi_ = 3.14159265358979323846f;
+  static constexpr uint8_t kMaxCleanupStages_ = 3;
 
   Config cfg_;
 
@@ -195,7 +206,6 @@ private:
   float x_prev_ = 0.0f;
 
   float baseline_slow_ = 0.0f;   // actual smooth baseline that is subtracted
-  float wave_clean_state_ = 0.0f;
 
   float slope_filt_ = 0.0f;
   float slope_prev_ = 0.0f;
@@ -211,6 +221,8 @@ private:
 
   int valid_period_count_ = 0;
   float last_valid_freq_t_ = -1.0e30f;
+
+  float cleanup_lp_[kMaxCleanupStages_] = {0.0f, 0.0f, 0.0f};
 
   float last_wave_raw_ = 0.0f;
   float last_wave_clean_ = 0.0f;
@@ -256,6 +268,17 @@ private:
     return t_prev + frac * (t_curr - t_prev);
   }
 
+  void zeroCleanupStates_() {
+    for (uint8_t i = 0; i < kMaxCleanupStages_; ++i) {
+      cleanup_lp_[i] = 0.0f;
+    }
+  }
+
+  uint8_t effectiveCleanupStages_() const {
+    if (!cfg_.enable_wave_cleanup) return 0;
+    return (cfg_.cleanup_stages > kMaxCleanupStages_) ? kMaxCleanupStages_ : cfg_.cleanup_stages;
+  }
+
   void sanitizeConfig_(Config& c) {
     if (!isFinite_(c.init_wave_freq_hz) || c.init_wave_freq_hz <= 0.0f) c.init_wave_freq_hz = 0.12f;
     if (!isFinite_(c.min_wave_freq_hz)  || c.min_wave_freq_hz  <= 0.0f) c.min_wave_freq_hz  = 0.02f;
@@ -292,13 +315,16 @@ private:
     if (!isFinite_(c.freq_timeout_cycles) || c.freq_timeout_cycles <= 0.0f) c.freq_timeout_cycles = 3.0f;
 
     if (!isFinite_(c.cleanup_cutoff_fraction) || c.cleanup_cutoff_fraction <= 0.0f) {
-      c.cleanup_cutoff_fraction = 3.0f;
+      c.cleanup_cutoff_fraction = 1.0f;
     }
     if (!isFinite_(c.min_cleanup_cutoff_hz) || c.min_cleanup_cutoff_hz <= 0.0f) {
-      c.min_cleanup_cutoff_hz = 0.05f;
+      c.min_cleanup_cutoff_hz = 0.003f;
     }
     if (!isFinite_(c.max_cleanup_cutoff_hz) || c.max_cleanup_cutoff_hz < c.min_cleanup_cutoff_hz) {
-      c.max_cleanup_cutoff_hz = maxf_(3.0f, c.min_cleanup_cutoff_hz);
+      c.max_cleanup_cutoff_hz = maxf_(0.50f, c.min_cleanup_cutoff_hz);
+    }
+    if (c.cleanup_stages > kMaxCleanupStages_) {
+      c.cleanup_stages = kMaxCleanupStages_;
     }
 
     if (!isFinite_(c.min_dt_s) || c.min_dt_s <= 0.0f) c.min_dt_s = 1.0e-4f;
@@ -320,8 +346,8 @@ private:
   }
 
   float currentCleanupCutoffHz_() const {
-    if (!cfg_.enable_wave_cleanup) return 0.0f;
-    float fc = cfg_.cleanup_cutoff_fraction * f_used_hz_;
+    if (!cfg_.enable_wave_cleanup || effectiveCleanupStages_() == 0) return 0.0f;
+    float fc = cfg_.cleanup_cutoff_fraction * currentBaselineCutoffHz_();
     fc = maxf_(fc, cfg_.min_cleanup_cutoff_hz);
     fc = minf_(fc, cfg_.max_cleanup_cutoff_hz);
     return fc;
@@ -369,7 +395,6 @@ private:
     const float min_period_s = 1.0f / cfg_.max_wave_freq_hz;
     const float max_period_s = 1.0f / cfg_.min_wave_freq_hz;
 
-    // Same-sign Schmitt crossing at +threshold
     if (schmitt_state_ != +1 && y_prev < +thr && y_curr >= +thr) {
       const float t_cross = interpCrossTime_(t_prev, t_curr, y_prev, y_curr, +thr);
 
@@ -386,7 +411,6 @@ private:
       return;
     }
 
-    // Same-sign Schmitt crossing at -threshold
     if (schmitt_state_ != -1 && y_prev > -thr && y_curr <= -thr) {
       const float t_cross = interpCrossTime_(t_prev, t_curr, y_prev, y_curr, -thr);
 
@@ -419,7 +443,9 @@ private:
     time_s_ += dt_s;
     current_input_ = x;
 
-    // Learn dominant wave frequency from slope/velocity proxy.
+    // ------------------------------------------------------------
+    // 1) Learn dominant wave frequency from slope/velocity proxy.
+    // ------------------------------------------------------------
     const float slope_raw = (x - x_prev_) / dt_s;
 
     const float a_slope = expAlphaFromTau_(dt_s, cfg_.slope_lpf_tau_s);
@@ -440,7 +466,9 @@ private:
       blendExternalFrequency_(external_wave_freq_hz, dt_s);
     }
 
-    // Update the actual slow baseline that is subtracted.
+    // ------------------------------------------------------------
+    // 2) Update the actual slow baseline that is subtracted.
+    // ------------------------------------------------------------
     const float fc_base = currentBaselineCutoffHz_();
     const float a_base = expf(-2.0f * kPi_ * fc_base * dt_s);
 
@@ -448,16 +476,31 @@ private:
 
     float wave_raw = x - baseline_slow_;
 
-    // Cleanup on the residual ONLY. Does not affect baseline_slow_.
+    // ------------------------------------------------------------
+    // 3) Extra cleanup on wave_raw ONLY:
+    //    cascade of causal HP stages implemented as
+    //      stage_out = stage_in - LP(stage_in)
+    //    This does NOT change baseline_slow_.
+    // ------------------------------------------------------------
     float wave_clean = wave_raw;
+    const uint8_t n_cleanup = effectiveCleanupStages_();
 
-    if (cfg_.enable_wave_cleanup) {
+    if (n_cleanup > 0) {
       const float fc_clean = currentCleanupCutoffHz_();
       const float a_clean = expf(-2.0f * kPi_ * fc_clean * dt_s);
-      wave_clean_state_ = a_clean * wave_clean_state_ + (1.0f - a_clean) * wave_raw;
-      wave_clean = wave_clean_state_;
+
+      for (uint8_t i = 0; i < n_cleanup; ++i) {
+        cleanup_lp_[i] = a_clean * cleanup_lp_[i] + (1.0f - a_clean) * wave_clean;
+        wave_clean = wave_clean - cleanup_lp_[i];
+      }
+
+      // keep unused stages zeroed
+      for (uint8_t i = n_cleanup; i < kMaxCleanupStages_; ++i) {
+        cleanup_lp_[i] = 0.0f;
+      }
     } else {
-      wave_clean_state_ = wave_raw;
+      zeroCleanupStates_();
+      wave_clean = wave_raw;
     }
 
     if (cfg_.output_abs_limit > 0.0f) {
