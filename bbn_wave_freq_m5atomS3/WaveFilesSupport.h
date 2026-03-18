@@ -13,6 +13,8 @@
   Copyright 2025, Mikhail Grushinskiy
 */
 
+extern const float g_std;
+
 static constexpr unsigned GLOBAL_SEED  = 42u; // global seed for reproducibility
 
 // Enums
