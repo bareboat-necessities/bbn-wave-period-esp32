@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import os
+from pathlib import Path
 
 import matplotlib as mpl
 mpl.use("pgf")
@@ -21,22 +21,30 @@ plt.rcParams.update({
     ]),
 })
 
-REFERENCE_CSV = os.path.join("..", "data-sim", "detrend.csv")
-GENERATED_CSV = os.path.join("..", "tests", "adaptive_wave_detrender_test_output.csv")
-OUT_BASE = "adaptive_wave_detrender_performance"
+SCRIPT_DIR = Path(__file__).resolve().parent
+REFERENCE_CSV_CANDIDATES = (
+    SCRIPT_DIR / "detrend.csv",
+    SCRIPT_DIR.parent / "data-sim" / "detrend.csv",
+)
+GENERATED_CSV = SCRIPT_DIR.parent / "tests" / "adaptive_wave_detrender_test_output.csv"
+OUT_BASE = SCRIPT_DIR / "adaptive_wave_detrender_performance"
 
 
-def require_file(path: str) -> None:
-    if not os.path.exists(path):
-        raise FileNotFoundError(f"Required file not found: {path}")
+def resolve_existing_file(*candidates: Path) -> Path:
+    for path in candidates:
+        if path.exists():
+            return path
+
+    joined = ", ".join(str(path) for path in candidates)
+    raise FileNotFoundError(f"Required file not found. Checked: {joined}")
 
 
 if __name__ == "__main__":
-    require_file(REFERENCE_CSV)
-    require_file(GENERATED_CSV)
+    reference_csv = resolve_existing_file(*REFERENCE_CSV_CANDIDATES)
+    generated_csv = resolve_existing_file(GENERATED_CSV)
 
-    ref = pd.read_csv(REFERENCE_CSV)
-    gen = pd.read_csv(GENERATED_CSV)
+    ref = pd.read_csv(reference_csv)
+    gen = pd.read_csv(generated_csv)
 
     time_s = gen["time_s"]
 
@@ -67,8 +75,8 @@ if __name__ == "__main__":
     axes[2].legend(loc="upper right", ncol=3, fontsize="small")
 
     plt.tight_layout()
-    fig.savefig(f"{OUT_BASE}.pgf", bbox_inches="tight")
-    fig.savefig(f"{OUT_BASE}.svg", bbox_inches="tight")
+    fig.savefig(OUT_BASE.with_suffix(".pgf"), bbox_inches="tight")
+    fig.savefig(OUT_BASE.with_suffix(".svg"), bbox_inches="tight")
     plt.close(fig)
 
-    print(f"saved {OUT_BASE}.pgf/.svg")
+    print(f"saved {OUT_BASE.with_suffix('.pgf')} / {OUT_BASE.with_suffix('.svg')}")
