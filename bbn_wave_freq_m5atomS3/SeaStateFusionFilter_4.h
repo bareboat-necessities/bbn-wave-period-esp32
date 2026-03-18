@@ -1004,7 +1004,7 @@ private:
     float mag_delay_sec_          = MAG_DELAY_SEC;
 
     // Runtime-configurable anisotropy knobs
-    float R_p0_xy_factor_ = 0.17f;  // [0..1] scales XY pseudo-meas vs Z
+    float R_p0_xy_factor_ = 0.23f;  // [0..1] scales XY pseudo-meas vs Z
     float P_factor_       = 1.5f;   // (>0) scales Σ_aw horizontal std vs vertical
 
     TrackingPolicy                  tracker_policy_{};
