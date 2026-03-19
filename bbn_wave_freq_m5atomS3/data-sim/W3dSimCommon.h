@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -31,8 +32,8 @@ inline float diffDeg(float est_deg, float ref_deg) {
     return wrapDeg(est_deg - ref_deg);
 }
 
-static inline float deg_to_rad(float d) { return d * float(M_PI / 180.0); }
-static inline float rad_to_deg(float r) { return r * float(180.0 / M_PI); }
+static inline float deg_to_rad(float d) { return d * float(std::numbers::pi_v<float> / 180.0); }
+static inline float rad_to_deg(float r) { return r * float(180.0 / std::numbers::pi_v<float>); }
 
 inline float wrapAxialDeg90(float a) {
     a = std::fmod(a + 180.0f, 360.0f);
@@ -332,7 +333,7 @@ inline std::optional<W3dSimulationRunResult> process_wave_file_for_tracker(const
     const float acc_sigma = 1.51e-3f * g_std;
     const float gyr_sigma = 0.00157f;
     const float acc_bias_range = 5e-3f * g_std;
-    const float gyr_bias_range = 0.05f * float(M_PI / 180.0f);
+    const float gyr_bias_range = 0.05f * float(std::numbers::pi_v<float> / 180.0f);
     const float acc_bias_rw = 0.0005f;
     const float gyr_bias_rw = 0.00001f;
     const float mag_sigma_uT = (mag_odr_hz <= 20.0f) ? 0.30f : 0.60f;

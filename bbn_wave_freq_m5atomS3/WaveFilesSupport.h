@@ -1,5 +1,6 @@
 #pragma once
 #include <cmath>
+#include <numbers>
 #include <cstdint>
 #include <string>
 #include <sstream>
@@ -130,9 +131,9 @@ public:
     // Generate filename (data or spectrum)
     static std::string generate(FileKind kind, WaveType type, const WaveParameters &wp) {
         double length = (wp.period > 0.0)
-                      ? (g_std * wp.period * wp.period / (2.0 * M_PI))
+                      ? (g_std * wp.period * wp.period / (2.0 * std::numbers::pi_v<float>))
                       : 0.0;
-        double phaseDeg = wp.phase * 180.0 / M_PI;
+        double phaseDeg = wp.phase * 180.0 / std::numbers::pi_v<float>;
 
         std::ostringstream oss;
         oss << "wave_" << EnumTraits<FileKind>::to_string(kind) << "_"
@@ -206,10 +207,10 @@ public:
         WaveParameters wp{};
         wp.height    = static_cast<float>(parsed->height);
         wp.direction = static_cast<float>(parsed->azimuth);
-        wp.phase     = static_cast<float>(parsed->phaseDeg * M_PI / 180.0);
+        wp.phase     = static_cast<float>(parsed->phaseDeg * std::numbers::pi_v<float> / 180.0);
 
         if (parsed->length > 0.0) {
-            double T = std::sqrt(parsed->length / g_std * 2 * M_PI);
+            double T = std::sqrt(parsed->length / g_std * 2 * std::numbers::pi_v<float>);
             wp.period = static_cast<float>(T);
         } else {
             wp.period = 0.0f;

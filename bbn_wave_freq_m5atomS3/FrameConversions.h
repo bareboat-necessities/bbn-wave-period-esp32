@@ -11,6 +11,7 @@
 #endif
 
 #include <cmath>
+#include <numbers>
 
 #ifdef FRAMECONV_TEST
 #include <cassert>
@@ -63,12 +64,12 @@ static inline void nautical_to_aero(float &roll, float &pitch, float &yaw) {
 
 // Build quaternion from Euler (deg, aerospace convention ZYX: yaw→pitch→roll)
 static Quaternionf quat_from_euler(float roll_deg, float pitch_deg, float yaw_deg) {
-    float cr = std::cos(roll_deg * M_PI/180.0f / 2.0f);
-    float sr = std::sin(roll_deg * M_PI/180.0f / 2.0f);
-    float cp = std::cos(pitch_deg * M_PI/180.0f / 2.0f);
-    float sp = std::sin(pitch_deg * M_PI/180.0f / 2.0f);
-    float cy = std::cos(yaw_deg * M_PI/180.0f / 2.0f);
-    float sy = std::sin(yaw_deg * M_PI/180.0f / 2.0f);
+    float cr = std::cos(roll_deg * std::numbers::pi_v<float>/180.0f / 2.0f);
+    float sr = std::sin(roll_deg * std::numbers::pi_v<float>/180.0f / 2.0f);
+    float cp = std::cos(pitch_deg * std::numbers::pi_v<float>/180.0f / 2.0f);
+    float sp = std::sin(pitch_deg * std::numbers::pi_v<float>/180.0f / 2.0f);
+    float cy = std::cos(yaw_deg * std::numbers::pi_v<float>/180.0f / 2.0f);
+    float sy = std::sin(yaw_deg * std::numbers::pi_v<float>/180.0f / 2.0f);
 
     Quaternionf q;
     q.w() = cy*cp*cr + sy*sp*sr;
@@ -86,7 +87,7 @@ static inline void quat_to_euler_aero(const Quaternionf &q,
     roll  = std::atan2(C_bn(2,1), C_bn(2,2));
     yaw   = std::atan2(C_bn(1,0), C_bn(0,0));
 
-    const float k = 180.0f/M_PI;
+    const float k = 180.0f/std::numbers::pi_v<float>;
     roll  *= k;
     pitch *= k;
     yaw   *= k;
@@ -114,8 +115,8 @@ struct MagSim_WMM {
         float inclination_deg = default_inclination_deg,
         float total_field_uT  = default_total_field_uT)
     {
-        float dec_rad  = declination_deg * M_PI / 180.0f;
-        float incl_rad = inclination_deg * M_PI / 180.0f;
+        float dec_rad  = declination_deg * std::numbers::pi_v<float> / 180.0f;
+        float incl_rad = inclination_deg * std::numbers::pi_v<float> / 180.0f;
 
         float h = std::cos(incl_rad);  // horizontal fraction
         float v = -std::sin(incl_rad); // vertical (downwards, Z-up frame)
@@ -271,7 +272,7 @@ inline int test_frame_conversions() {
     Quaternionf q_a = quat_from_euler(rqa, pqa, yqa);
 
     Quaternionf q_diff = q_n * q_a.inverse();
-    float angle_diff = 2.0f * std::acos(std::clamp(q_diff.w(), -1.0f, 1.0f)) * 180.0f/M_PI;
+    float angle_diff = 2.0f * std::acos(std::clamp(q_diff.w(), -1.0f, 1.0f)) * 180.0f/std::numbers::pi_v<float>;
     assert_close(angle_diff, 0.0f, 1e-2f, "Quaternion difference");
 
     // Randomized stress test
@@ -301,9 +302,9 @@ inline int test_frame_conversions() {
     // Magnetometer world-field tests
     Vector3f mag_enu = MagSim_WMM::mag_world_nautical();
     Vector3f mag_ned = MagSim_WMM::mag_world_aero();
-    assert_close(mag_enu.z(), -std::sin(MagSim_WMM::default_inclination_deg * M_PI/180.0f) * MagSim_WMM::default_total_field_uT,
+    assert_close(mag_enu.z(), -std::sin(MagSim_WMM::default_inclination_deg * std::numbers::pi_v<float>/180.0f) * MagSim_WMM::default_total_field_uT,
                  1e-3f, "Mag ENU vertical");
-    assert_close(mag_ned.z(), std::sin(MagSim_WMM::default_inclination_deg * M_PI/180.0f) * MagSim_WMM::default_total_field_uT,
+    assert_close(mag_ned.z(), std::sin(MagSim_WMM::default_inclination_deg * std::numbers::pi_v<float>/180.0f) * MagSim_WMM::default_total_field_uT,
                  1e-3f, "Mag NED vertical");
 
     // Magnetometer body-frame test at zero Euler (should match world ENU)
