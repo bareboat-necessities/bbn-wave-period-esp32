@@ -1,4 +1,4 @@
-const float g_std = 9.80665f;
+extern const float g_std = 9.80665f;
 #include "W3dSimCommon.h"
 
 #include <cstdlib>
