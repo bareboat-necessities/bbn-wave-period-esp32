@@ -74,9 +74,9 @@ constexpr float MIN_TAU_S     = 0.02f;
 constexpr float MAX_TAU_S     = 3.0f;
 constexpr float MAX_SIGMA_A   = 6.0f;
 constexpr float MIN_R_p0_std  = 0.05f;
-constexpr float MAX_R_p0_std  = 18.0f;
+constexpr float MAX_R_p0_std  = 1000.0f;
 constexpr float MIN_R_v0_std  = 0.01f;
-constexpr float MAX_R_v0_std  = 6.0f;
+constexpr float MAX_R_v0_std  = 1000.0f;
 
 constexpr float ADAPT_TAU_SEC              = 1.5f;
 constexpr float ADAPT_EVERY_SECS           = 0.1f;
@@ -1185,8 +1185,8 @@ private:
 
     float acc_noise_floor_sigma_ = ACC_NOISE_FLOOR_SIGMA_DEFAULT;
 
-    float R_p0_coeff_   = 1.6f;
-    float R_v0_coeff_   = 1.4f;
+    float R_p0_coeff_   = 45.0f;
+    float R_v0_coeff_   = 130.0f;
     float tau_coeff_    = 1.5f;
     float sigma_coeff_  = 0.85f;
 
