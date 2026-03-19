@@ -1154,21 +1154,21 @@ private:
     float P_factor_       = 1.5f;
 
     // Wave_5 retune controls
-    float live_racc_base_max_scale_   = 2.0f;   // isotropic sea-state inflation cap
-    float live_racc_base_scale_power_ = 0.35f;  // sublinear sigma->Racc baseline
+    float live_racc_base_max_scale_   = 1.35f;  // isotropic sea-state inflation cap
+    float live_racc_base_scale_power_ = 0.25f;  // sublinear sigma->Racc baseline
     float baw_gain_base_              = 0.25f;  // base b_aw RW gain
     float baw_gain_scale_max_         = 8.0f;   // cap sigma/Racc compensation
     float baw_rw_floor_               = 1e-4f;  // floor std / sqrt(s)
 
     // Motion-adaptive Live Racc
-    bool  motion_adaptive_racc_enabled_ = true;
-    float live_racc_xy_motion_max_scale_ = 4.0f; // stronger XY inflation
-    float live_racc_z_motion_max_scale_  = 1.6f; // weaker Z inflation
+    bool  motion_adaptive_racc_enabled_  = true;
+    float live_racc_xy_motion_max_scale_ = 2.2f; // stronger XY inflation
+    float live_racc_z_motion_max_scale_  = 1.2f; // weaker Z inflation
     float live_motion_scale_power_       = 1.0f;
 
-    float motion_ema_tau_sec_       = 0.35f;
-    float motion_acc_ref_g_         = 0.10f;                     // 0.10 g accel-deviation reference
-    float motion_gyro_ref_radps_    = 25.0f * float(M_PI) / 180.0f; // 25 deg/s reference
+    float motion_ema_tau_sec_       = 0.25f;
+    float motion_acc_ref_g_         = 0.14f;                     // 0.10 g accel-deviation reference
+    float motion_gyro_ref_radps_    = 35.0f * float(M_PI) / 180.0f; // 35 deg/s reference
     float motion_acc_ema_g_         = 0.0f;
     float motion_gyro_ema_radps_    = 0.0f;
 
