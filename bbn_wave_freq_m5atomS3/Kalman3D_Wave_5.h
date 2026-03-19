@@ -23,10 +23,6 @@
     - quaternion_boat() returns physical BODY -> WORLD.
     - measurement_update_acc_only() is an attitude-centric specific-force-direction update.
       It does not directly estimate a latent linear acceleration state.
-
-  Important behavior change in this revision:
-    - The old implicit periodic zero-position / zero-velocity pseudo-updates are now OFF by default.
-      They are available as opt-in, time-based "auto-zero" pseudos.
 */
 
 #ifdef EIGEN_NON_ARDUINO
@@ -487,7 +483,7 @@ class Kalman3D_Wave_5 {
     Matrix3 R_p0;
     Matrix3 R_v0;
 
-    bool auto_zero_position_pseudo_enabled_ = false;
+    bool auto_zero_position_pseudo_enabled_ = true;
     bool auto_zero_velocity_pseudo_enabled_ = false;
     T    auto_zero_pseudo_period_sec_       = T(0.5);
     T    auto_zero_pseudo_elapsed_sec_      = T(0);
