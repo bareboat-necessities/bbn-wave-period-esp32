@@ -1498,11 +1498,14 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_ver
 
     Eigen::Matrix<T, NX, 1> PCt;
     PCt.noalias() = Pext.col(idx_vz);
+    if constexpr (with_accel_bias) {
+        if (!acc_bias_updates_enabled_) freeze_baw_rows_(PCt);
+    }
 
     Eigen::Matrix<T, NX, 1> K;
     K.noalias() = PCt / S;
     if constexpr (with_accel_bias) {
-        if (!acc_bias_updates_enabled_) K.template segment<3>(OFF_BAW).setZero();
+        if (!acc_bias_updates_enabled_) freeze_baw_rows_(K);
     }
 
     xext.noalias() += K * r;
