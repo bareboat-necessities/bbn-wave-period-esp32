@@ -149,7 +149,7 @@ int main(int argc, char* argv[]) {
     }
 
     std::cout << "Simulation starting with_mag=" << (with_mag ? "true" : "false")
-              << ", mag_delay=" << seastate_fusion5_detail::MAG_DELAY_SEC
+              << ", mag_delay=" << MAG_DELAY_SEC
               << " sec, noise=" << (add_noise ? "true" : "false")
               << "\n";
 
