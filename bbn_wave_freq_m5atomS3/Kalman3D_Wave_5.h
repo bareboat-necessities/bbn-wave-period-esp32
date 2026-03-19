@@ -142,7 +142,6 @@ class Kalman3D_Wave_5 {
     typedef Matrix<T, 9, 1> Vector9;
 
     static constexpr T STD_GRAVITY = T(9.80665);
-    static constexpr T tempC_ref   = T(35.0);
 
   public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -181,7 +180,7 @@ class Kalman3D_Wave_5 {
         time_update(gyr_body, last_acc_body_cached_, Ts);
     }
 
-    void measurement_update_acc_only(Vector3 const& acc_body, T tempC = tempC_ref);
+    void measurement_update_acc_only(Vector3 const& acc_body);
     void measurement_update_mag_only(Vector3 const& mag_body);
 
     void measurement_update_position_pseudo(const Vector3& p_meas, const Vector3& sigma_meas);
@@ -335,8 +334,6 @@ class Kalman3D_Wave_5 {
         s.z() = std::sqrt(std::max(T(0), Q_baw_rw_(2,2)));
         return s;
     }
-
-    void set_accel_bias_temp_coeff(const Vector3&) {}
 
     void set_exact_att_bias_Qd(bool on) { use_exact_att_bias_Qd_ = on; }
 
@@ -1209,7 +1206,7 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::time_update(
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_only(
-    Vector3 const& acc_meas_body, T) {
+    Vector3 const& acc_meas_body) {
     last_acc_diag_ = MeasDiag3{};
     last_acc_diag_.accepted = false;
     last_acc_body_cached_ = acc_meas_body;
