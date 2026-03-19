@@ -483,8 +483,6 @@ class Kalman3D_Wave_5 {
     Matrix3 R_p0;
     Matrix3 R_v0;
 
-    T tau_baw_sec_ = T(3.0);
-
     bool auto_zero_position_pseudo_enabled_ = true;
     bool auto_zero_velocity_pseudo_enabled_ = false;
     T    auto_zero_pseudo_period_sec_       = T(0.5);
@@ -617,14 +615,6 @@ class Kalman3D_Wave_5 {
     }
     EIGEN_STRONG_INLINE void freeze_base_rows_(Eigen::Matrix<T, NX, 1>& v) const {
         v.template segment<BASE_N>(0).setZero();
-    }
-
-    void set_world_accel_bias_tau(T tau_sec) {
-        tau_baw_sec_ = std::max(T(1e-3), tau_sec);
-    }
-    
-    [[nodiscard]] T get_world_accel_bias_tau() const {
-        return tau_baw_sec_;
     }
 
     T wind_heel_rad_ = T(0);
@@ -1239,62 +1229,43 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::time_update(
         const Vector3 u_rot = Rbw * (acc_cmd - lever);
         const Vector3 u_w   = u_rot + g_world;
 
-        const T dt  = Ts;
-        const T dt2 = dt * dt;
-        const T dt3 = dt2 * dt;
-        const T dt4 = dt2 * dt2;
-        const T dt5 = dt4 * dt;
-
         Vector3 v = xext.template segment<3>(OFF_V);
         Vector3 p = xext.template segment<3>(OFF_P);
 
-        T phi_b  = T(1);
-        T psi1_b = dt;
-        T psi2_b = T(0.5) * dt2;
-
         if constexpr (with_accel_bias) {
-            if (acc_bias_updates_enabled_) {
-                const T tau_b = std::max(T(1e-3), tau_baw_sec_);
-                const T lam   = T(1) / tau_b;
-                const T x     = lam * dt;
-                phi_b  = std::exp(-x);
-                psi1_b = (T(1) - phi_b) / lam;
-                psi2_b = (dt - psi1_b) / lam;
-            }
+            const Vector3 b_aw = xext.template segment<3>(OFF_BAW);
+            const Vector3 a_eff = u_w - b_aw;
 
-            const Vector3 b_aw_prev = xext.template segment<3>(OFF_BAW);
-
-            xext.template segment<3>(OFF_BAW) = phi_b * b_aw_prev;
-            xext.template segment<3>(OFF_V)   = v + dt * u_w + (-psi1_b) * b_aw_prev;
-            xext.template segment<3>(OFF_P)   = p + dt * v + (T(0.5) * dt2) * u_w + (-psi2_b) * b_aw_prev;
+            xext.template segment<3>(OFF_V) = v + Ts * a_eff;
+            xext.template segment<3>(OFF_P) = p + Ts * v + (T(0.5) * Ts * Ts) * a_eff;
         } else {
-            xext.template segment<3>(OFF_V) = v + dt * u_w;
-            xext.template segment<3>(OFF_P) = p + dt * v + (T(0.5) * dt2) * u_w;
+            xext.template segment<3>(OFF_V) = v + Ts * u_w;
+            xext.template segment<3>(OFF_P) = p + Ts * v + (T(0.5) * Ts * Ts) * u_w;
         }
 
         // Linear-state transition
         Fext.template block<3,3>(OFF_V, OFF_V) = Matrix3::Identity();
-        Fext.template block<3,3>(OFF_P, OFF_V) = Matrix3::Identity() * dt;
+        Fext.template block<3,3>(OFF_P, OFF_V) = Matrix3::Identity() * Ts;
         Fext.template block<3,3>(OFF_P, OFF_P) = Matrix3::Identity();
 
         if constexpr (with_accel_bias) {
-            Fext.template block<3,3>(OFF_BAW, OFF_BAW) = Matrix3::Identity() * phi_b;
-            Fext.template block<3,3>(OFF_V,   OFF_BAW) = -Matrix3::Identity() * psi1_b;
-            Fext.template block<3,3>(OFF_P,   OFF_BAW) = -Matrix3::Identity() * psi2_b;
+            Fext.template block<3,3>(OFF_BAW, OFF_BAW) = Matrix3::Identity();
+            Fext.template block<3,3>(OFF_V, OFF_BAW)   = -Matrix3::Identity() * Ts;
+            Fext.template block<3,3>(OFF_P, OFF_BAW)   = -Matrix3::Identity() * (T(0.5) * Ts * Ts);
         }
 
         // Attitude -> linear coupling:
         // u_rot = R_bw * (acc_cmd - lever), so delta u_rot ≈ [u_rot]_x * delta_theta
         const Matrix3 J_u_att = skew_symmetric_matrix(u_rot);
-        Fext.template block<3,3>(OFF_V, 0) = J_u_att * dt;
-        Fext.template block<3,3>(OFF_P, 0) = J_u_att * (T(0.5) * dt2);
+        Fext.template block<3,3>(OFF_V, 0) = J_u_att * Ts;
+        Fext.template block<3,3>(OFF_P, 0) = J_u_att * (T(0.5) * Ts * Ts);
 
         // Gyro-bias -> linear coupling through lever-arm dynamics
         if constexpr (with_gyro_bias) {
             if (use_imu_lever_arm_) {
                 const Matrix3 J_u_bg = -Rbw * Jlever_dbg;
-                Fext.template block<3,3>(OFF_V, 3) = J_u_bg * dt;
-                Fext.template block<3,3>(OFF_P, 3) = J_u_bg * (T(0.5) * dt2);
+                Fext.template block<3,3>(OFF_V, 3) = J_u_bg * Ts;
+                Fext.template block<3,3>(OFF_P, 3) = J_u_bg * (T(0.5) * Ts * Ts);
             }
         }
 
@@ -1303,57 +1274,34 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::time_update(
         Ru_world = T(0.5) * (Ru_world + Ru_world.transpose());
         project_psd<T,3>(Ru_world, T(1e-12));
 
+        const T dt  = Ts;
+        const T dt2 = dt * dt;
+        const T dt3 = dt2 * dt;
+        const T dt4 = dt2 * dt2;
+        const T dt5 = dt4 * dt;
+
         Qext.template block<3,3>(OFF_V, OFF_V).noalias() += dt2 * Ru_world;
         Qext.template block<3,3>(OFF_V, OFF_P).noalias() += (T(0.5) * dt3) * Ru_world;
         Qext.template block<3,3>(OFF_P, OFF_V) = Qext.template block<3,3>(OFF_V, OFF_P).transpose();
         Qext.template block<3,3>(OFF_P, OFF_P).noalias() += (T(0.25) * dt4) * Ru_world;
 
-        // Leaky OU process on b_aw and its induced v/p uncertainty
+        // Random walk on b_aw and its induced v/p uncertainty
         if constexpr (with_accel_bias) {
             for (int axis = 0; axis < 3; ++axis) {
                 const T q = acc_bias_updates_enabled_ ? Q_baw_rw_(axis, axis) : T(0);
-                if (!(q > T(0))) continue;
 
-                const T tau_b = std::max(T(1e-3), tau_baw_sec_);
-                const T lam   = T(1) / tau_b;
-                const T x     = lam * dt;
+                Qext(OFF_V + axis, OFF_V + axis)         += q * dt3 / T(3);
+                Qext(OFF_V + axis, OFF_P + axis)         += q * dt4 / T(8);
+                Qext(OFF_P + axis, OFF_V + axis)          = Qext(OFF_V + axis, OFF_P + axis);
+                Qext(OFF_P + axis, OFF_P + axis)         += q * dt5 / T(20);
 
-                T Qvv, Qvp, Qvb, Qpp, Qpb, Qbb;
+                Qext(OFF_V + axis, OFF_BAW + axis)       += -q * dt2 / T(2);
+                Qext(OFF_BAW + axis, OFF_V + axis)        = Qext(OFF_V + axis, OFF_BAW + axis);
 
-                if (x < T(1e-4)) {
-                    // Small-x fallback: RW limit
-                    Qvv = q * dt3 / T(3);
-                    Qvp = q * dt4 / T(8);
-                    Qvb = -q * dt2 / T(2);
-                    Qpp = q * dt5 / T(20);
-                    Qpb = -q * dt3 / T(6);
-                    Qbb = q * dt;
-                } else {
-                    const T phi   = std::exp(-x);
-                    const T phi2  = phi * phi;
-                    const T lam2  = lam * lam;
-                    const T lam3  = lam2 * lam;
-                    const T lam4  = lam2 * lam2;
-                    const T lam5  = lam4 * lam;
+                Qext(OFF_P + axis, OFF_BAW + axis)       += -q * dt3 / T(6);
+                Qext(OFF_BAW + axis, OFF_P + axis)        = Qext(OFF_P + axis, OFF_BAW + axis);
 
-                    Qvv = q * (T(2)*x - T(3) + T(4)*phi - phi2) / (T(2) * lam3);
-                    Qvp = q * (x - T(1) + phi) * (x - T(1) + phi) / (T(2) * lam4);
-                    Qvb = -q * (T(1) - phi) * (T(1) - phi) / (T(2) * lam2);
-                    Qpp = q * (T(2)*x*x*x - T(6)*x*x + T(6)*x*(T(1) - T(2)*phi) + T(3) - T(3)*phi2)
-                             / (T(6) * lam5);
-                    Qpb = q * (T(2)*x*phi + phi2 - T(1)) / (T(2) * lam3);
-                    Qbb = q * (T(1) - phi2) / (T(2) * lam);
-                }
-
-                Qext(OFF_V   + axis, OFF_V   + axis) += Qvv;
-                Qext(OFF_V   + axis, OFF_P   + axis) += Qvp;
-                Qext(OFF_P   + axis, OFF_V   + axis) += Qvp;
-                Qext(OFF_V   + axis, OFF_BAW + axis) += Qvb;
-                Qext(OFF_BAW + axis, OFF_V   + axis) += Qvb;
-                Qext(OFF_P   + axis, OFF_P   + axis) += Qpp;
-                Qext(OFF_P   + axis, OFF_BAW + axis) += Qpb;
-                Qext(OFF_BAW + axis, OFF_P   + axis) += Qpb;
-                Qext(OFF_BAW + axis, OFF_BAW + axis) += Qbb;
+                Qext(OFF_BAW + axis, OFF_BAW + axis)     += q * dt;
             }
         }
     }
@@ -1640,13 +1588,9 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_pos
     MatrixNX3& PCt = PCt_scratch_;
     PCt.noalias() = Pext.template block<NX,3>(0, off_P);
 
-    // Pseudo position update must not feed base/attitude.
+    // Pseudo updates must not feed base or b_aw.
     freeze_base_rows_(PCt);
-
-    // If b_aw learning is disabled, keep it frozen.
-    if constexpr (with_accel_bias) {
-        if (!acc_bias_updates_enabled_) freeze_baw_rows_(PCt);
-    }
+    freeze_baw_rows_(PCt);
 
     Eigen::LDLT<Matrix3> ldlt;
     if (!safe_ldlt3_(S_mat, ldlt, R_meas.norm())) return;
@@ -1655,10 +1599,7 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_pos
     K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
 
     freeze_base_rows_(K);
-
-    if constexpr (with_accel_bias) {
-        if (!acc_bias_updates_enabled_) freeze_baw_rows_(K);
-    }
+    freeze_baw_rows_(K);
 
     xext.noalias() += K * r;
     joseph_update3_(K, S_mat, PCt);
@@ -1735,21 +1676,15 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_ver
     Eigen::Matrix<T, NX, 1> PCt;
     PCt.noalias() = Pext.col(idx_vz);
 
-    // Pseudo vertical-velocity update must not feed base/attitude.
+    // Pseudo updates must not feed base or b_aw.
     freeze_base_rows_(PCt);
-
-    if constexpr (with_accel_bias) {
-        if (!acc_bias_updates_enabled_) freeze_baw_rows_(PCt);
-    }
+    freeze_baw_rows_(PCt);
 
     Eigen::Matrix<T, NX, 1> K;
     K.noalias() = PCt / S;
 
     freeze_base_rows_(K);
-
-    if constexpr (with_accel_bias) {
-        if (!acc_bias_updates_enabled_) freeze_baw_rows_(K);
-    }
+    freeze_baw_rows_(K);
 
     xext.noalias() += K * r;
 
@@ -1760,4 +1695,3 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_ver
 
     applyQuaternionCorrectionFromErrorState();
 }
-
