@@ -1690,9 +1690,12 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_vel
     MatrixNX3& PCt = PCt_scratch_;
     PCt.noalias() = Pext.template block<NX,3>(0, off_V);
 
-    // Pseudo updates must not feed base or b_aw.
+    // pseudo updates do not feed base/attitude
     freeze_base_rows_(PCt);
-    freeze_baw_rows_(PCt);
+
+    if constexpr (with_accel_bias) {
+        if (!acc_bias_updates_enabled_) freeze_baw_rows_(PCt);
+    }
 
     Eigen::LDLT<Matrix3> ldlt;
     if (!safe_ldlt3_(S_mat, ldlt, R_meas.norm())) return;
@@ -1701,7 +1704,10 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_vel
     K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
 
     freeze_base_rows_(K);
-    freeze_baw_rows_(K);
+
+    if constexpr (with_accel_bias) {
+        if (!acc_bias_updates_enabled_) freeze_baw_rows_(K);
+    }
 
     xext.noalias() += K * r;
     joseph_update3_(K, S_mat, PCt);
