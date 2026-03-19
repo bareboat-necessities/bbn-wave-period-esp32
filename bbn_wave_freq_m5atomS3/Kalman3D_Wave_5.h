@@ -1201,7 +1201,7 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::time_update(
         // Hardcoded ON: attitude -> linear coupling
         MatrixNLA F_LA;
         F_LA.setZero();
-        const Matrix3 Ju_th = skew_symmetric_matrix(u_no_g);
+        const Matrix3 Ju_th = -skew_symmetric_matrix(u_no_g);
         F_LA.template block<3,3>(0,0) = Ts * Ju_th;
         F_LA.template block<3,3>(3,0) = (T(0.5) * Ts * Ts) * Ju_th;
 
