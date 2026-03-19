@@ -890,9 +890,8 @@ private:
         const Eigen::Vector3f racc_cmd = compute_live_racc_cmd_(sigma_eff);
         mekf_->set_Racc_std(racc_cmd);
     
-        // IMPORTANT:
-        // b_aw RW is now explicitly set and no longer linked to Racc or sigma_eff.
-        // Keep it modest and stable so b_aw stays a residual correction, not a motion sink.
+        // Moderate fixed b_aw RW.
+        // Decoupled from Racc, but not so small that p/v drift cannot be absorbed.
         const float baw_xy_std = std::max(baw_rw_floor_, baw_gain_base_ * P_factor_);
         const float baw_z_std  = std::max(baw_rw_floor_, baw_gain_base_);
     
