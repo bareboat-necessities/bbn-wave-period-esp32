@@ -179,7 +179,6 @@ class Kalman3D_Wave_5 {
 
     void measurement_update_position_pseudo(const Vector3& p_meas, const Vector3& sigma_meas);
     void measurement_update_velocity_pseudo(const Vector3& v_meas, const Vector3& sigma_meas);
-    void measurement_update_vert_velocity_pseudo(T vz_meas, T sigma_meas);
 
     [[nodiscard]] Eigen::Quaternion<T> quaternion() const { return qref.conjugate(); }
     [[nodiscard]] MatrixBaseN covariance_base() const { return Pext.topLeftCorner(BASE_N, BASE_N); }
@@ -1588,12 +1587,9 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_pos
     MatrixNX3& PCt = PCt_scratch_;
     PCt.noalias() = Pext.template block<NX,3>(0, off_P);
 
-    // pseudo updates do not feed base/attitude
+    // Pseudo updates must not feed base or b_aw.
     freeze_base_rows_(PCt);
-
-    if constexpr (with_accel_bias) {
-        if (!acc_bias_updates_enabled_) freeze_baw_rows_(PCt);
-    }
+    freeze_baw_rows_(PCt);
 
     Eigen::LDLT<Matrix3> ldlt;
     if (!safe_ldlt3_(S_mat, ldlt, R_meas.norm())) return;
@@ -1602,10 +1598,7 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_pos
     K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
 
     freeze_base_rows_(K);
-
-    if constexpr (with_accel_bias) {
-        if (!acc_bias_updates_enabled_) freeze_baw_rows_(K);
-    }
+    freeze_baw_rows_(K);
 
     xext.noalias() += K * r;
     joseph_update3_(K, S_mat, PCt);
@@ -1638,12 +1631,9 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_vel
     MatrixNX3& PCt = PCt_scratch_;
     PCt.noalias() = Pext.template block<NX,3>(0, off_V);
 
-    // pseudo updates do not feed base/attitude
+    // Pseudo updates must not feed base or b_aw.
     freeze_base_rows_(PCt);
-
-    if constexpr (with_accel_bias) {
-        if (!acc_bias_updates_enabled_) freeze_baw_rows_(PCt);
-    }
+    freeze_baw_rows_(PCt);
 
     Eigen::LDLT<Matrix3> ldlt;
     if (!safe_ldlt3_(S_mat, ldlt, R_meas.norm())) return;
@@ -1652,58 +1642,9 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_vel
     K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
 
     freeze_base_rows_(K);
-
-    if constexpr (with_accel_bias) {
-        if (!acc_bias_updates_enabled_) freeze_baw_rows_(K);
-    }
+    freeze_baw_rows_(K);
 
     xext.noalias() += K * r;
     joseph_update3_(K, S_mat, PCt);
-    applyQuaternionCorrectionFromErrorState();
-}
-
-template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_vert_velocity_pseudo(
-    T vz_meas, T sigma_meas) {
-    if (!linear_block_enabled_) return;
-
-    constexpr int idx_vz = OFF_V + 2;
-
-    if (!std::isfinite(vz_meas)) return;
-
-    const T r = vz_meas - xext(idx_vz);
-    if (!std::isfinite(r)) return;
-
-    const T sigma = std::max(T(0), sigma_meas);
-    const T R = sigma * sigma;
-    const T S = Pext(idx_vz, idx_vz) + R;
-    if (!(S > T(0)) || !std::isfinite(S)) return;
-
-    Eigen::Matrix<T, NX, 1> PCt;
-    PCt.noalias() = Pext.col(idx_vz);
-
-    // pseudo updates do not feed base/attitude
-    freeze_base_rows_(PCt);
-
-    if constexpr (with_accel_bias) {
-        if (!acc_bias_updates_enabled_) freeze_baw_rows_(PCt);
-    }
-
-    Eigen::Matrix<T, NX, 1> K;
-    K.noalias() = PCt / S;
-
-    freeze_base_rows_(K);
-
-    if constexpr (with_accel_bias) {
-        if (!acc_bias_updates_enabled_) freeze_baw_rows_(K);
-    }
-
-    xext.noalias() += K * r;
-
-    Pext.noalias() -= K * PCt.transpose();
-    Pext.noalias() -= PCt * K.transpose();
-    Pext.noalias() += K * S * K.transpose();
-    Pext = T(0.5) * (Pext + Pext.transpose());
-
     applyQuaternionCorrectionFromErrorState();
 }
