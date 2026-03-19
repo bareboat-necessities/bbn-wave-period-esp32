@@ -1582,30 +1582,24 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_vel
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_velocity_pseudo(
-    const Vector3& v_meas, const Vector3& sigma_meas) {
+void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_vert_velocity_pseudo(
+    T vz_meas, T sigma_meas) {
     if (!linear_block_enabled_) return;
 
-    constexpr int off_V = OFF_V;
+    constexpr int idx_vz = OFF_V + 2;
 
-    const Vector3 v_pred = xext.template segment<3>(off_V);
-    const Vector3 r = v_meas - v_pred;
-    if (!r.allFinite()) return;
+    if (!std::isfinite(vz_meas)) return;
 
-    Matrix3& S_mat = S_scratch_;
-    S_mat = Pext.template block<3,3>(off_V, off_V);
+    const T r = vz_meas - xext(idx_vz);
+    if (!std::isfinite(r)) return;
 
-    Matrix3 R_meas = Matrix3::Zero();
-    const T sx = std::max(T(0), sigma_meas.x());
-    const T sy = std::max(T(0), sigma_meas.y());
-    const T sz = std::max(T(0), sigma_meas.z());
-    R_meas(0,0) = sx * sx;
-    R_meas(1,1) = sy * sy;
-    R_meas(2,2) = sz * sz;
-    S_mat.noalias() += R_meas;
+    const T sigma = std::max(T(0), sigma_meas);
+    const T R = sigma * sigma;
+    const T S = Pext(idx_vz, idx_vz) + R;
+    if (!(S > T(0)) || !std::isfinite(S)) return;
 
-    MatrixNX3& PCt = PCt_scratch_;
-    PCt.noalias() = Pext.template block<NX,3>(0, off_V);
+    Eigen::Matrix<T, NX, 1> PCt;
+    PCt.noalias() = Pext.col(idx_vz);
 
     // Hardcoded OFF: pseudo updates do not feed base/attitude
     freeze_base_rows_(PCt);
@@ -1614,11 +1608,8 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_vel
         if (!acc_bias_updates_enabled_) freeze_baw_rows_(PCt);
     }
 
-    Eigen::LDLT<Matrix3> ldlt;
-    if (!safe_ldlt3_(S_mat, ldlt, R_meas.norm())) return;
-
-    MatrixNX3& K = K_scratch_;
-    K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
+    Eigen::Matrix<T, NX, 1> K;
+    K.noalias() = PCt / S;
 
     freeze_base_rows_(K);
 
@@ -1627,6 +1618,11 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_vel
     }
 
     xext.noalias() += K * r;
-    joseph_update3_(K, S_mat, PCt);
+
+    Pext.noalias() -= K * PCt.transpose();
+    Pext.noalias() -= PCt * K.transpose();
+    Pext.noalias() += K * S * K.transpose();
+    Pext = T(0.5) * (Pext + Pext.transpose());
+
     applyQuaternionCorrectionFromErrorState();
 }
