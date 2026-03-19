@@ -23,6 +23,10 @@
     - quaternion_boat() returns physical BODY -> WORLD.
     - measurement_update_acc_only() is an attitude-centric specific-force-direction update.
       It does not directly estimate a latent linear acceleration state.
+
+  Important behavior change in this revision:
+    - The old implicit periodic zero-position / zero-velocity pseudo-updates are now OFF by default.
+      They are available as opt-in, time-based "auto-zero" pseudos.
 */
 
 #ifdef EIGEN_NON_ARDUINO
@@ -211,9 +215,10 @@ class Kalman3D_Wave_5 {
     void set_linear_block_enabled(bool on) {
         if (linear_block_enabled_ && !on) {
             zero_AL_cross_cov_once_();
-            pseudo_update_counter_ = 0;
+            auto_zero_pseudo_elapsed_sec_ = T(0);
         }
         linear_block_enabled_ = on;
+        if (!linear_block_enabled_) auto_zero_pseudo_elapsed_sec_ = T(0);
     }
     bool linear_block_enabled() const { return linear_block_enabled_; }
 
@@ -288,10 +293,13 @@ class Kalman3D_Wave_5 {
     void set_Racc_std(const Vector3& sigma_acc) {
         if (param_rw_enabled_) { param_rw_update_sigma_acc_cmd_(sigma_acc); return; }
         Racc = sigma_acc.array().square().matrix().asDiagonal();
+        Racc = T(0.5) * (Racc + Racc.transpose());
+        refresh_baw_rw_from_sigma_acc_();
     }
 
     void set_Rmag_std(const Vector3& sigma_mag) {
         Rmag = sigma_mag.array().square().matrix().asDiagonal();
+        Rmag = T(0.5) * (Rmag + Rmag.transpose());
     }
 
     void set_initial_linear_uncertainty(T sigma_v0, T sigma_p0) {
@@ -326,6 +334,7 @@ class Kalman3D_Wave_5 {
             if (!std::isfinite(s(i)) || s(i) < T(0)) s(i) = T(0);
         }
         Q_baw_rw_ = s.array().square().matrix().asDiagonal();
+        Q_baw_rw_ = T(0.5) * (Q_baw_rw_ + Q_baw_rw_.transpose());
     }
 
     [[nodiscard]] Vector3 get_world_accel_bias_rw_std() const {
@@ -345,7 +354,11 @@ class Kalman3D_Wave_5 {
 
     void set_param_rw_enabled(bool on) {
         param_rw_enabled_ = on;
-        if (param_rw_enabled_) refresh_model_params_from_filtered_();
+        if (param_rw_enabled_) {
+            refresh_model_params_from_filtered_();
+        } else {
+            refresh_baw_rw_from_sigma_acc_();
+        }
     }
 
     void set_param_rw_process_std_log(Vector3 sigma_acc_rw_log,
@@ -426,6 +439,32 @@ class Kalman3D_Wave_5 {
         ).finished();
     }
 
+    void set_auto_zero_pseudo_updates(bool position_on, bool velocity_on, T period_sec) {
+        auto_zero_position_pseudo_enabled_ = position_on;
+        auto_zero_velocity_pseudo_enabled_ = velocity_on;
+        auto_zero_pseudo_period_sec_ = std::max(T(0), period_sec);
+        auto_zero_pseudo_elapsed_sec_ = T(0);
+    }
+
+    void set_auto_zero_position_pseudo_enabled(bool on) {
+        auto_zero_position_pseudo_enabled_ = on;
+        auto_zero_pseudo_elapsed_sec_ = T(0);
+    }
+
+    void set_auto_zero_velocity_pseudo_enabled(bool on) {
+        auto_zero_velocity_pseudo_enabled_ = on;
+        auto_zero_pseudo_elapsed_sec_ = T(0);
+    }
+
+    void set_auto_zero_pseudo_period(T period_sec) {
+        auto_zero_pseudo_period_sec_ = std::max(T(0), period_sec);
+        auto_zero_pseudo_elapsed_sec_ = T(0);
+    }
+
+    [[nodiscard]] bool auto_zero_position_pseudo_enabled() const { return auto_zero_position_pseudo_enabled_; }
+    [[nodiscard]] bool auto_zero_velocity_pseudo_enabled() const { return auto_zero_velocity_pseudo_enabled_; }
+    [[nodiscard]] T auto_zero_pseudo_period() const { return auto_zero_pseudo_period_sec_; }
+
   private:
     const T gravity_magnitude_ = T(STD_GRAVITY);
 
@@ -448,8 +487,10 @@ class Kalman3D_Wave_5 {
     Matrix3 R_p0;
     Matrix3 R_v0;
 
-    int pseudo_update_counter_ = 0;
-    static constexpr int PSEUDO_UPDATE_PERIOD = 3;
+    bool auto_zero_position_pseudo_enabled_ = false;
+    bool auto_zero_velocity_pseudo_enabled_ = false;
+    T    auto_zero_pseudo_period_sec_       = T(0.5);
+    T    auto_zero_pseudo_elapsed_sec_      = T(0);
 
     bool linear_block_enabled_ = true;
     bool acc_bias_updates_enabled_ = true;
@@ -470,9 +511,6 @@ class Kalman3D_Wave_5 {
 
     MatrixBaseN  F_AA_scratch_;
     MatrixBaseN  Q_AA_scratch_;
-    Matrix9      F_LL_scratch_;
-    Matrix9      Q_LL_scratch_;
-    MatrixBaseN  tmpAA_scratch_;
     MatrixNX3    PCt_scratch_;
     MatrixNX3    K_scratch_;
     Matrix3      S_scratch_;
@@ -781,16 +819,19 @@ class Kalman3D_Wave_5 {
         Vector3 sigma_acc = log_sigma_acc_f_.x.array().exp().matrix();
         sigma_acc = clamp_pos_vec_(sigma_acc, sigma_acc_min_, sigma_acc_max_);
         Racc = sigma_acc.array().square().matrix().asDiagonal();
-    
+        Racc = T(0.5) * (Racc + Racc.transpose());
+
         Vector3 sigma_p0 = log_sigma_p0_f_.x.array().exp().matrix();
         sigma_p0 = clamp_pos_vec_(sigma_p0, sigma_p0_min_, sigma_p0_max_);
         R_p0 = sigma_p0.array().square().matrix().asDiagonal();
         R_p0 = T(0.5) * (R_p0 + R_p0.transpose());
-    
+
         Vector3 sigma_v0 = log_sigma_v0_f_.x.array().exp().matrix();
         sigma_v0 = clamp_pos_vec_(sigma_v0, sigma_v0_min_, sigma_v0_max_);
         R_v0 = sigma_v0.array().square().matrix().asDiagonal();
         R_v0 = T(0.5) * (R_v0 + R_v0.transpose());
+
+        refresh_baw_rw_from_sigma_acc_();
     }
 
     EIGEN_STRONG_INLINE void refresh_baw_rw_from_sigma_acc_() {
@@ -798,6 +839,7 @@ class Kalman3D_Wave_5 {
         const Vector3 sigma_rw =
             (baw_rw_gain_.cwiseProduct(sigma_acc) + baw_rw_floor_).cwiseMax(T(1e-9));
         Q_baw_rw_ = sigma_rw.array().square().matrix().asDiagonal();
+        Q_baw_rw_ = T(0.5) * (Q_baw_rw_ + Q_baw_rw_.transpose());
     }
 
     EIGEN_STRONG_INLINE void param_rw_predict_(T dt) {
@@ -837,6 +879,32 @@ class Kalman3D_Wave_5 {
         log_sigma_v0_f_.update(s.array().log().matrix());
         refresh_model_params_from_filtered_();
     }
+
+    EIGEN_STRONG_INLINE void maybe_run_auto_zero_pseudos_(T Ts) {
+        if (!linear_block_enabled_) {
+            auto_zero_pseudo_elapsed_sec_ = T(0);
+            return;
+        }
+        if (!(auto_zero_position_pseudo_enabled_ || auto_zero_velocity_pseudo_enabled_)) {
+            auto_zero_pseudo_elapsed_sec_ = T(0);
+            return;
+        }
+        if (!(auto_zero_pseudo_period_sec_ > T(0)) || !std::isfinite(auto_zero_pseudo_period_sec_)) {
+            return;
+        }
+        if (!(Ts > T(0)) || !std::isfinite(Ts)) return;
+
+        auto_zero_pseudo_elapsed_sec_ += Ts;
+        if (auto_zero_pseudo_elapsed_sec_ + T(1e-12) < auto_zero_pseudo_period_sec_) return;
+        auto_zero_pseudo_elapsed_sec_ = T(0);
+
+        if (auto_zero_position_pseudo_enabled_) {
+            measurement_update_position_pseudo(Vector3::Zero(), get_Rp0_noise_std());
+        }
+        if (auto_zero_velocity_pseudo_enabled_) {
+            measurement_update_velocity_pseudo(Vector3::Zero(), get_Rv0_noise_std());
+        }
+    }
 };
 
 // ========================== Implementation ==========================
@@ -853,6 +921,9 @@ Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::Kalman3D_Wave_5(
     Qbase(initialize_Q(sigma_g, b0)),
     Racc(sigma_a.array().square().matrix().asDiagonal())
 {
+    Rmag = T(0.5) * (Rmag + Rmag.transpose());
+    Racc = T(0.5) * (Racc + Racc.transpose());
+
     R_p0 = Matrix3::Identity() * R_p0_noise_var;
     R_v0 = Matrix3::Identity() * R_v0_noise_var;
 
@@ -955,6 +1026,7 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::initialize_from_acc_ma
 
     v2ref = R_bw() * mag;
     last_acc_body_cached_ = acc_body;
+    auto_zero_pseudo_elapsed_sec_ = T(0);
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
@@ -995,6 +1067,7 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::initialize_from_acc(Ve
     qref = quaternion_from_acc(acc_n);
     qref.normalize();
     last_acc_body_cached_ = acc_body;
+    auto_zero_pseudo_elapsed_sec_ = T(0);
 }
 
 template <typename T, bool with_gyro_bias, bool with_accel_bias>
@@ -1014,11 +1087,15 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::initialize_from_truth(
     Pext.setZero();
     const T p_0 = T(1e-5);
     Pext.diagonal().array() = p_0;
+
+    auto_zero_pseudo_elapsed_sec_ = T(0);
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::time_update(
     Vector3 const& gyr_body, Vector3 const& acc_body, T Ts) {
+    if (!(Ts > T(0)) || !std::isfinite(Ts)) return;
+
     last_dt_ = Ts;
     last_acc_body_cached_ = acc_body;
 
@@ -1049,7 +1126,7 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::time_update(
     qref = qref * dq;
     qref.normalize();
 
-    Matrix3 I = Matrix3::Identity();
+    const Matrix3 I = Matrix3::Identity();
     const Vector3 w = last_gyr_bias_corrected;
     const T omega = w.norm();
     const T theta = omega * Ts;
@@ -1117,103 +1194,128 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::time_update(
         else project_psd<T,3>(Q_AA, T(1e-12));
     }
 
-    {
-        constexpr int NA = BASE_N;
-        MatrixBaseN& tmpAA = tmpAA_scratch_;
-        tmpAA.noalias() = F_AA * Pext.template block<NA,NA>(0,0);
-        Pext.template block<NA,NA>(0,0).noalias() = tmpAA * F_AA.transpose();
-        Pext.template block<NA,NA>(0,0).noalias() += Q_AA;
-    }
+    MatrixNX Fext = MatrixNX::Identity();
+    MatrixNX Qext = MatrixNX::Zero();
+
+    Fext.template block<BASE_N,BASE_N>(0,0) = F_AA;
+    Qext.template block<BASE_N,BASE_N>(0,0) = Q_AA;
 
     if (linear_block_enabled_) {
         const Vector3 acc_cmd = deheel_vector_(acc_body);
 
         Vector3 lever = Vector3::Zero();
+        Matrix3 Jlever_dbg = Matrix3::Zero();
+
         if (use_imu_lever_arm_) {
             const Vector3 r_imu_bprime = deheel_vector_(r_imu_wrt_cog_body_phys_);
             lever.noalias() += alpha_b_.cross(r_imu_bprime)
                             +  omega_b.cross(omega_b.cross(r_imu_bprime));
+
+            if constexpr (with_gyro_bias) {
+                T k_alpha = T(0);
+                if (have_prev_omega_ && Ts > T(0)) {
+                    if (alpha_smooth_tau_ > T(0)) {
+                        const T a = T(1) - std::exp(-Ts / alpha_smooth_tau_);
+                        k_alpha = a / Ts;
+                    } else {
+                        k_alpha = T(1) / Ts;
+                    }
+                }
+                const Matrix3 J_alpha_part = k_alpha * skew_symmetric_matrix(r_imu_bprime);
+                const Matrix3 J_omega_part = d_omega_x_omega_x_r_domega_(omega_b, r_imu_bprime);
+                Jlever_dbg = J_alpha_part - J_omega_part;
+            }
         }
 
+        const Matrix3 Rbw = R_bw();
         const Vector3 g_world(0,0,+gravity_magnitude_);
-        const Vector3 u_w = R_bw() * (acc_cmd - lever) + g_world;
 
-        Matrix9& F_LL = F_LL_scratch_;
-        F_LL.setZero();
-        Matrix9& Q_LL = Q_LL_scratch_;
-        Q_LL.setZero();
-
-        F_LL.template block<3,3>(0,0) = Matrix3::Identity();
-        F_LL.template block<3,3>(3,0) = Matrix3::Identity() * Ts;
-        F_LL.template block<3,3>(3,3) = Matrix3::Identity();
+        const Vector3 u_rot = Rbw * (acc_cmd - lever);
+        const Vector3 u_w   = u_rot + g_world;
 
         Vector3 v = xext.template segment<3>(OFF_V);
         Vector3 p = xext.template segment<3>(OFF_P);
 
         if constexpr (with_accel_bias) {
-            F_LL.template block<3,3>(6,6) = Matrix3::Identity();
-            F_LL.template block<3,3>(0,6) = -Matrix3::Identity() * Ts;
-            F_LL.template block<3,3>(3,6) = -Matrix3::Identity() * (T(0.5) * Ts * Ts);
-
             const Vector3 b_aw = xext.template segment<3>(OFF_BAW);
             const Vector3 a_eff = u_w - b_aw;
 
             xext.template segment<3>(OFF_V) = v + Ts * a_eff;
             xext.template segment<3>(OFF_P) = p + Ts * v + (T(0.5) * Ts * Ts) * a_eff;
-
-            for (int axis = 0; axis < 3; ++axis) {
-                const T q = acc_bias_updates_enabled_ ? Q_baw_rw_(axis, axis) : T(0);
-                const T dt = Ts;
-                const T dt2 = dt*dt;
-                const T dt3 = dt2*dt;
-                const T dt4 = dt3*dt;
-                const T dt5 = dt4*dt;
-
-                Q_LL(axis, axis)           = q * dt3 / T(3);
-                Q_LL(axis, 3 + axis)       = q * dt4 / T(8);
-                Q_LL(3 + axis, axis)       = Q_LL(axis, 3 + axis);
-                Q_LL(3 + axis, 3 + axis)   = q * dt5 / T(20);
-                Q_LL(axis, 6 + axis)       = -q * dt2 / T(2);
-                Q_LL(6 + axis, axis)       = Q_LL(axis, 6 + axis);
-                Q_LL(3 + axis, 6 + axis)   = -q * dt3 / T(6);
-                Q_LL(6 + axis, 3 + axis)   = Q_LL(3 + axis, 6 + axis);
-                Q_LL(6 + axis, 6 + axis)   = q * dt;
-            }
         } else {
             xext.template segment<3>(OFF_V) = v + Ts * u_w;
             xext.template segment<3>(OFF_P) = p + Ts * v + (T(0.5) * Ts * Ts) * u_w;
         }
 
-        constexpr int NA = BASE_N;
-        constexpr int NL = LIN_N;
+        // Linear-state transition
+        Fext.template block<3,3>(OFF_V, OFF_V) = Matrix3::Identity();
+        Fext.template block<3,3>(OFF_P, OFF_V) = Matrix3::Identity() * Ts;
+        Fext.template block<3,3>(OFF_P, OFF_P) = Matrix3::Identity();
 
-        const Matrix<T,NL,NL> Fll_small = F_LL.template block<NL,NL>(0,0);
+        if constexpr (with_accel_bias) {
+            Fext.template block<3,3>(OFF_BAW, OFF_BAW) = Matrix3::Identity();
+            Fext.template block<3,3>(OFF_V, OFF_BAW)   = -Matrix3::Identity() * Ts;
+            Fext.template block<3,3>(OFF_P, OFF_BAW)   = -Matrix3::Identity() * (T(0.5) * Ts * Ts);
+        }
 
-        Matrix<T,NL,NL> Qll_small = Q_LL.template block<NL,NL>(0,0);
-        Qll_small = T(0.5) * (Qll_small + Qll_small.transpose());
+        // Attitude -> linear coupling:
+        // u_rot = R_bw * (acc_cmd - lever), so delta u_rot ≈ [u_rot]_x * delta_theta
+        const Matrix3 J_u_att = skew_symmetric_matrix(u_rot);
+        Fext.template block<3,3>(OFF_V, 0) = J_u_att * Ts;
+        Fext.template block<3,3>(OFF_P, 0) = J_u_att * (T(0.5) * Ts * Ts);
 
-        Matrix<T,NL,NL> tmpLL_small =
-            Fll_small * Pext.template block<NL,NL>(OFF_V,OFF_V) * Fll_small.transpose() + Qll_small;
-        Pext.template block<NL,NL>(OFF_V,OFF_V) = tmpLL_small;
+        // Gyro-bias -> linear coupling through lever-arm dynamics
+        if constexpr (with_gyro_bias) {
+            if (use_imu_lever_arm_) {
+                const Matrix3 J_u_bg = -Rbw * Jlever_dbg;
+                Fext.template block<3,3>(OFF_V, 3) = J_u_bg * Ts;
+                Fext.template block<3,3>(OFF_P, 3) = J_u_bg * (T(0.5) * Ts * Ts);
+            }
+        }
 
-        auto tmpAL_small = F_AA * Pext.template block<NA,NL>(0,OFF_V);
-        Pext.template block<NA,NL>(0,OFF_V) = tmpAL_small * Fll_small.transpose();
-        Pext.template block<NL,NA>(OFF_V,0) = Pext.template block<NA,NL>(0,OFF_V).transpose();
+        // Accelerometer command noise injection into linear process
+        Matrix3 Ru_world = Rbw * Racc * Rbw.transpose();
+        Ru_world = T(0.5) * (Ru_world + Ru_world.transpose());
+        project_psd<T,3>(Ru_world, T(1e-12));
+
+        const T dt  = Ts;
+        const T dt2 = dt * dt;
+        const T dt3 = dt2 * dt;
+        const T dt4 = dt2 * dt2;
+        const T dt5 = dt4 * dt;
+
+        Qext.template block<3,3>(OFF_V, OFF_V).noalias() += dt2 * Ru_world;
+        Qext.template block<3,3>(OFF_V, OFF_P).noalias() += (T(0.5) * dt3) * Ru_world;
+        Qext.template block<3,3>(OFF_P, OFF_V) = Qext.template block<3,3>(OFF_V, OFF_P).transpose();
+        Qext.template block<3,3>(OFF_P, OFF_P).noalias() += (T(0.25) * dt4) * Ru_world;
+
+        // Random walk on b_aw and its induced v/p uncertainty
+        if constexpr (with_accel_bias) {
+            for (int axis = 0; axis < 3; ++axis) {
+                const T q = acc_bias_updates_enabled_ ? Q_baw_rw_(axis, axis) : T(0);
+
+                Qext(OFF_V + axis, OFF_V + axis)         += q * dt3 / T(3);
+                Qext(OFF_V + axis, OFF_P + axis)         += q * dt4 / T(8);
+                Qext(OFF_P + axis, OFF_V + axis)          = Qext(OFF_V + axis, OFF_P + axis);
+                Qext(OFF_P + axis, OFF_P + axis)         += q * dt5 / T(20);
+
+                Qext(OFF_V + axis, OFF_BAW + axis)       += -q * dt2 / T(2);
+                Qext(OFF_BAW + axis, OFF_V + axis)        = Qext(OFF_V + axis, OFF_BAW + axis);
+
+                Qext(OFF_P + axis, OFF_BAW + axis)       += -q * dt3 / T(6);
+                Qext(OFF_BAW + axis, OFF_P + axis)        = Qext(OFF_P + axis, OFF_BAW + axis);
+
+                Qext(OFF_BAW + axis, OFF_BAW + axis)     += q * dt;
+            }
+        }
     }
 
+    Qext = T(0.5) * (Qext + Qext.transpose());
+    MatrixNX Pnew = Fext * Pext * Fext.transpose() + Qext;
+    Pext = Pnew;
     symmetrize_Pext_();
 
-    if (linear_block_enabled_) {
-        if (++pseudo_update_counter_ >= PSEUDO_UPDATE_PERIOD) {
-            Vector3 sigma_p0 = get_Rp0_noise_std();
-            Vector3 sigma_v0 = get_Rv0_noise_std();
-            measurement_update_position_pseudo(Vector3::Zero(), sigma_p0);
-            measurement_update_velocity_pseudo(Vector3::Zero(), sigma_v0);
-            pseudo_update_counter_ = 0;
-        }
-    } else {
-        pseudo_update_counter_ = 0;
-    }
+    maybe_run_auto_zero_pseudos_(Ts);
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
@@ -1442,10 +1544,30 @@ Matrix<T, 3, 3> Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::skew_symmet
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::applyQuaternionCorrectionFromErrorState() {
-    Eigen::Quaternion<T> corr = quat_from_delta_theta((xext.template segment<3>(0)).eval());
+    const Vector3 dtheta = xext.template segment<3>(0);
+    if (!dtheta.allFinite()) {
+        xext.template head<3>().setZero();
+        return;
+    }
+
+    const Matrix3 Gtheta = Matrix3::Identity() - T(0.5) * skew_symmetric_matrix(dtheta);
+
+    Eigen::Quaternion<T> corr = quat_from_delta_theta(dtheta);
     qref = qref * corr;
     qref.normalize();
+
+    {
+        Eigen::Matrix<T,3,3> Ptt = Pext.template block<3,3>(0,0);
+        Pext.template block<3,3>(0,0) = Gtheta * Ptt * Gtheta.transpose();
+    }
+    if constexpr (NX > 3) {
+        Eigen::Matrix<T,3,NX-3> Ptx = Pext.template block<3,NX-3>(0,3);
+        Pext.template block<3,NX-3>(0,3) = Gtheta * Ptx;
+        Pext.template block<NX-3,3>(3,0) = Pext.template block<3,NX-3>(0,3).transpose();
+    }
+
     xext.template head<3>().setZero();
+    symmetrize_Pext_();
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
@@ -1474,7 +1596,7 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_pos
     MatrixNX3& PCt = PCt_scratch_;
     PCt.noalias() = Pext.template block<NX,3>(0, off_P);
 
-    // Hardcoded OFF: pseudo updates do not feed base/attitude
+    // pseudo updates do not feed base/attitude
     freeze_base_rows_(PCt);
 
     if constexpr (with_accel_bias) {
@@ -1524,7 +1646,7 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_vel
     MatrixNX3& PCt = PCt_scratch_;
     PCt.noalias() = Pext.template block<NX,3>(0, off_V);
 
-    // Hardcoded OFF: pseudo updates do not feed base/attitude
+    // pseudo updates do not feed base/attitude
     freeze_base_rows_(PCt);
 
     if constexpr (with_accel_bias) {
@@ -1568,7 +1690,7 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_ver
     Eigen::Matrix<T, NX, 1> PCt;
     PCt.noalias() = Pext.col(idx_vz);
 
-    // Hardcoded OFF: pseudo updates do not feed base/attitude
+    // pseudo updates do not feed base/attitude
     freeze_base_rows_(PCt);
 
     if constexpr (with_accel_bias) {
