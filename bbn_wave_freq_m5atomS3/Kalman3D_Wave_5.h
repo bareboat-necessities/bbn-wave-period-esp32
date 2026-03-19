@@ -25,7 +25,7 @@
     - Internal qref stores WORLD -> BODY' where BODY' is the virtual un-heeled frame.
     - quaternion() returns BODY' -> WORLD.
     - quaternion_boat() returns physical BODY -> WORLD.
-    - measurement_update_acc_only() is now an attitude-centric specific-force-direction update.
+    - measurement_update_acc_only() is an attitude-centric specific-force-direction update.
       It does not directly estimate a latent linear acceleration state.
 */
 
@@ -43,9 +43,6 @@
 
 using Eigen::Matrix;
 
-// Quaternion from a rotation vector δθ.
-// Accurate for both small and large |δθ|.
-// Uses a small-angle series to avoid loss of precision near |δθ| = 0.
 template<typename T>
 inline Eigen::Quaternion<T> quat_from_delta_theta(const Eigen::Matrix<T,3,1>& dtheta) {
     const T theta = dtheta.norm();
@@ -74,9 +71,6 @@ inline Eigen::Quaternion<T> quat_from_delta_theta(const Eigen::Matrix<T,3,1>& dt
     return q;
 }
 
-// Helper: symmetrize and regularize an approximately symmetric matrix.
-// For N <= 4 this performs eigenvalue clamping to PSD.
-// For larger N this is only a numerical regularization path, not a true PSD projection.
 template<typename T, int N>
 static inline void project_psd(Eigen::Matrix<T,N,N>& S, T eps = T(1e-12)) {
     S = T(0.5) * (S + S.transpose());
@@ -179,12 +173,10 @@ class Kalman3D_Wave_5 {
 
     void set_mag_world_ref(const Vector3& B_world) { v2ref = B_world; }
 
-    // Preferred propagation API: use gyro + accel command together.
     void time_update(Vector3 const& gyr_body,
                      Vector3 const& acc_body,
                      T Ts);
 
-    // Compatibility overload: propagates using the most recent cached accel sample.
     void time_update(Vector3 const& gyr_body, T Ts) {
         time_update(gyr_body, last_acc_body_cached_, Ts);
     }
@@ -214,7 +206,6 @@ class Kalman3D_Wave_5 {
         return Vector3::Zero();
     }
 
-    // World-frame residual acceleration bias / command correction (NED).
     [[nodiscard]] Vector3 get_acc_bias() const {
         if constexpr (with_accel_bias) return xext.template segment<3>(OFF_BAW);
         return Vector3::Zero();
@@ -328,8 +319,6 @@ class Kalman3D_Wave_5 {
         if constexpr (with_accel_bias) xext.template segment<3>(OFF_BAW) = b0_world;
     }
 
-    // RW std of the world-frame residual-acceleration bias, scaled from filtered sigma_acc:
-    // sigma_baw_rw = gain .* sigma_acc + floor
     void set_world_accel_bias_rw_gain(const Vector3& gain) {
         baw_rw_gain_ = gain.cwiseMax(T(0));
         refresh_baw_rw_from_sigma_acc_();
@@ -347,12 +336,10 @@ class Kalman3D_Wave_5 {
         return s;
     }
 
-    // Deprecated for compatibility. In _5 this is a no-op because bias is world-frame.
     void set_accel_bias_temp_coeff(const Vector3&) {}
 
     void set_exact_att_bias_Qd(bool on) { use_exact_att_bias_Qd_ = on; }
 
-    // Reinterpret third vector as world-frame residual acceleration bias.
     void initialize_from_truth(const Vector3 &p_ned,
                                const Vector3 &v_ned,
                                const Eigen::Quaternion<T> &q_bw,
@@ -453,7 +440,6 @@ class Kalman3D_Wave_5 {
     Vector3 last_gyr_bias_corrected = Vector3::Zero();
     Vector3 last_acc_body_cached_   = Vector3::Zero();
 
-    // RW drive PSD for world-frame residual acceleration bias: units (m/s^2)^2 / s
     Matrix3 Q_baw_rw_ = Matrix3::Identity() * T(1e-4);
     Vector3 initial_baw_std_ = Vector3::Constant(T(0.02));
 
@@ -481,7 +467,6 @@ class Kalman3D_Wave_5 {
     T last_dt_ = T(1.0/200);
     T alpha_smooth_tau_ = T(0.05);
 
-    // Scaling from filtered sigma_acc -> world bias RW std/sqrt(s)
     Vector3 baw_rw_gain_  = Vector3::Constant(T(0.25));
     Vector3 baw_rw_floor_ = Vector3::Constant(T(1e-4));
 
@@ -583,6 +568,12 @@ class Kalman3D_Wave_5 {
         M.template block<LIN_N,3>(OFF_V, 0).setZero();
     }
 
+    EIGEN_STRONG_INLINE void freeze_baw_rows_(MatrixNX3& M) const {
+        if constexpr (with_accel_bias) {
+            M.template block<3,3>(OFF_BAW, 0).setZero();
+        }
+    }
+
     T wind_heel_rad_ = T(0);
     T cos_unheel_x_  = T(1);
     T sin_unheel_x_  = T(0);
@@ -629,7 +620,6 @@ class Kalman3D_Wave_5 {
         if constexpr (with_gyro_bias) {
             xext.template segment<3>(3) = R * xext.template segment<3>(3);
         }
-        // NOTE: world-frame bias state OFF_BAW is NOT rotated here.
 
         last_gyr_bias_corrected = R * last_gyr_bias_corrected;
         prev_omega_b_           = R * prev_omega_b_;
@@ -1162,7 +1152,7 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::time_update(
             xext.template segment<3>(OFF_P) = p + Ts * v + (T(0.5) * Ts * Ts) * a_eff;
 
             for (int axis = 0; axis < 3; ++axis) {
-                const T q = Q_baw_rw_(axis, axis);
+                const T q = acc_bias_updates_enabled_ ? Q_baw_rw_(axis, axis) : T(0);
                 const T dt = Ts;
                 const T dt2 = dt*dt;
                 const T dt3 = dt2*dt;
@@ -1247,9 +1237,9 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_acc
     const Matrix3 P_th_th = Pext.template block<3,3>(0,0);
     S_mat.noalias() += J_att * P_th_th * J_att.transpose();
 
+    Matrix3 J_bg = Matrix3::Zero();
     if constexpr (with_gyro_bias) {
         if (use_imu_lever_arm_) {
-            Matrix3 J_bg = Matrix3::Zero();
             const Vector3 r_imu_bprime = deheel_vector_(r_imu_wrt_cog_body_phys_);
             const Vector3& w = last_gyr_bias_corrected;
 
@@ -1280,28 +1270,10 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_acc
 
     if constexpr (with_gyro_bias) {
         if (use_imu_lever_arm_) {
-            Matrix3 J_bg = Matrix3::Zero();
-            const Vector3 r_imu_bprime = deheel_vector_(r_imu_wrt_cog_body_phys_);
-            const Vector3& w = last_gyr_bias_corrected;
-
-            T k_alpha = T(0);
-            if (have_prev_omega_ && last_dt_ > T(0)) {
-                if (alpha_smooth_tau_ > T(0)) {
-                    const T a = T(1) - std::exp(-last_dt_ / alpha_smooth_tau_);
-                    k_alpha = a / last_dt_;
-                } else {
-                    k_alpha = T(1) / last_dt_;
-                }
-            }
-            const Matrix3 J_alpha_part = k_alpha * skew_symmetric_matrix(r_imu_bprime);
-            const Matrix3 J_omega_part = d_omega_x_omega_x_r_domega_(w, r_imu_bprime);
-            J_bg = J_alpha_part - J_omega_part;
-
             PCt.noalias() += Pext.template block<NX,3>(0,3) * J_bg.transpose();
         }
     }
 
-    // Attitude-centric accel update: do not directly update linear states from accel.
     freeze_linear_rows_(PCt);
 
     Eigen::LDLT<Matrix3> ldlt;
@@ -1443,6 +1415,9 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_pos
 
     MatrixNX3& K = K_scratch_;
     K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
+    if constexpr (with_accel_bias) {
+        if (!acc_bias_updates_enabled_) freeze_baw_rows_(K);
+    }
 
     xext.noalias() += K * r;
     joseph_update3_(K, S_mat, PCt);
@@ -1480,6 +1455,9 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_vel
 
     MatrixNX3& K = K_scratch_;
     K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
+    if constexpr (with_accel_bias) {
+        if (!acc_bias_updates_enabled_) freeze_baw_rows_(K);
+    }
 
     xext.noalias() += K * r;
     joseph_update3_(K, S_mat, PCt);
@@ -1508,6 +1486,9 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_ver
 
     Eigen::Matrix<T, NX, 1> K;
     K.noalias() = PCt / S;
+    if constexpr (with_accel_bias) {
+        if (!acc_bias_updates_enabled_) K.template segment<3>(OFF_BAW).setZero();
+    }
 
     xext.noalias() += K * r;
 
