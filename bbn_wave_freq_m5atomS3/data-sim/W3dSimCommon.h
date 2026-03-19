@@ -49,7 +49,7 @@ inline float dirDegGeneratorSignedFromVec(const Vector2f& v) {
     return wrapAxialDeg90(deg);
 }
 
-inline float p0_s_from_sigma_tau(float sigma_a, float tau) {
+inline float p0_from_sigma_tau(float sigma_a, float tau) {
     if (!std::isfinite(sigma_a) || !std::isfinite(tau)) return NAN;
     return sigma_a * tau * tau;
 }
