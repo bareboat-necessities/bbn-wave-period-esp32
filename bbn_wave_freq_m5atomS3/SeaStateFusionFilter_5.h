@@ -1145,8 +1145,8 @@ private:
     // Wave_5 retune controls
     float live_racc_base_max_scale_   = 1.35f;  // isotropic sea-state inflation cap
     float live_racc_base_scale_power_ = 0.25f;  // sublinear sigma->Racc baseline
-    float baw_gain_base_              = 0.012f; // interpreted now as base RW std / sqrt(s)
-    float baw_rw_floor_               = 0.002f; // floor std / sqrt(s)
+    float baw_gain_base_              = 0.035f; // interpreted now as base RW std / sqrt(s)
+    float baw_rw_floor_               = 0.006f; // floor std / sqrt(s)
 
     // Motion-adaptive Live Racc
     bool  motion_adaptive_racc_enabled_  = true;
