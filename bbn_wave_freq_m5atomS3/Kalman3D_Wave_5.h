@@ -68,53 +68,39 @@ inline Eigen::Quaternion<T> quat_from_delta_theta(const Eigen::Matrix<T,3,1>& dt
 }
 
 template<typename T, int N>
-static inline void project_psd(Eigen::Matrix<T,N,N>& S, T eps = T(1e-12)) {
+static inline void project_psd(Eigen::Matrix<T,N,N>& S,
+                               T rel_floor = T(64) * std::numeric_limits<T>::epsilon()) {
     S = T(0.5) * (S + S.transpose());
+
+    T scale = T(0);
+    for (int i = 0; i < N; ++i) {
+        const T d = S(i,i);
+        if (std::isfinite(d)) scale = std::max(scale, std::abs(d));
+    }
+    if (!(scale > T(0)) || !std::isfinite(scale)) scale = T(1);
+
+    const T lam_floor = std::max(rel_floor * scale,
+                                 T(64) * std::numeric_limits<T>::epsilon());
 
     for (int i = 0; i < N; ++i) {
         for (int j = 0; j < N; ++j) {
-            if (!std::isfinite(S(i,j))) {
-                S(i,j) = (i == j) ? eps : T(0);
-            }
+            if (!std::isfinite(S(i,j))) S(i,j) = (i == j) ? lam_floor : T(0);
         }
     }
 
-    if constexpr (N <= 4) {
-        Eigen::SelfAdjointEigenSolver<Eigen::Matrix<T,N,N>> es(S);
-        if (es.info() != Eigen::Success) {
-            S.diagonal().array() += eps;
-            S = T(0.5) * (S + S.transpose());
-            return;
-        }
-        Eigen::Matrix<T,N,1> lam = es.eigenvalues();
-        for (int i = 0; i < N; ++i) {
-            if (!(lam(i) > T(0))) lam(i) = eps;
-        }
-        S = es.eigenvectors() * lam.asDiagonal() * es.eigenvectors().transpose();
-    } else {
-        Eigen::LDLT<Eigen::Matrix<T,N,N>> ldlt;
-        ldlt.compute(S);
-        if (ldlt.info() != Eigen::Success) {
-            T min_lb = std::numeric_limits<T>::infinity();
-            for (int i = 0; i < N; ++i) {
-                T row_sum = T(0);
-                for (int j = 0; j < N; ++j) {
-                    if (j == i) continue;
-                    row_sum += std::abs(S(i,j));
-                }
-                const T lb = S(i,i) - row_sum;
-                if (lb < min_lb) min_lb = lb;
-            }
-            if (!(min_lb > eps)) {
-                const T bump = (eps - min_lb);
-                S.diagonal().array() += bump;
-            }
-            ldlt.compute(S);
-            if (ldlt.info() != Eigen::Success) {
-                S.diagonal().array() += (T(10) * eps);
-            }
-        }
+    Eigen::SelfAdjointEigenSolver<Eigen::Matrix<T,N,N>> es(S);
+    if (es.info() != Eigen::Success) {
+        S.setZero();
+        S.diagonal().array() = lam_floor;
+        return;
     }
+
+    Eigen::Matrix<T,N,1> lam = es.eigenvalues();
+    for (int i = 0; i < N; ++i) {
+        if (!std::isfinite(lam(i)) || lam(i) < lam_floor) lam(i) = lam_floor;
+    }
+
+    S = es.eigenvectors() * lam.asDiagonal() * es.eigenvectors().transpose();
     S = T(0.5) * (S + S.transpose());
 }
 
