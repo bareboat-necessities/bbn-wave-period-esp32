@@ -61,7 +61,7 @@ public:
                 const Vector3f& gyr_meas_ned,
                 const Vector3f& acc_meas_ned,
                 float temperature_c) override {
-        fusion_.update(dt, gyr_meas_ned, acc_meas_ned, temperature_c);
+        fusion_.update(dt, gyr_meas_ned, acc_meas_ned);
     }
 
     FilterSnapshot snapshot() const override {
