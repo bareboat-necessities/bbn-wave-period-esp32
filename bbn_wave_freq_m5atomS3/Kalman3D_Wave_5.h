@@ -133,9 +133,7 @@ class Kalman3D_Wave_5 {
     typedef Matrix<T, BASE_N, BASE_N> MatrixBaseN;
     typedef Matrix<T, NX, NX> MatrixNX;
     typedef Matrix<T, NX, 3> MatrixNX3;
-    typedef Matrix<T, BASE_N, 9> MatrixBaseN9;
     typedef Matrix<T, 9, 9> Matrix9;
-    typedef Matrix<T, 9, 1> Vector9;
 
     static constexpr T STD_GRAVITY = T(9.80665);
 
@@ -467,10 +465,6 @@ class Kalman3D_Wave_5 {
     MatrixBaseN  Q_AA_scratch_;
     Matrix9      F_LL_scratch_;
     Matrix9      Q_LL_scratch_;
-    Matrix9      tmpLL_scratch_;
-    Vector9      x_lin_prev_scratch_;
-    Vector9      x_lin_next_scratch_;
-    MatrixBaseN9 tmpAL_scratch_;
     MatrixBaseN  tmpAA_scratch_;
     MatrixNX3    PCt_scratch_;
     MatrixNX3    K_scratch_;
@@ -493,7 +487,6 @@ class Kalman3D_Wave_5 {
     EIGEN_STRONG_INLINE Matrix3 R_bw() const { return qref.toRotationMatrix().transpose(); }
 
     Matrix3 skew_symmetric_matrix(const Eigen::Ref<const Vector3>& vec) const;
-    Vector3 accelerometer_static_measurement_func() const;
 
     static MatrixBaseN initialize_Q(Vector3 sigma_g, T b0);
     void applyQuaternionCorrectionFromErrorState();
@@ -859,7 +852,8 @@ Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::Kalman3D_Wave_5(
     Pext.topLeftCorner(BASE_N, BASE_N) = Pbase;
 
     if constexpr (with_accel_bias) {
-        Pext.template block<3,3>(OFF_BAW, OFF_BAW) = Matrix3::Identity() * initial_baw_std_(0) * initial_baw_std_(0);
+        Pext.template block<3,3>(OFF_BAW, OFF_BAW) =
+            Matrix3::Identity() * initial_baw_std_(0) * initial_baw_std_(0);
     }
 
     const T sigma_v0 = T(1.0);
@@ -1128,8 +1122,10 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::time_update(
         const Vector3 g_world(0,0,+gravity_magnitude_);
         const Vector3 u_w = R_bw() * (acc_cmd - lever) + g_world;
 
-        Matrix9& F_LL = F_LL_scratch_; F_LL.setZero();
-        Matrix9& Q_LL = Q_LL_scratch_; Q_LL.setZero();
+        Matrix9& F_LL = F_LL_scratch_;
+        F_LL.setZero();
+        Matrix9& Q_LL = Q_LL_scratch_;
+        Q_LL.setZero();
 
         F_LL.template block<3,3>(0,0) = Matrix3::Identity();
         F_LL.template block<3,3>(3,0) = Matrix3::Identity() * Ts;
@@ -1175,14 +1171,13 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::time_update(
         constexpr int NA = BASE_N;
         constexpr int NL = LIN_N;
 
-        Matrix<T,NL,NL> Fll_small = Matrix<T,NL,NL>::Zero();
-        Fll_small = F_LL.template block<NL,NL>(0,0);
+        const Matrix<T,NL,NL> Fll_small = F_LL.template block<NL,NL>(0,0);
 
-        Matrix<T,NL,NL> Qll_small = Matrix<T,NL,NL>::Zero();
-        Qll_small = Q_LL.template block<NL,NL>(0,0);
+        Matrix<T,NL,NL> Qll_small = Q_LL.template block<NL,NL>(0,0);
         Qll_small = T(0.5) * (Qll_small + Qll_small.transpose());
 
-        Matrix<T,NL,NL> tmpLL_small = Fll_small * Pext.template block<NL,NL>(OFF_V,OFF_V) * Fll_small.transpose() + Qll_small;
+        Matrix<T,NL,NL> tmpLL_small =
+            Fll_small * Pext.template block<NL,NL>(OFF_V,OFF_V) * Fll_small.transpose() + Qll_small;
         Pext.template block<NL,NL>(OFF_V,OFF_V) = tmpLL_small;
 
         auto tmpAL_small = F_AA * Pext.template block<NA,NL>(0,OFF_V);
@@ -1219,10 +1214,8 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_acc
     const T anorm = acc_meas.norm();
     if (!(anorm > T(1e-6))) return;
 
-    // Direction-only measured specific force
     const Vector3 z_meas = acc_meas / anorm;
 
-    // Predicted raw specific force in B'
     const Vector3 g_world(0, 0, +gravity_magnitude_);
     const Vector3 f_grav_b = R_wb() * (Vector3::Zero() - g_world);
 
@@ -1242,13 +1235,9 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_acc
 
     last_acc_diag_.r = innov;
 
-    // Normalization Jacobian:
-    // z = f / ||f||  =>  dz/df = (I - z z^T)/||f||
     const Matrix3 I3 = Matrix3::Identity();
     const Matrix3 Nproj = (I3 - zhat * zhat.transpose()) / fnorm;
 
-    // Raw-force Jacobian wrt attitude error.
-    // Keep lever-arm term attitude-independent, consistent with current model.
     const Matrix3 Jf_att = -skew_symmetric_matrix(f_grav_b);
     const Matrix3 J_att  = Nproj * Jf_att;
 
@@ -1258,7 +1247,6 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_acc
             const Vector3 r_imu_bprime = deheel_vector_(r_imu_wrt_cog_body_phys_);
             const Vector3& w = last_gyr_bias_corrected;
 
-            // Approximate d alpha / d b_g, consistent with this model
             T k_alpha = T(0);
             if (have_prev_omega_ && last_dt_ > T(0)) {
                 if (alpha_smooth_tau_ > T(0)) {
@@ -1272,10 +1260,8 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_acc
             const Matrix3 J_alpha_part = k_alpha * skew_symmetric_matrix(r_imu_bprime);
             const Matrix3 J_omega_part = d_omega_x_omega_x_r_domega_(w, r_imu_bprime);
 
-            // Raw-force Jacobian wrt gyro bias through lever arm
             const Matrix3 Jf_bg = J_alpha_part - J_omega_part;
 
-            // Project through normalization
             J_bg = Nproj * Jf_bg;
         }
     }
@@ -1283,8 +1269,6 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_acc
     Matrix3& S_mat = S_scratch_;
     S_mat.setZero();
 
-    // First-order direction-space noise projection.
-    // Add a tiny isotropic floor so S stays well-conditioned despite rank-2 projection.
     S_mat.noalias() = Nproj * Racc * Nproj.transpose();
     {
         const T dir_noise_scale =
@@ -1293,7 +1277,6 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_acc
         S_mat.diagonal().array() += floor;
     }
 
-    // State covariance contribution
     const Matrix3 P_th_th = Pext.template block<3,3>(0,0);
     S_mat.noalias() += J_att * P_th_th * J_att.transpose();
 
@@ -1308,7 +1291,6 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_acc
         }
     }
 
-    // PC^T
     MatrixNX3& PCt = PCt_scratch_;
     PCt.setZero();
     PCt.noalias() += Pext.template block<NX,3>(0,0) * J_att.transpose();
@@ -1319,7 +1301,6 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_acc
         }
     }
 
-    // Attitude-only accel correction: do not update linear states from accel
     freeze_linear_rows_(PCt);
 
     Eigen::LDLT<Matrix3> ldlt;
@@ -1343,6 +1324,7 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_acc
     applyQuaternionCorrectionFromErrorState();
     last_acc_diag_.accepted = true;
 }
+
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
 void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_only(
     const Vector3& mag_meas_body) {
@@ -1400,22 +1382,6 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_mag
     joseph_update3_(K, S_mat, PCt);
     applyQuaternionCorrectionFromErrorState();
     last_mag_diag_.accepted = true;
-}
-
-template<typename T, bool with_gyro_bias, bool with_accel_bias>
-typename Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::Vector3
-Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::accelerometer_static_measurement_func() const {
-    const Vector3 g_world(0,0,+gravity_magnitude_);
-    Vector3 fb = R_wb() * (Vector3::Zero() - g_world);
-
-    if (use_imu_lever_arm_) {
-        const Vector3& omega_bprime = last_gyr_bias_corrected;
-        const Vector3& alpha_bprime = alpha_b_;
-        const Vector3  r_imu_bprime = deheel_vector_(r_imu_wrt_cog_body_phys_);
-        fb.noalias() += alpha_bprime.cross(r_imu_bprime)
-                     +  omega_bprime.cross(omega_bprime.cross(r_imu_bprime));
-    }
-    return fb;
 }
 
 template<typename T, bool with_gyro_bias, bool with_accel_bias>
