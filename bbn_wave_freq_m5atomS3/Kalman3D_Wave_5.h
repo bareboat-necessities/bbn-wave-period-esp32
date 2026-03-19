@@ -570,6 +570,11 @@ class Kalman3D_Wave_5 {
             M.template block<3,3>(OFF_BAW, 0).setZero();
         }
     }
+    EIGEN_STRONG_INLINE void freeze_baw_rows_(Eigen::Matrix<T, NX, 1>& v) const {
+        if constexpr (with_accel_bias) {
+            v.template segment<3>(OFF_BAW).setZero();
+        }
+    }
 
     T wind_heel_rad_ = T(0);
     T cos_unheel_x_  = T(1);
@@ -1325,6 +1330,9 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_mag
     PCt.noalias() += Pext.template block<NX,3>(0,0) * J_att.transpose();
 
     if (!linear_block_enabled_) freeze_linear_rows_(PCt);
+    if constexpr (with_accel_bias) {
+        if (!acc_bias_updates_enabled_) freeze_baw_rows_(PCt);
+    }
 
     Eigen::LDLT<Matrix3> ldlt;
     if (!safe_ldlt3_(S_mat, ldlt, Rmag.norm())) {
@@ -1339,7 +1347,11 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_mag
 
     MatrixNX3& K = K_scratch_;
     K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
+
     if (!linear_block_enabled_) freeze_linear_rows_(K);
+    if constexpr (with_accel_bias) {
+        if (!acc_bias_updates_enabled_) freeze_baw_rows_(K);
+    }
 
     xext.noalias() += K * r;
     joseph_update3_(K, S_mat, PCt);
@@ -1406,6 +1418,9 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_pos
 
     MatrixNX3& PCt = PCt_scratch_;
     PCt.noalias() = Pext.template block<NX,3>(0, off_P);
+    if constexpr (with_accel_bias) {
+        if (!acc_bias_updates_enabled_) freeze_baw_rows_(PCt);
+    }
 
     Eigen::LDLT<Matrix3> ldlt;
     if (!safe_ldlt3_(S_mat, ldlt, R_meas.norm())) return;
