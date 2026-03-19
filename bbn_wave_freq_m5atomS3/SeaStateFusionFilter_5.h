@@ -196,7 +196,7 @@ public:
         tune_.sigma_applied = std::max(acc_noise_floor_sigma_, sigma_a.z());
 
         enterCold_();
-        apply_wave5_tune_();
+        apply_wave_tune_();
         mekf_->set_exact_att_bias_Qd(true);
     }
 
@@ -217,7 +217,7 @@ public:
         tune_.R_v0_std_applied = std::sqrt(std::max(0.0f, R_v0_var_init));
 
         enterCold_();
-        apply_wave5_tune_();
+        apply_wave_tune_();
         mekf_->set_exact_att_bias_Qd(true);
     }
 
@@ -247,7 +247,7 @@ public:
 
         // In Live, make Racc motion-adaptive every step
         if (startup_stage_ == StartupStage::Live) {
-            apply_wave5_tune_();
+            apply_wave_tune_();
         }
 
         mekf_->measurement_update_acc_only(acc);
@@ -360,7 +360,7 @@ public:
     void setPFactor(float p) {
         if (std::isfinite(p) && p > 0.0f) {
             P_factor_ = p;
-            if (mekf_) apply_wave5_tune_();
+            if (mekf_) apply_wave_tune_();
         }
     }
 
@@ -428,7 +428,7 @@ public:
     void setAccNoiseFloorSigma(float s) {
         if (std::isfinite(s) && s > 0.0f) {
             acc_noise_floor_sigma_ = s;
-            if (mekf_) apply_wave5_tune_();
+            if (mekf_) apply_wave_tune_();
         }
     }
 
@@ -531,7 +531,7 @@ public:
         if (!(r.minCoeff() > 0.0f)) return;
         Racc_nominal_std_ = r;
         if (mekf_ && !warmup_Racc_active_) {
-            apply_wave5_tune_();
+            apply_wave_tune_();
         }
     }
 
@@ -539,20 +539,20 @@ public:
     void setLiveRaccBaseMaxScale(float s) {
         if (std::isfinite(s) && s >= 1.0f) {
             live_racc_base_max_scale_ = s;
-            if (mekf_ && !warmup_Racc_active_) apply_wave5_tune_();
+            if (mekf_ && !warmup_Racc_active_) apply_wave_tune_();
         }
     }
 
     void setLiveRaccBaseScalePower(float p) {
         if (std::isfinite(p) && p > 0.0f) {
             live_racc_base_scale_power_ = p;
-            if (mekf_ && !warmup_Racc_active_) apply_wave5_tune_();
+            if (mekf_ && !warmup_Racc_active_) apply_wave_tune_();
         }
     }
 
     void setLiveMotionAdaptiveRaccEnabled(bool en) {
         motion_adaptive_racc_enabled_ = en;
-        if (mekf_ && !warmup_Racc_active_) apply_wave5_tune_();
+        if (mekf_ && !warmup_Racc_active_) apply_wave_tune_();
     }
 
     void setLiveMotionAdaptiveRaccScales(float xy_max_scale, float z_max_scale) {
@@ -562,13 +562,13 @@ public:
         if (std::isfinite(z_max_scale) && z_max_scale >= 1.0f) {
             live_racc_z_motion_max_scale_ = z_max_scale;
         }
-        if (mekf_ && !warmup_Racc_active_) apply_wave5_tune_();
+        if (mekf_ && !warmup_Racc_active_) apply_wave_tune_();
     }
 
     void setLiveMotionAdaptiveRaccPower(float p) {
         if (std::isfinite(p) && p > 0.0f) {
             live_motion_scale_power_ = p;
-            if (mekf_ && !warmup_Racc_active_) apply_wave5_tune_();
+            if (mekf_ && !warmup_Racc_active_) apply_wave_tune_();
         }
     }
 
@@ -593,21 +593,14 @@ public:
     void setBiasRwBaseGain(float g) {
         if (std::isfinite(g) && g > 0.0f) {
             baw_gain_base_ = g;
-            if (mekf_) apply_wave5_tune_();
-        }
-    }
-
-    void setBiasRwGainScaleMax(float s) {
-        if (std::isfinite(s) && s >= 1.0f) {
-            baw_gain_scale_max_ = s;
-            if (mekf_) apply_wave5_tune_();
+            if (mekf_) apply_wave_tune_();
         }
     }
 
     void setBiasRwFloor(float s) {
         if (std::isfinite(s) && s > 0.0f) {
             baw_rw_floor_ = s;
-            if (mekf_) apply_wave5_tune_();
+            if (mekf_) apply_wave_tune_();
         }
     }
 
@@ -883,31 +876,28 @@ private:
         return out;
     }
 
-    void apply_wave5_tune_() {
+    void apply_wave_tune_() {
         if (!mekf_) return;
-
+    
         // During warmup preserve explicit warmup Racc
         if (warmup_Racc_active_) {
             return;
         }
-
+    
         const float sigma_floor = std::max(0.05f, acc_noise_floor_sigma_);
         const float sigma_eff   = std::max(sigma_floor, tune_.sigma_applied);
-
+    
         const Eigen::Vector3f racc_cmd = compute_live_racc_cmd_(sigma_eff);
         mekf_->set_Racc_std(racc_cmd);
-
-        // Keep stronger sigma authority in b_aw RW via gain rescaling
-        const float sigma_racc_z = std::max(racc_cmd.z(), 1e-6f);
-        float gain_scale = sigma_eff / sigma_racc_z;
-        gain_scale = std::min(std::max(gain_scale, 1.0f), baw_gain_scale_max_);
-
-        mekf_->set_world_accel_bias_rw_gain(
-            Eigen::Vector3f(baw_gain_base_ * P_factor_ * gain_scale,
-                            baw_gain_base_ * P_factor_ * gain_scale,
-                            baw_gain_base_ * gain_scale));
-
-        mekf_->set_world_accel_bias_rw_floor(Eigen::Vector3f::Constant(baw_rw_floor_));
+    
+        // IMPORTANT:
+        // b_aw RW is now explicitly set and no longer linked to Racc or sigma_eff.
+        // Keep it modest and stable so b_aw stays a residual correction, not a motion sink.
+        const float baw_xy_std = std::max(baw_rw_floor_, baw_gain_base_ * P_factor_);
+        const float baw_z_std  = std::max(baw_rw_floor_, baw_gain_base_);
+    
+        mekf_->set_world_accel_bias_rw_std(
+            Eigen::Vector3f(baw_xy_std, baw_xy_std, baw_z_std));
     }
 
     void apply_R_p0_tune_(float rp_scale = 1.0f) {
@@ -1156,9 +1146,8 @@ private:
     // Wave_5 retune controls
     float live_racc_base_max_scale_   = 1.35f;  // isotropic sea-state inflation cap
     float live_racc_base_scale_power_ = 0.25f;  // sublinear sigma->Racc baseline
-    float baw_gain_base_              = 0.25f;  // base b_aw RW gain
-    float baw_gain_scale_max_         = 8.0f;   // cap sigma/Racc compensation
-    float baw_rw_floor_               = 1e-4f;  // floor std / sqrt(s)
+    float baw_gain_base_              = 0.012f; // interpreted now as base RW std / sqrt(s)
+    float baw_rw_floor_               = 0.002f; // floor std / sqrt(s)
 
     // Motion-adaptive Live Racc
     bool  motion_adaptive_racc_enabled_  = true;
