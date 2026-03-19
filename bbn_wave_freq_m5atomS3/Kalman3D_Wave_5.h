@@ -1200,7 +1200,7 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::time_update(
         // Attitude -> world acceleration command
         // For current right-multiplicative convention and qref = W->B',
         // du_w / d(delta_theta) ≈ [u_no_g]x
-        const Matrix3 Ju_th = skew_symmetric_matrix(u_no_g);
+        const Matrix3 Ju_th = -skew_symmetric_matrix(u_no_g);
         F_LA.template block<3,3>(0,0) = Ts * Ju_th;
         F_LA.template block<3,3>(3,0) = (T(0.5) * Ts * Ts) * Ju_th;
 
@@ -1225,7 +1225,7 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::time_update(
                 const Matrix3 Jlever_bg = J_alpha_part - J_omega_part;
 
                 // u_w = R_bw * (acc_cmd - lever) + g
-                const Matrix3 Ju_bg = -Rbw * Jlever_bg;
+                const Matrix3 Ju_bg = Rbw * Jlever_bg;
 
                 F_LA.template block<3,3>(0,3) = Ts * Ju_bg;
                 F_LA.template block<3,3>(3,3) = (T(0.5) * Ts * Ts) * Ju_bg;
