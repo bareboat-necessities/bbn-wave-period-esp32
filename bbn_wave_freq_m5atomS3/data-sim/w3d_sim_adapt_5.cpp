@@ -33,7 +33,7 @@ public:
         cfg_.sigma_a = sigma_a_init;
         cfg_.sigma_g = sigma_g;
         cfg_.sigma_m = sigma_m;
-        cfg_.mag_delay_sec = MAG_DELAY_SEC;
+        cfg_.mag_delay_sec = seastate_fusion5_detail::MAG_DELAY_SEC;
         cfg_.use_fixed_mag_world_ref = false;
         cfg_.mag_world_ref = mag_world_a;
         cfg_.freeze_acc_bias_until_live = true;
@@ -45,7 +45,8 @@ public:
             filter.enableLinearBlock(false);
             filter.mekf().set_initial_acc_bias(Vector3f::Zero());
             filter.mekf().set_initial_acc_bias_std(0.0f);
-            filter.mekf().set_Q_bacc_rw(Vector3f::Zero());
+            filter.mekf().set_world_accel_bias_rw_gain(Vector3f::Zero());
+            filter.mekf().set_world_accel_bias_rw_floor(Vector3f::Zero());
             filter.mekf().set_Racc_std(Vector3f::Constant(0.4f));
         } else {
             filter.enableLinearBlock(true);
@@ -70,7 +71,7 @@ public:
         FilterSnapshot s;
         s.disp_est_zu = ned_to_zu(filter.mekf().get_position());
         s.vel_est_zu = ned_to_zu(filter.mekf().get_velocity());
-        s.acc_est_zu = ned_to_zu(filter.mekf().get_world_accel());
+        s.acc_est_zu = Vector3f::Zero();
         s.euler_nautical_deg = filter.getEulerNautical();
         s.acc_bias_est_ned = filter.mekf().get_acc_bias();
         s.gyro_bias_est_ned = filter.mekf().gyroscope_bias();
@@ -148,7 +149,7 @@ int main(int argc, char* argv[]) {
     }
 
     std::cout << "Simulation starting with_mag=" << (with_mag ? "true" : "false")
-              << ", mag_delay=" << MAG_DELAY_SEC
+              << ", mag_delay=" << seastate_fusion5_detail::MAG_DELAY_SEC
               << " sec, noise=" << (add_noise ? "true" : "false")
               << "\n";
 
