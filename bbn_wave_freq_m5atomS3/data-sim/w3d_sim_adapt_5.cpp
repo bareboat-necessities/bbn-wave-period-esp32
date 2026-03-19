@@ -122,8 +122,8 @@ static constexpr W3dFailureLimits FAIL_LIMITS{
 };
 
 static constexpr W3dSummaryLabels SUMMARY_LABELS{
-    .target = "p0_S_target",
-    .applied = "p0_S_applied",
+    .target = "p0_Std_target",
+    .applied = "p0_Std_applied",
 };
 
 static void process_wave_file_for_tracker(const std::string& filename, float dt, bool with_mag)
