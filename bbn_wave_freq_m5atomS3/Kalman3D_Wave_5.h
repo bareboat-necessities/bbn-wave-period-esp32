@@ -13,14 +13,10 @@
      p_w   (3) : displacement/position in world frame (NED)
      b_aw  (3) : residual world-frame acceleration bias / command-correction (NED)
 
-  Design changes vs _4:
-    - Removed latent OU acceleration state.
-    - Acceleration is used as a command input in propagation.
-    - Kept pseudo position / velocity measurements.
-    - Kept an acceleration-bias-like state, but now expressed in WORLD frame.
-    - The RW variance of b_aw is scaled adaptively from external sigma_a commands.
-
   Notes:
+    - Acceleration is used as a command input in propagation.
+    - The RW variance of b_aw is scaled adaptively from external sigma_a commands.
+    - Acceleration-bias-like state expressed in WORLD frame.
     - Accelerometer and magnetometer inputs are aerospace/NED (x north, y east, z down).
     - Internal qref stores WORLD -> BODY' where BODY' is the virtual un-heeled frame.
     - quaternion() returns BODY' -> WORLD.
@@ -1252,7 +1248,7 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_acc
     const Matrix3 Nproj = (I3 - zhat * zhat.transpose()) / fnorm;
 
     // Raw-force Jacobian wrt attitude error.
-    // Keep lever-arm term attitude-independent, consistent with your current model.
+    // Keep lever-arm term attitude-independent, consistent with current model.
     const Matrix3 Jf_att = -skew_symmetric_matrix(f_grav_b);
     const Matrix3 J_att  = Nproj * Jf_att;
 
@@ -1262,7 +1258,7 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_acc
             const Vector3 r_imu_bprime = deheel_vector_(r_imu_wrt_cog_body_phys_);
             const Vector3& w = last_gyr_bias_corrected;
 
-            // Approximate d alpha / d b_g, consistent with your existing model
+            // Approximate d alpha / d b_g, consistent with this model
             T k_alpha = T(0);
             if (have_prev_omega_ && last_dt_ > T(0)) {
                 if (alpha_smooth_tau_ > T(0)) {
