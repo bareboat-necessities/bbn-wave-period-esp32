@@ -288,7 +288,6 @@ class Kalman3D_Wave_5 {
     void set_Racc_std(const Vector3& sigma_acc) {
         if (param_rw_enabled_) { param_rw_update_sigma_acc_cmd_(sigma_acc); return; }
         Racc = sigma_acc.array().square().matrix().asDiagonal();
-        refresh_baw_rw_from_sigma_acc_();
     }
 
     void set_Rmag_std(const Vector3& sigma_mag) {
@@ -319,6 +318,14 @@ class Kalman3D_Wave_5 {
     void set_world_accel_bias_rw_floor(const Vector3& floor_std_per_sqrt_s) {
         baw_rw_floor_ = floor_std_per_sqrt_s.cwiseMax(T(0));
         refresh_baw_rw_from_sigma_acc_();
+    }
+
+    void set_world_accel_bias_rw_std(const Vector3& std_per_sqrt_s) {
+        Vector3 s = std_per_sqrt_s;
+        for (int i = 0; i < 3; ++i) {
+            if (!std::isfinite(s(i)) || s(i) < T(0)) s(i) = T(0);
+        }
+        Q_baw_rw_ = s.array().square().matrix().asDiagonal();
     }
 
     [[nodiscard]] Vector3 get_world_accel_bias_rw_std() const {
@@ -774,18 +781,16 @@ class Kalman3D_Wave_5 {
         Vector3 sigma_acc = log_sigma_acc_f_.x.array().exp().matrix();
         sigma_acc = clamp_pos_vec_(sigma_acc, sigma_acc_min_, sigma_acc_max_);
         Racc = sigma_acc.array().square().matrix().asDiagonal();
-
+    
         Vector3 sigma_p0 = log_sigma_p0_f_.x.array().exp().matrix();
         sigma_p0 = clamp_pos_vec_(sigma_p0, sigma_p0_min_, sigma_p0_max_);
         R_p0 = sigma_p0.array().square().matrix().asDiagonal();
         R_p0 = T(0.5) * (R_p0 + R_p0.transpose());
-
+    
         Vector3 sigma_v0 = log_sigma_v0_f_.x.array().exp().matrix();
         sigma_v0 = clamp_pos_vec_(sigma_v0, sigma_v0_min_, sigma_v0_max_);
         R_v0 = sigma_v0.array().square().matrix().asDiagonal();
         R_v0 = T(0.5) * (R_v0 + R_v0.transpose());
-
-        refresh_baw_rw_from_sigma_acc_();
     }
 
     EIGEN_STRONG_INLINE void refresh_baw_rw_from_sigma_acc_() {
