@@ -1008,7 +1008,7 @@ private:
         tune_.R_v0_std_applied  += alpha_R_v0 * (R_v0_t  - tune_.R_v0_std_applied);
 
         if (time_ - last_adapt_time_sec_ > adapt_every_secs_) {
-            apply_wave5_tune_();
+            apply_wave_tune_();
 
             if (startup_stage_ == StartupStage::Live && enable_linear_block_) {
                 apply_R_p0_tune_();
@@ -1085,7 +1085,7 @@ private:
             warmup_Racc_active_ = false;
         }
 
-        apply_wave5_tune_();
+        apply_wave_tune_();
 
         if (enable_linear_block_) {
             apply_R_p0_tune_();
