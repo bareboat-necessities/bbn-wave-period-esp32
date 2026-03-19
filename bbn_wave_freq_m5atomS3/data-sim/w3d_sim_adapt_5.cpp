@@ -78,10 +78,10 @@ public:
         s.mag_bias_est_ned_uT = get_mag_bias_est_uT(filter.mekf());
         s.tau_target = filter.getTauTarget();
         s.sigma_target = filter.getSigmaTarget();
-        s.tuning_target = p0_s_from_sigma_tau(s.sigma_target, s.tau_target);
+        s.tuning_target = filter.getR_p0_std_target();
         s.tau_applied = filter.getTauApplied();
         s.sigma_applied = filter.getSigmaApplied();
-        s.tuning_applied = p0_s_from_sigma_tau(s.sigma_applied, s.tau_applied);
+        s.tuning_applied = filter.getR_p0_std_applied();
         s.freq_hz = filter.getFreqHz();
         s.period_sec = filter.getPeriodSec();
         s.accel_variance = filter.getAccelVariance();
