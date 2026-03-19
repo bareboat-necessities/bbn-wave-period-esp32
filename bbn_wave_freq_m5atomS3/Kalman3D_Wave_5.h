@@ -179,6 +179,7 @@ class Kalman3D_Wave_5 {
 
     void measurement_update_position_pseudo(const Vector3& p_meas, const Vector3& sigma_meas);
     void measurement_update_velocity_pseudo(const Vector3& v_meas, const Vector3& sigma_meas);
+    void measurement_update_vert_velocity_pseudo(T vz_meas, T sigma_meas);
 
     [[nodiscard]] Eigen::Quaternion<T> quaternion() const { return qref.conjugate(); }
     [[nodiscard]] MatrixBaseN covariance_base() const { return Pext.topLeftCorner(BASE_N, BASE_N); }
