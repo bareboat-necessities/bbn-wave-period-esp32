@@ -518,19 +518,40 @@ class Kalman3D_Wave_5 {
     static MatrixBaseN initialize_Q(Vector3 sigma_g, T b0);
     void applyQuaternionCorrectionFromErrorState();
 
-    EIGEN_STRONG_INLINE bool safe_ldlt3_(Matrix3& S, Eigen::LDLT<Matrix3>& ldlt, T noise_scale) const {
-        ldlt.compute(S);
-        if (ldlt.info() == Eigen::Success) return true;
+    EIGEN_STRONG_INLINE bool safe_llt3_(Matrix3& S, Eigen::LLT<Matrix3>& llt, T scale_hint) const {
+        S = T(0.5) * (S + S.transpose());
     
-        const T bump = std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * (noise_scale + T(1)));
-        S.diagonal().array() += bump;
-        ldlt.compute(S);
-        return (ldlt.info() == Eigen::Success);
+        T scale = T(1);
+        if (std::isfinite(scale_hint) && scale_hint > T(0)) scale = std::max(scale, scale_hint);
+        const T tr_abs = std::abs(S.trace());
+        if (std::isfinite(tr_abs) && tr_abs > T(0)) scale = std::max(scale, tr_abs);
+    
+        T bump = std::max(T(1e-8) * scale,
+                          T(64) * std::numeric_limits<T>::epsilon() * scale);
+    
+        for (int pass = 0; pass < 6; ++pass) {
+            for (int i = 0; i < 3; ++i) {
+                for (int j = 0; j < 3; ++j) {
+                    if (!std::isfinite(S(i,j))) S(i,j) = (i == j) ? bump : T(0);
+                }
+            }
+    
+            S = T(0.5) * (S + S.transpose());
+            S.diagonal().array() += bump;
+    
+            llt.compute(S);
+            if (llt.info() == Eigen::Success) return true;
+    
+            bump *= T(10);
+        }
+    
+        return false;
     }
     
-    EIGEN_STRONG_INLINE T nis3_from_ldlt_(const Eigen::LDLT<Matrix3>& ldlt,
-                                          const Vector3& r) const {
-        Vector3 x = ldlt.solve(r);
+    EIGEN_STRONG_INLINE T nis3_from_llt_(const Eigen::LLT<Matrix3>& llt,
+                                         const Vector3& r) const {
+        if (!r.allFinite()) return std::numeric_limits<T>::quiet_NaN();
+        Vector3 x = llt.solve(r);
         if (!x.allFinite()) return std::numeric_limits<T>::quiet_NaN();
         const T v = r.dot(x);
         return std::isfinite(v) ? v : std::numeric_limits<T>::quiet_NaN();
