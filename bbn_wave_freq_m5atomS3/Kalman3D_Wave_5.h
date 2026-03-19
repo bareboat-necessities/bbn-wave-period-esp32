@@ -485,7 +485,7 @@ class Kalman3D_Wave_5 {
 
     bool auto_zero_position_pseudo_enabled_ = true;
     bool auto_zero_velocity_pseudo_enabled_ = true;
-    T    auto_zero_pseudo_period_sec_       = T(0.015);
+    T    auto_zero_pseudo_period_sec_       = T(0.03);
     T    auto_zero_pseudo_elapsed_sec_      = T(0);
 
     bool linear_block_enabled_ = true;
