@@ -1112,26 +1112,15 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::time_update(
         else project_psd<T,3>(Q_AA, T(1e-12));
     }
 
-    constexpr int NA = BASE_N;
-    constexpr int NL = LIN_N;
-
-    const MatrixBaseN PAA_old = Pext.template block<NA,NA>(0,0);
-
     {
+        constexpr int NA = BASE_N;
         MatrixBaseN& tmpAA = tmpAA_scratch_;
-        tmpAA.noalias() = F_AA * PAA_old;
+        tmpAA.noalias() = F_AA * Pext.template block<NA,NA>(0,0);
         Pext.template block<NA,NA>(0,0).noalias() = tmpAA * F_AA.transpose();
         Pext.template block<NA,NA>(0,0).noalias() += Q_AA;
     }
 
     if (linear_block_enabled_) {
-        using MatrixANL = Matrix<T, NA, NL>;
-        using MatrixNLA = Matrix<T, NL, NA>;
-        using MatrixNL  = Matrix<T, NL, NL>;
-
-        const MatrixANL PAL_old = Pext.template block<NA,NL>(0,OFF_V);
-        const MatrixNL  PLL_old = Pext.template block<NL,NL>(OFF_V,OFF_V);
-
         const Vector3 acc_cmd = deheel_vector_(acc_body);
 
         Vector3 lever = Vector3::Zero();
@@ -1141,11 +1130,8 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::time_update(
                             +  omega_b.cross(omega_b.cross(r_imu_bprime));
         }
 
-        const Matrix3 Rbw = R_bw();
         const Vector3 g_world(0,0,+gravity_magnitude_);
-        const Vector3 s_b = acc_cmd - lever;
-        const Vector3 u_no_g = Rbw * s_b;
-        const Vector3 u_w = u_no_g + g_world;
+        const Vector3 u_w = R_bw() * (acc_cmd - lever) + g_world;
 
         Matrix9& F_LL = F_LL_scratch_;
         F_LL.setZero();
@@ -1193,36 +1179,21 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::time_update(
             xext.template segment<3>(OFF_P) = p + Ts * v + (T(0.5) * Ts * Ts) * u_w;
         }
 
-        const MatrixNL Fll_small = F_LL.template block<NL,NL>(0,0);
+        constexpr int NA = BASE_N;
+        constexpr int NL = LIN_N;
 
-        MatrixNL Qll_small = Q_LL.template block<NL,NL>(0,0);
+        const Matrix<T,NL,NL> Fll_small = F_LL.template block<NL,NL>(0,0);
+
+        Matrix<T,NL,NL> Qll_small = Q_LL.template block<NL,NL>(0,0);
         Qll_small = T(0.5) * (Qll_small + Qll_small.transpose());
 
-        // Hardcoded ON: attitude -> linear coupling
-        MatrixNLA F_LA;
-        F_LA.setZero();
-        const Matrix3 Ju_th = -skew_symmetric_matrix(u_no_g);
-        F_LA.template block<3,3>(0,0) = Ts * Ju_th;
-        F_LA.template block<3,3>(3,0) = (T(0.5) * Ts * Ts) * Ju_th;
+        Matrix<T,NL,NL> tmpLL_small =
+            Fll_small * Pext.template block<NL,NL>(OFF_V,OFF_V) * Fll_small.transpose() + Qll_small;
+        Pext.template block<NL,NL>(OFF_V,OFF_V) = tmpLL_small;
 
-        MatrixANL PAL_new;
-        PAL_new.noalias() = F_AA * PAA_old * F_LA.transpose();
-        PAL_new.noalias() += F_AA * PAL_old * Fll_small.transpose();
-
-        MatrixNL PLL_new;
-        PLL_new.noalias() = F_LA * PAA_old * F_LA.transpose();
-
-        MatrixNL X;
-        X.noalias() = F_LA * PAL_old * Fll_small.transpose();
-        PLL_new.noalias() += X;
-        PLL_new.noalias() += X.transpose();
-        PLL_new.noalias() += Fll_small * PLL_old * Fll_small.transpose();
-        PLL_new.noalias() += Qll_small;
-        PLL_new = T(0.5) * (PLL_new + PLL_new.transpose());
-
-        Pext.template block<NA,NL>(0,OFF_V) = PAL_new;
-        Pext.template block<NL,NA>(OFF_V,0) = PAL_new.transpose();
-        Pext.template block<NL,NL>(OFF_V,OFF_V) = PLL_new;
+        auto tmpAL_small = F_AA * Pext.template block<NA,NL>(0,OFF_V);
+        Pext.template block<NA,NL>(0,OFF_V) = tmpAL_small * Fll_small.transpose();
+        Pext.template block<NL,NA>(OFF_V,0) = Pext.template block<NA,NL>(0,OFF_V).transpose();
     }
 
     symmetrize_Pext_();
@@ -1266,16 +1237,12 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_acc
                         +  last_gyr_bias_corrected.cross(last_gyr_bias_corrected.cross(r_imu_bprime));
     }
 
-    // Hardcoded ON: include b_aw in accel prediction
-    Vector3 f_cog_b;
-    if constexpr (with_accel_bias) {
-        const Vector3 b_aw = xext.template segment<3>(OFF_BAW);
-        f_cog_b = Rwb * ((-b_aw) - g_world);
-    } else {
-        f_cog_b = Rwb * (Vector3::Zero() - g_world);
-    }
+    // Stable default:
+    // use gravity-only mean for direction update,
+    // but account for b_aw as nuisance uncertainty in S.
+    const Vector3 f_cog_b = Rwb * (Vector3::Zero() - g_world);
+    const Vector3 f_pred  = f_cog_b + lever;
 
-    const Vector3 f_pred = f_cog_b + lever;
     const T fnorm = f_pred.norm();
     if (!(fnorm > T(1e-6))) return;
 
@@ -1316,6 +1283,7 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_acc
 
     Matrix3 J_baw = Matrix3::Zero();
     if constexpr (with_accel_bias) {
+        // b_aw is treated as nuisance in S, not in the mean.
         const Matrix3 Jf_baw = -Rwb;
         J_baw = Nproj * Jf_baw;
     }
@@ -1372,11 +1340,8 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_acc
         }
     }
 
-    // Attitude-only accel correction
+    // accel update remains base-only
     freeze_linear_rows_(PCt);
-    if constexpr (with_accel_bias) {
-        freeze_baw_rows_(PCt);
-    }
 
     Eigen::LDLT<Matrix3> ldlt;
     if (!safe_ldlt3_(S_mat, ldlt, S_mat.norm())) {
@@ -1393,9 +1358,6 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_acc
     K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
 
     freeze_linear_rows_(K);
-    if constexpr (with_accel_bias) {
-        freeze_baw_rows_(K);
-    }
 
     xext.noalias() += K * innov;
     joseph_update3_(K, S_mat, PCt);
