@@ -33,7 +33,7 @@ public:
         cfg_.sigma_a = sigma_a_init;
         cfg_.sigma_g = sigma_g;
         cfg_.sigma_m = sigma_m;
-        cfg_.mag_delay_sec = seastate_fusion5_detail::MAG_DELAY_SEC;
+        cfg_.mag_delay_sec = MAG_DELAY_SEC;
         cfg_.use_fixed_mag_world_ref = false;
         cfg_.mag_world_ref = mag_world_a;
         cfg_.freeze_acc_bias_until_live = true;
