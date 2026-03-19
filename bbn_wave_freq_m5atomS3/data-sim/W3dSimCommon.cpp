@@ -3,10 +3,7 @@ extern const float g_std = 9.80665f;
 
 #include <cstdlib>
 #include <iostream>
-
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
+#include <numbers>
 
 ImuNoiseModel make_imu_noise_model(float sigma_white,
                                    float bias_half_range,
@@ -67,7 +64,7 @@ MagNoiseModel make_mag_noise_model(float sigma_white_uT,
     A(0, 2) = A(2, 0) = a02;
     A(1, 2) = A(2, 1) = a12;
 
-    auto deg2rad = [](float d) { return d * float(M_PI / 180.0); };
+    auto deg2rad = [](float d) { return d * float(std::numbers::pi_v<float> / 180.0); };
     std::uniform_real_distribution<float> ua(-misalign_deg_max, misalign_deg_max);
     float rx = deg2rad(ua(m.rng));
     float ry = deg2rad(ua(m.rng));
@@ -459,7 +456,7 @@ void print_summary_and_fail_if_needed(const W3dSimulationRunResult& result,
               << " |3D|=" << accb_r3 << "\n";
     std::cout << "Bias error RMS (gyro, rad/s): X=" << gyrb_rx << " Y=" << gyrb_ry << " Z=" << gyrb_rz
               << " |3D|=" << gyrb_r3 << "\n";
-    const float rad2deg = 180.0f / float(M_PI);
+    const float rad2deg = 180.0f / float(std::numbers::pi_v<float>);
     std::cout << "Bias error RMS (gyro, deg/s): X=" << (gyrb_rx * rad2deg)
               << " Y=" << (gyrb_ry * rad2deg)
               << " Z=" << (gyrb_rz * rad2deg)
