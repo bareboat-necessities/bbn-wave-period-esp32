@@ -227,11 +227,8 @@ public:
         }
     }
 
-    void updateTime(float dt, const Eigen::Vector3f& gyro, const Eigen::Vector3f& acc,
-                    float tempC = 35.0f)
+    void updateTime(float dt, const Eigen::Vector3f& gyro, const Eigen::Vector3f& acc)
     {
-        (void)tempC; // Wave_5 accel update has no temperature input
-
         if (!mekf_) return;
         if (!(dt > 0.0f) || !std::isfinite(dt)) return;
 
@@ -242,7 +239,17 @@ public:
         const float a_y_body = acc.y();
         const float a_z_inertial = acc.z() + g_std;
 
+        // Predict first
         mekf_->time_update(gyro, acc, dt);
+
+        // Update motion metric before accel correction so this step's Racc is used
+        update_motion_state_(dt, gyro, acc);
+
+        // In Live, make Racc motion-adaptive every step
+        if (startup_stage_ == StartupStage::Live) {
+            apply_wave5_tune_();
+        }
+
         mekf_->measurement_update_acc_only(acc);
 
         {
@@ -441,7 +448,7 @@ public:
         enable_tuner_ = flag;
     }
 
-    // [v, p, b_aw] block
+    // Wave_5 linear block = [v, p, b_aw]
     void enableLinearBlock(bool flag = true) {
         enable_linear_block_ = flag;
         if (mekf_) {
@@ -528,18 +535,58 @@ public:
         }
     }
 
-    // Second-pass Live Racc retune knobs
-    void setLiveRaccMaxScale(float s) {
+    // Live Racc tuning knobs
+    void setLiveRaccBaseMaxScale(float s) {
         if (std::isfinite(s) && s >= 1.0f) {
-            live_racc_max_scale_ = s;
+            live_racc_base_max_scale_ = s;
             if (mekf_ && !warmup_Racc_active_) apply_wave5_tune_();
         }
     }
 
-    void setLiveRaccScalePower(float p) {
+    void setLiveRaccBaseScalePower(float p) {
         if (std::isfinite(p) && p > 0.0f) {
-            live_racc_scale_power_ = p;
+            live_racc_base_scale_power_ = p;
             if (mekf_ && !warmup_Racc_active_) apply_wave5_tune_();
+        }
+    }
+
+    void setLiveMotionAdaptiveRaccEnabled(bool en) {
+        motion_adaptive_racc_enabled_ = en;
+        if (mekf_ && !warmup_Racc_active_) apply_wave5_tune_();
+    }
+
+    void setLiveMotionAdaptiveRaccScales(float xy_max_scale, float z_max_scale) {
+        if (std::isfinite(xy_max_scale) && xy_max_scale >= 1.0f) {
+            live_racc_xy_motion_max_scale_ = xy_max_scale;
+        }
+        if (std::isfinite(z_max_scale) && z_max_scale >= 1.0f) {
+            live_racc_z_motion_max_scale_ = z_max_scale;
+        }
+        if (mekf_ && !warmup_Racc_active_) apply_wave5_tune_();
+    }
+
+    void setLiveMotionAdaptiveRaccPower(float p) {
+        if (std::isfinite(p) && p > 0.0f) {
+            live_motion_scale_power_ = p;
+            if (mekf_ && !warmup_Racc_active_) apply_wave5_tune_();
+        }
+    }
+
+    void setMotionEmaTauSec(float tau_sec) {
+        if (std::isfinite(tau_sec) && tau_sec > 0.0f) {
+            motion_ema_tau_sec_ = tau_sec;
+        }
+    }
+
+    void setMotionAccelRefG(float ref_g) {
+        if (std::isfinite(ref_g) && ref_g > 0.0f) {
+            motion_acc_ref_g_ = ref_g;
+        }
+    }
+
+    void setMotionGyroRefDegPerSec(float degps) {
+        if (std::isfinite(degps) && degps > 0.0f) {
+            motion_gyro_ref_radps_ = degps * float(M_PI) / 180.0f;
         }
     }
 
@@ -568,12 +615,22 @@ public:
     inline float getFreqSlowHz()        const noexcept { return freq_hz_slow_; }
     inline float getFreqRawHz()         const noexcept { return f_raw; }
 
-    // Keep old semantic meaning: wrapper sea-state sigma, not actual Racc
+    // Wrapper sea-state quantities
     inline float getTauApplied()        const noexcept { return tune_.tau_applied; }
     inline float getSigmaApplied()      const noexcept { return tune_.sigma_applied; }
 
+    // Actual core filter accel noise
     inline float getRaccAppliedZ()      const noexcept {
         return mekf_ ? mekf_->get_Racc_std().z() : NAN;
+    }
+
+    inline Eigen::Vector3f getRaccAppliedStd() const noexcept {
+        return mekf_ ? mekf_->get_Racc_std() : Eigen::Vector3f::Constant(NAN);
+    }
+
+    inline float getMotionAccelEmaG() const noexcept { return motion_acc_ema_g_; }
+    inline float getMotionGyroEmaDegPerSec() const noexcept {
+        return motion_gyro_ema_radps_ * 180.0f / float(M_PI);
     }
 
     inline float getR_p0_std_applied()  const noexcept {
@@ -748,34 +805,88 @@ private:
         float getEnergyEma() const { return energy_ema; }
     };
 
+    static inline float clamp01_(float x) {
+        return std::min(std::max(x, 0.0f), 1.0f);
+    }
+
+    void update_motion_state_(float dt,
+                              const Eigen::Vector3f& gyro_body,
+                              const Eigen::Vector3f& acc_body)
+    {
+        if (!(dt > 0.0f)) return;
+
+        const float tau = std::max(1e-3f, motion_ema_tau_sec_);
+        const float alpha = 1.0f - std::exp(-dt / tau);
+
+        float acc_dev_g = 0.0f;
+        if (acc_body.allFinite()) {
+            acc_dev_g = std::fabs(acc_body.norm() - g_std) / std::max(g_std, 1e-6f);
+            if (!std::isfinite(acc_dev_g)) acc_dev_g = 0.0f;
+        }
+
+        float gyro_norm = 0.0f;
+        if (gyro_body.allFinite()) {
+            gyro_norm = gyro_body.norm();
+            if (!std::isfinite(gyro_norm)) gyro_norm = 0.0f;
+        }
+
+        motion_acc_ema_g_     += alpha * (acc_dev_g - motion_acc_ema_g_);
+        motion_gyro_ema_radps_ += alpha * (gyro_norm - motion_gyro_ema_radps_);
+    }
+
+    float motion_level_() const {
+        const float acc_norm  = motion_acc_ema_g_ / std::max(motion_acc_ref_g_, 1e-6f);
+        const float gyro_norm = motion_gyro_ema_radps_ / std::max(motion_gyro_ref_radps_, 1e-6f);
+
+        const float m = std::max(acc_norm, gyro_norm);
+        return clamp01_(m);
+    }
+
     Eigen::Vector3f compute_live_racc_cmd_(float sigma_hint) const {
         const float sigma_floor = std::max(0.05f, acc_noise_floor_sigma_);
         const float sigma_eff   = std::max(sigma_floor, sigma_hint);
 
+        Eigen::Vector3f base;
         if (Racc_nominal_std_.allFinite() && Racc_nominal_std_.maxCoeff() > 0.0f) {
-            Eigen::Vector3f base = Racc_nominal_std_;
+            base = Racc_nominal_std_;
             for (int i = 0; i < 3; ++i) {
                 if (!std::isfinite(base(i)) || !(base(i) > 0.0f)) {
                     base(i) = sigma_floor;
                 }
             }
-
-            const float ref   = std::max(base.z(), 1e-6f);
-            const float ratio = std::max(1.0f, sigma_eff / ref);
-
-            float scale = std::pow(ratio, live_racc_scale_power_);
-            scale = std::min(std::max(scale, 1.0f), live_racc_max_scale_);
-
-            return base * scale;
+        } else {
+            base = Eigen::Vector3f::Constant(sigma_floor);
         }
 
-        return Eigen::Vector3f::Constant(sigma_eff);
+        // Mild sea-state driven isotropic baseline inflation
+        const float ref   = std::max(base.z(), 1e-6f);
+        const float ratio = std::max(1.0f, sigma_eff / ref);
+
+        float base_scale = std::pow(ratio, live_racc_base_scale_power_);
+        base_scale = std::min(std::max(base_scale, 1.0f), live_racc_base_max_scale_);
+
+        Eigen::Vector3f out = base * base_scale;
+
+        // Motion-adaptive anisotropic inflation only in Live
+        if (startup_stage_ == StartupStage::Live && motion_adaptive_racc_enabled_) {
+            const float m = motion_level_();
+            const float shaped = std::pow(m, live_motion_scale_power_);
+
+            const float xy_scale = 1.0f + (live_racc_xy_motion_max_scale_ - 1.0f) * shaped;
+            const float z_scale  = 1.0f + (live_racc_z_motion_max_scale_  - 1.0f) * shaped;
+
+            out.x() *= xy_scale;
+            out.y() *= xy_scale;
+            out.z() *= z_scale;
+        }
+
+        return out;
     }
 
     void apply_wave5_tune_() {
         if (!mekf_) return;
 
-        // During warmup keep explicit inflated Racc from enterCold_ / unlock path.
+        // During warmup preserve explicit warmup Racc
         if (warmup_Racc_active_) {
             return;
         }
@@ -783,11 +894,10 @@ private:
         const float sigma_floor = std::max(0.05f, acc_noise_floor_sigma_);
         const float sigma_eff   = std::max(sigma_floor, tune_.sigma_applied);
 
-        // Live / normal path: only mildly inflate accel measurement noise.
         const Eigen::Vector3f racc_cmd = compute_live_racc_cmd_(sigma_eff);
         mekf_->set_Racc_std(racc_cmd);
 
-        // Preserve stronger sigma authority in the b_aw RW through gain rescaling.
+        // Keep stronger sigma authority in b_aw RW via gain rescaling
         const float sigma_racc_z = std::max(racc_cmd.z(), 1e-6f);
         float gain_scale = sigma_eff / sigma_racc_z;
         gain_scale = std::min(std::max(gain_scale, 1.0f), baw_gain_scale_max_);
@@ -937,6 +1047,9 @@ private:
         dir_filter_      = KalmanWaveDirection(2.0f * static_cast<float>(M_PI) * FREQ_GUESS);
         dir_sign_state_  = UNCERTAIN;
 
+        motion_acc_ema_g_ = 0.0f;
+        motion_gyro_ema_radps_ = 0.0f;
+
         last_adapt_time_sec_ = time_;
     }
 
@@ -951,6 +1064,9 @@ private:
         accel_bias_locked_   = with_mag_;
         mag_updates_applied_ = 0;
         first_mag_update_time_ = NAN;
+
+        motion_acc_ema_g_ = 0.0f;
+        motion_gyro_ema_radps_ = 0.0f;
 
         if (freeze_acc_bias_until_live_) {
             mekf_->set_acc_bias_updates_enabled(false);
@@ -1037,12 +1153,24 @@ private:
     float R_p0_xy_factor_ = 0.23f;
     float P_factor_       = 1.5f;
 
-    // Second-pass Wave_5 retune controls
-    float live_racc_max_scale_   = 2.0f;   // max Live Racc inflation vs nominal
-    float live_racc_scale_power_ = 0.35f;  // sublinear sigma->Racc mapping
-    float baw_gain_base_         = 0.25f;  // base b_aw RW gain
-    float baw_gain_scale_max_    = 8.0f;   // cap sigma/Racc compensation
-    float baw_rw_floor_          = 1e-4f;  // floor std / sqrt(s)
+    // Wave_5 retune controls
+    float live_racc_base_max_scale_   = 2.0f;   // isotropic sea-state inflation cap
+    float live_racc_base_scale_power_ = 0.35f;  // sublinear sigma->Racc baseline
+    float baw_gain_base_              = 0.25f;  // base b_aw RW gain
+    float baw_gain_scale_max_         = 8.0f;   // cap sigma/Racc compensation
+    float baw_rw_floor_               = 1e-4f;  // floor std / sqrt(s)
+
+    // Motion-adaptive Live Racc
+    bool  motion_adaptive_racc_enabled_ = true;
+    float live_racc_xy_motion_max_scale_ = 4.0f; // stronger XY inflation
+    float live_racc_z_motion_max_scale_  = 1.6f; // weaker Z inflation
+    float live_motion_scale_power_       = 1.0f;
+
+    float motion_ema_tau_sec_       = 0.35f;
+    float motion_acc_ref_g_         = 0.10f;                     // 0.10 g accel-deviation reference
+    float motion_gyro_ref_radps_    = 25.0f * float(M_PI) / 180.0f; // 25 deg/s reference
+    float motion_acc_ema_g_         = 0.0f;
+    float motion_gyro_ema_radps_    = 0.0f;
 
     TrackingPolicy                  tracker_policy_{};
     FirstOrderIIRSmoother<float>    freq_fast_smoother_{FREQ_SMOOTHER_DT, 3.5f};
@@ -1128,7 +1256,6 @@ public:
 
         last_acc_body_ned_.setZero();
         last_gyro_body_ned_.setZero();
-        last_imu_dt_ = NAN;
         have_last_imu_ = false;
 
         impl_.setWithMag(cfg.with_mag);
@@ -1144,7 +1271,7 @@ public:
     }
 
     void update(float dt, const Eigen::Vector3f& gyro_body_ned,
-                const Eigen::Vector3f& acc_body_ned, float tempC = 35.0f)
+                const Eigen::Vector3f& acc_body_ned)
     {
         if (!begun_) return;
         if (!(dt > 0.0f) || !std::isfinite(dt)) return;
@@ -1161,10 +1288,9 @@ public:
 
         last_acc_body_ned_  = acc_body_ned;
         last_gyro_body_ned_ = gyro_body_ned;
-        last_imu_dt_        = dt;
         have_last_imu_      = true;
 
-        impl_.updateTime(dt, gyro_body_ned, acc_body_ned, tempC);
+        impl_.updateTime(dt, gyro_body_ned, acc_body_ned);
 
         const auto cur_stage = impl_.getStartupStage();
 
@@ -1352,7 +1478,6 @@ private:
 
     Eigen::Vector3f last_acc_body_ned_  = Eigen::Vector3f::Zero();
     Eigen::Vector3f last_gyro_body_ned_ = Eigen::Vector3f::Zero();
-    float last_imu_dt_ = NAN;
     bool  have_last_imu_ = false;
 
     Eigen::Vector3f fallback_acc_mean_ = Eigen::Vector3f::Zero();
