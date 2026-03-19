@@ -518,50 +518,16 @@ class Kalman3D_Wave_5 {
     static MatrixBaseN initialize_Q(Vector3 sigma_g, T b0);
     void applyQuaternionCorrectionFromErrorState();
 
-    EIGEN_STRONG_INLINE bool safe_ldlt3_(Matrix3& S,
-                                         Eigen::LDLT<Matrix3>& ldlt,
-                                         T scale_hint) const {
-        S = T(0.5) * (S + S.transpose());
-    
-        T scale = T(1);
-        if (std::isfinite(scale_hint) && scale_hint > scale) scale = scale_hint;
-        for (int i = 0; i < 3; ++i) {
-            const T d = S(i,i);
-            if (std::isfinite(d)) scale = std::max(scale, std::abs(d));
-        }
-    
-        T bump = T(64) * std::numeric_limits<T>::epsilon() * scale;
-    
-        for (int pass = 0; pass < 6; ++pass) {
-            for (int i = 0; i < 3; ++i) {
-                for (int j = 0; j < 3; ++j) {
-                    if (!std::isfinite(S(i,j))) S(i,j) = (i == j) ? bump : T(0);
-                }
-                if (!(S(i,i) > bump)) S(i,i) = bump;
-            }
-    
-            S = T(0.5) * (S + S.transpose());
-            ldlt.compute(S);
-    
-            if (ldlt.info() == Eigen::Success) {
-                Eigen::Matrix<T,3,1> D = ldlt.vectorD();
-                if (D.allFinite() && (D.array() > bump).all()) {
-                    return true;
-                }
-            }
-    
-            S.diagonal().array() += bump;
-            bump *= T(10);
-        }
-    
-        project_psd<T,3>(S);
+    EIGEN_STRONG_INLINE bool safe_ldlt3_(Matrix3& S, Eigen::LDLT<Matrix3>& ldlt, T noise_scale) const {
         ldlt.compute(S);
-        if (ldlt.info() != Eigen::Success) return false;
+        if (ldlt.info() == Eigen::Success) return true;
     
-        Eigen::Matrix<T,3,1> D = ldlt.vectorD();
-        return D.allFinite() && (D.array() > T(0)).all();
+        const T bump = std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * (noise_scale + T(1)));
+        S.diagonal().array() += bump;
+        ldlt.compute(S);
+        return (ldlt.info() == Eigen::Success);
     }
-
+    
     EIGEN_STRONG_INLINE T nis3_from_ldlt_(const Eigen::LDLT<Matrix3>& ldlt,
                                           const Vector3& r) const {
         Vector3 x = ldlt.solve(r);
