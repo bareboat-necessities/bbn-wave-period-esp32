@@ -11,25 +11,18 @@
   Combines multiple real-time estimators into a cohesive ocean-state tracker:
 
     • Quaternion-based attitude and linear motion estimation via Kalman3D_Wave_5
+    • Dominant frequency tracking
+    • Dual-stage frequency smoothing
+    • Online sea-state tuning for wrapper tau/sigma/R_p0/R_v0
 
-    • Dominant frequency tracking using one of:
-          – AranovskiyFilter     (frequency estimator)
-          – KalmANF              (adaptive notch / Kalman frequency tracker)
-          – SchmittTrigger       (zero-cross event detector)
-
-    • Dual-stage frequency smoothing:
-          – Fast 1st-order IIR (≈ few s, ~90% step) for demodulation / direction
-          – Slow 1st-order IIR (≈ longer s, ~90% step) for auto-tuning / moments
-
-    • Online auto-tuning of Wave_5 wrapper parameters through SeaStateAutoTuner
-
-  Notes vs Wave_4:
+  Wave_5 notes:
     - Kalman3D_Wave_5 has no latent OU a_w state and no tau_aw in the core filter.
-    - Wrapper tau remains as a heuristic for envelope sizing and pseudo-measurement tuning.
-    - Wrapper sigma now maps primarily to:
-         • Kalman3D_Wave_5 accel measurement noise Racc
-         • Kalman3D_Wave_5 world-accel-bias RW scaling (b_aw)
-    - The linear block in Wave_5 is [v, p, b_aw], not [v, p, a_w].
+    - Wrapper tau is retained as a tuning / envelope / pseudo-measurement heuristic.
+    - Wrapper sigma is retained as a sea-state amplitude parameter.
+    - Core filter is tuned through:
+        • Racc (accel measurement noise)
+        • b_aw RW scaling (world-frame residual acceleration bias / command correction)
+    - The linear block is [v, p, b_aw].
 */
 
 #ifdef EIGEN_NON_ARDUINO
@@ -72,15 +65,13 @@ extern const float g_std;
 #define ZERO_CROSSINGS_STEEPNESS_TIME 0.21f
 #endif
 
-// Estimated vertical accel noise floor (1σ), m/s².
-// Tweak from bench data with IMU sitting still.
 constexpr float ACC_NOISE_FLOOR_SIGMA_DEFAULT = 0.12f;
 
 constexpr float MIN_FREQ_HZ = 0.2f;
 constexpr float MAX_FREQ_HZ = 6.0f;
 
-constexpr float MIN_TAU_S     = 0.02f;  // sec
-constexpr float MAX_TAU_S     = 3.0f;   // sec
+constexpr float MIN_TAU_S     = 0.02f;
+constexpr float MAX_TAU_S     = 3.0f;
 constexpr float MAX_SIGMA_A   = 6.0f;
 constexpr float MIN_R_p0_std  = 0.05f;
 constexpr float MAX_R_p0_std  = 18.0f;
@@ -89,22 +80,20 @@ constexpr float MAX_R_v0_std  = 6.0f;
 
 constexpr float ADAPT_TAU_SEC              = 1.5f;
 constexpr float ADAPT_EVERY_SECS           = 0.1f;
-constexpr float ADAPT_R_p0_MULT            = 5.0f;   // dimensionless
-constexpr float ADAPT_R_v0_MULT            = 5.0f;   // dimensionless
+constexpr float ADAPT_R_p0_MULT            = 5.0f;
+constexpr float ADAPT_R_v0_MULT            = 5.0f;
 constexpr float ONLINE_TUNE_WARMUP_SEC     = 5.0f;
 constexpr float MAG_DELAY_SEC              = 8.0f;
 
-// Frequency smoother dt (SeaStateFusionFilter_5 is designed for 200 Hz)
 constexpr float FREQ_SMOOTHER_DT = 1.0f / 200.0f;
 
 struct TuneState {
-    float tau_applied       = 1.1f;   // wrapper-side heuristic tau, seconds
-    float sigma_applied     = 1e-2f;  // applied accel-noise-like sigma, m/s²
-    float R_p0_std_applied  = 0.1f;   // m
-    float R_v0_std_applied  = 0.1f;   // m/s
+    float tau_applied       = 1.1f;   // wrapper-side heuristic tau [s]
+    float sigma_applied     = 1e-2f;  // wrapper-side sea-state sigma [m/s²]
+    float R_p0_std_applied  = 0.1f;   // [m]
+    float R_v0_std_applied  = 0.1f;   // [m/s]
 };
 
-// Tracker policy traits
 template<TrackerType>
 struct TrackerPolicy;
 
@@ -167,7 +156,6 @@ struct TrackerPolicy<TrackerType::ZEROCROSS> {
     }
 };
 
-// Unified SeaState fusion filter
 template<TrackerType trackerT>
 class SeaStateFusionFilter_5 {
 public:
@@ -204,8 +192,8 @@ public:
     {
         mekf_ = std::make_unique<MekfT>(sigma_a, sigma_g, sigma_m);
 
-        Racc_nominal_std_     = sigma_a;
-        tune_.sigma_applied   = std::max(acc_noise_floor_sigma_, sigma_a.z());
+        Racc_nominal_std_   = sigma_a;
+        tune_.sigma_applied = std::max(acc_noise_floor_sigma_, sigma_a.z());
 
         enterCold_();
         apply_wave5_tune_();
@@ -239,11 +227,10 @@ public:
         }
     }
 
-    // Time update (IMU integration + frequency tracking)
     void updateTime(float dt, const Eigen::Vector3f& gyro, const Eigen::Vector3f& acc,
                     float tempC = 35.0f)
     {
-        (void)tempC; // Wave_5 accel update has no temp input
+        (void)tempC; // Wave_5 accel update has no temperature input
 
         if (!mekf_) return;
         if (!(dt > 0.0f) || !std::isfinite(dt)) return;
@@ -255,7 +242,6 @@ public:
         const float a_y_body = acc.y();
         const float a_z_inertial = acc.z() + g_std;
 
-        // Wave_5 linear propagation uses both gyro and accel
         mekf_->time_update(gyro, acc, dt);
         mekf_->measurement_update_acc_only(acc);
 
@@ -287,7 +273,6 @@ public:
             if (tilt_over_limit_sec_ >= TILT_RESET_HOLD_SEC && tilt_reset_cooldown_sec_ <= 0.0f) {
                 mekf_->initialize_from_acc(acc);
 
-                // Keep original wrapper behavior: only force full Cold while not Live
                 if (startup_stage_ != StartupStage::Live) {
                     enterCold_();
                     resetTrackingState_();
@@ -329,7 +314,6 @@ public:
         dir_sign_state_ = dir_sign_.update(a_x_body, a_y_body, a_vert_up, dt);
     }
 
-    // Magnetometer correction
     void updateMag(const Eigen::Vector3f& mag_body_ned) {
         if (!with_mag_ || !mekf_) return;
         if (time_ < mag_delay_sec_) return;
@@ -362,18 +346,21 @@ public:
         }
     }
 
-    void setWithMag(bool with_mag) { with_mag_ = with_mag; }
+    void setWithMag(bool with_mag) {
+        with_mag_ = with_mag;
+    }
 
-    // Runtime knobs
     void setPFactor(float p) {
         if (std::isfinite(p) && p > 0.0f) {
             P_factor_ = p;
+            if (mekf_) apply_wave5_tune_();
         }
     }
 
     void setR_p0_XYFactor(float k) {
         if (std::isfinite(k)) {
             R_p0_xy_factor_ = std::min(std::max(k, 0.0f), 1.0f);
+            if (mekf_ && enable_linear_block_) apply_R_p0_tune_();
         }
     }
 
@@ -434,6 +421,7 @@ public:
     void setAccNoiseFloorSigma(float s) {
         if (std::isfinite(s) && s > 0.0f) {
             acc_noise_floor_sigma_ = s;
+            if (mekf_) apply_wave5_tune_();
         }
     }
 
@@ -445,10 +433,15 @@ public:
         freq_input_lpf_.setCutoff(fc);
     }
 
-    void enableClamp(bool flag = true) { enable_clamp_ = flag; }
-    void enableTuner(bool flag = true) { enable_tuner_ = flag; }
+    void enableClamp(bool flag = true) {
+        enable_clamp_ = flag;
+    }
 
-    // Enable/disable use of Wave_5 linear block [v,p,b_aw].
+    void enableTuner(bool flag = true) {
+        enable_tuner_ = flag;
+    }
+
+    // [v, p, b_aw] block
     void enableLinearBlock(bool flag = true) {
         enable_linear_block_ = flag;
         if (mekf_) {
@@ -457,7 +450,6 @@ public:
         }
     }
 
-    // Tunable adaptation bounds and time constants
     void setFreqBounds(float min_hz, float max_hz) {
         if (!std::isfinite(min_hz) || !std::isfinite(max_hz)) return;
         if (min_hz <= 0.0f || max_hz <= min_hz) return;
@@ -516,22 +508,71 @@ public:
         }
     }
 
-    void setFreezeAccBiasUntilLive(bool en) { freeze_acc_bias_until_live_ = en; }
-    void setWarmupRaccStd(float r) { if (std::isfinite(r) && r > 0.0f) Racc_warmup_std_ = r; }
+    void setFreezeAccBiasUntilLive(bool en) {
+        freeze_acc_bias_until_live_ = en;
+    }
 
-    // Used so warmup can restore nominal accel measurement noise later
-    void setNominalRaccStd(const Eigen::Vector3f& r) { Racc_nominal_std_ = r; }
+    void setWarmupRaccStd(float r) {
+        if (std::isfinite(r) && r > 0.0f) {
+            Racc_warmup_std_ = r;
+        }
+    }
 
-    // Exposed getters
+    // Baseline accel noise used for nominal axis ratios and Live scaling reference
+    void setNominalRaccStd(const Eigen::Vector3f& r) {
+        if (!r.allFinite()) return;
+        if (!(r.minCoeff() > 0.0f)) return;
+        Racc_nominal_std_ = r;
+        if (mekf_ && !warmup_Racc_active_) {
+            apply_wave5_tune_();
+        }
+    }
+
+    // Second-pass Live Racc retune knobs
+    void setLiveRaccMaxScale(float s) {
+        if (std::isfinite(s) && s >= 1.0f) {
+            live_racc_max_scale_ = s;
+            if (mekf_ && !warmup_Racc_active_) apply_wave5_tune_();
+        }
+    }
+
+    void setLiveRaccScalePower(float p) {
+        if (std::isfinite(p) && p > 0.0f) {
+            live_racc_scale_power_ = p;
+            if (mekf_ && !warmup_Racc_active_) apply_wave5_tune_();
+        }
+    }
+
+    void setBiasRwBaseGain(float g) {
+        if (std::isfinite(g) && g > 0.0f) {
+            baw_gain_base_ = g;
+            if (mekf_) apply_wave5_tune_();
+        }
+    }
+
+    void setBiasRwGainScaleMax(float s) {
+        if (std::isfinite(s) && s >= 1.0f) {
+            baw_gain_scale_max_ = s;
+            if (mekf_) apply_wave5_tune_();
+        }
+    }
+
+    void setBiasRwFloor(float s) {
+        if (std::isfinite(s) && s > 0.0f) {
+            baw_rw_floor_ = s;
+            if (mekf_) apply_wave5_tune_();
+        }
+    }
+
     inline float getFreqHz()            const noexcept { return freq_hz_; }
     inline float getFreqSlowHz()        const noexcept { return freq_hz_slow_; }
     inline float getFreqRawHz()         const noexcept { return f_raw; }
 
-    // Wrapper-side tau heuristic only
+    // Keep old semantic meaning: wrapper sea-state sigma, not actual Racc
     inline float getTauApplied()        const noexcept { return tune_.tau_applied; }
+    inline float getSigmaApplied()      const noexcept { return tune_.sigma_applied; }
 
-    // In Wave_5 this corresponds to applied accel-noise sigma (Racc z-axis)
-    inline float getSigmaApplied()      const noexcept {
+    inline float getRaccAppliedZ()      const noexcept {
         return mekf_ ? mekf_->get_Racc_std().z() : NAN;
     }
 
@@ -561,7 +602,7 @@ public:
     }
 
     inline float getDisplacementScale(bool smoothed = true) const noexcept {
-        const float tau = smoothed ? tune_.tau_applied : tau_target_;
+        const float tau   = smoothed ? tune_.tau_applied   : tau_target_;
         const float sigma = smoothed ? tune_.sigma_applied : sigma_target_;
         if (!std::isfinite(sigma) || !std::isfinite(tau)) return NAN;
         constexpr float C_HS  = 2.0f * std::sqrt(2.0f) / (M_PI * M_PI);
@@ -707,37 +748,56 @@ private:
         float getEnergyEma() const { return energy_ema; }
     };
 
+    Eigen::Vector3f compute_live_racc_cmd_(float sigma_hint) const {
+        const float sigma_floor = std::max(0.05f, acc_noise_floor_sigma_);
+        const float sigma_eff   = std::max(sigma_floor, sigma_hint);
+
+        if (Racc_nominal_std_.allFinite() && Racc_nominal_std_.maxCoeff() > 0.0f) {
+            Eigen::Vector3f base = Racc_nominal_std_;
+            for (int i = 0; i < 3; ++i) {
+                if (!std::isfinite(base(i)) || !(base(i) > 0.0f)) {
+                    base(i) = sigma_floor;
+                }
+            }
+
+            const float ref   = std::max(base.z(), 1e-6f);
+            const float ratio = std::max(1.0f, sigma_eff / ref);
+
+            float scale = std::pow(ratio, live_racc_scale_power_);
+            scale = std::min(std::max(scale, 1.0f), live_racc_max_scale_);
+
+            return base * scale;
+        }
+
+        return Eigen::Vector3f::Constant(sigma_eff);
+    }
+
     void apply_wave5_tune_() {
         if (!mekf_) return;
 
-        // Map wrapper "sigma" to:
-        //   1) accel measurement noise Racc
-        //   2) b_aw RW gain/floor
-        constexpr float BAW_GAIN_BASE = 0.25f;
-        mekf_->set_world_accel_bias_rw_gain(
-            Eigen::Vector3f(BAW_GAIN_BASE * P_factor_,
-                            BAW_GAIN_BASE * P_factor_,
-                            BAW_GAIN_BASE));
-        mekf_->set_world_accel_bias_rw_floor(Eigen::Vector3f::Constant(1e-4f));
-
-        // Preserve warmup-inflated Racc until Live restore.
-        if (warmup_Racc_active_) return;
-
-        const float sigma_floor = std::max(0.05f, acc_noise_floor_sigma_);
-        const float sigma_cmd   = std::max(sigma_floor, tune_.sigma_applied);
-
-        Eigen::Vector3f sigma_cmd_vec = Eigen::Vector3f::Constant(sigma_cmd);
-        if (Racc_nominal_std_.allFinite() && Racc_nominal_std_.maxCoeff() > 0.0f) {
-            const float zref = std::max(1e-6f, Racc_nominal_std_.z());
-            sigma_cmd_vec = Racc_nominal_std_ * (sigma_cmd / zref);
-            for (int i = 0; i < 3; ++i) {
-                if (!std::isfinite(sigma_cmd_vec(i)) || sigma_cmd_vec(i) <= 0.0f) {
-                    sigma_cmd_vec(i) = sigma_cmd;
-                }
-            }
+        // During warmup keep explicit inflated Racc from enterCold_ / unlock path.
+        if (warmup_Racc_active_) {
+            return;
         }
 
-        mekf_->set_Racc_std(sigma_cmd_vec);
+        const float sigma_floor = std::max(0.05f, acc_noise_floor_sigma_);
+        const float sigma_eff   = std::max(sigma_floor, tune_.sigma_applied);
+
+        // Live / normal path: only mildly inflate accel measurement noise.
+        const Eigen::Vector3f racc_cmd = compute_live_racc_cmd_(sigma_eff);
+        mekf_->set_Racc_std(racc_cmd);
+
+        // Preserve stronger sigma authority in the b_aw RW through gain rescaling.
+        const float sigma_racc_z = std::max(racc_cmd.z(), 1e-6f);
+        float gain_scale = sigma_eff / sigma_racc_z;
+        gain_scale = std::min(std::max(gain_scale, 1.0f), baw_gain_scale_max_);
+
+        mekf_->set_world_accel_bias_rw_gain(
+            Eigen::Vector3f(baw_gain_base_ * P_factor_ * gain_scale,
+                            baw_gain_base_ * P_factor_ * gain_scale,
+                            baw_gain_base_ * gain_scale));
+
+        mekf_->set_world_accel_bias_rw_floor(Eigen::Vector3f::Constant(baw_rw_floor_));
     }
 
     void apply_R_p0_tune_(float rp_scale = 1.0f) {
@@ -805,8 +865,8 @@ private:
         }
 
         var_wave = std::max(var_wave, 1e-6f);
-        float sigma_wave = std::sqrt(var_wave);
-        float tau_raw = tau_coeff_ * 0.5f / f_tune;
+        const float sigma_wave = std::sqrt(var_wave);
+        const float tau_raw = tau_coeff_ * 0.5f / f_tune;
 
         if (enable_clamp_) {
             tau_target_   = std::min(std::max(tau_raw,  min_tau_s_), max_tau_s_);
@@ -930,7 +990,6 @@ private:
     StartupStage startup_stage_   = StartupStage::Cold;
     float        startup_stage_t_ = 0.0f;
 
-    // Warmup behavior
     bool  freeze_acc_bias_until_live_ = true;
     float Racc_warmup_std_            = 0.5f;
     bool  warmup_Racc_active_         = false;
@@ -940,7 +999,6 @@ private:
     int  mag_updates_applied_ = 0;
     static constexpr int MAG_UPDATES_TO_UNLOCK = 40;
 
-    // Members
     bool   with_mag_;
     double time_;
     double last_adapt_time_sec_;
@@ -960,11 +1018,8 @@ private:
     bool enable_tuner_ = true;
 
     float speed_env_mult_ = 1.0f;
+    bool  enable_linear_block_ = true;
 
-    // When false, Wave_5 runs as attitude/bias filter with linear block frozen.
-    bool enable_linear_block_ = true;
-
-    // Tunable adaptation parameters
     float min_freq_hz_            = MIN_FREQ_HZ;
     float max_freq_hz_            = MAX_FREQ_HZ;
     float min_tau_s_              = MIN_TAU_S;
@@ -979,9 +1034,15 @@ private:
     float online_tune_warmup_sec_ = ONLINE_TUNE_WARMUP_SEC;
     float mag_delay_sec_          = MAG_DELAY_SEC;
 
-    // Runtime knobs
     float R_p0_xy_factor_ = 0.23f;
     float P_factor_       = 1.5f;
+
+    // Second-pass Wave_5 retune controls
+    float live_racc_max_scale_   = 2.0f;   // max Live Racc inflation vs nominal
+    float live_racc_scale_power_ = 0.35f;  // sublinear sigma->Racc mapping
+    float baw_gain_base_         = 0.25f;  // base b_aw RW gain
+    float baw_gain_scale_max_    = 8.0f;   // cap sigma/Racc compensation
+    float baw_rw_floor_          = 1e-4f;  // floor std / sqrt(s)
 
     TrackingPolicy                  tracker_policy_{};
     FirstOrderIIRSmoother<float>    freq_fast_smoother_{FREQ_SMOOTHER_DT, 3.5f};
@@ -1082,7 +1143,6 @@ public:
         impl_.setNominalRaccStd(cfg.sigma_a);
     }
 
-    // One IMU sample
     void update(float dt, const Eigen::Vector3f& gyro_body_ned,
                 const Eigen::Vector3f& acc_body_ned, float tempC = 35.0f)
     {
@@ -1283,7 +1343,6 @@ private:
     typename SeaStateFusionFilter_5<trackerT>::StartupStage last_impl_startup_stage_ =
         SeaStateFusionFilter_5<trackerT>::StartupStage::Cold;
 
-    // Mag init state
     bool mag_ref_set_ = false;
     Eigen::Vector3f mag_body_hold_ = Eigen::Vector3f::Zero();
 
@@ -1291,13 +1350,11 @@ private:
     float dt_mag_sec_ = NAN;
     float mag_ref_deadline_sec_ = NAN;
 
-    // Last IMU samples
     Eigen::Vector3f last_acc_body_ned_  = Eigen::Vector3f::Zero();
     Eigen::Vector3f last_gyro_body_ned_ = Eigen::Vector3f::Zero();
     float last_imu_dt_ = NAN;
     bool  have_last_imu_ = false;
 
-    // Fallback running means for mag-world ref init
     Eigen::Vector3f fallback_acc_mean_ = Eigen::Vector3f::Zero();
     Eigen::Vector3f fallback_mag_mean_ = Eigen::Vector3f::Zero();
     int fallback_mean_count_ = 0;
