@@ -1502,10 +1502,8 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_mag
     PCt.setZero();
     PCt.noalias() += Pext.template block<NX,3>(0,0) * J_att.transpose();
 
-    if (!linear_block_enabled_) freeze_linear_rows_(PCt);
-    if constexpr (with_accel_bias) {
-        if (!acc_bias_updates_enabled_) freeze_baw_rows_(PCt);
-    }
+    // IMPORTANT: mag update must remain base-only.
+    freeze_linear_rows_(PCt);
 
     Eigen::LDLT<Matrix3> ldlt;
     if (!safe_ldlt3_(S_mat, ldlt, Rmag.norm())) {
@@ -1521,10 +1519,8 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_mag
     MatrixNX3& K = K_scratch_;
     K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
 
-    if (!linear_block_enabled_) freeze_linear_rows_(K);
-    if constexpr (with_accel_bias) {
-        if (!acc_bias_updates_enabled_) freeze_baw_rows_(K);
-    }
+    // IMPORTANT: mag update must remain base-only.
+    freeze_linear_rows_(K);
 
     xext.noalias() += K * r;
     joseph_update3_(K, S_mat, PCt);
