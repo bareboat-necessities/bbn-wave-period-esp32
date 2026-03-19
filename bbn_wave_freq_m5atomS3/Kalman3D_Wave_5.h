@@ -1461,6 +1461,9 @@ void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_vel
 
     MatrixNX3& PCt = PCt_scratch_;
     PCt.noalias() = Pext.template block<NX,3>(0, off_V);
+    if constexpr (with_accel_bias) {
+        if (!acc_bias_updates_enabled_) freeze_baw_rows_(PCt);
+    }
 
     Eigen::LDLT<Matrix3> ldlt;
     if (!safe_ldlt3_(S_mat, ldlt, R_meas.norm())) return;
