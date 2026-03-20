@@ -1,28 +1,23 @@
 #pragma once
 
 /*
-  Copyright (c) 2025-2026 Mikhail Grushinskiy
+  Stable drop-in replacement for Kalman3D_Wave_5.
 
-  Based on: https://github.com/thomaspasser/q-mekf
-  MIT License, Copyright (c) 2023 Thomas Passer
+  Design goals:
+    - preserve the public API used by SeaStateFusionFilter_5
+    - stay numerically stable in float
+    - keep the original frame conventions:
+        * world is NED (+Z down)
+        * internal qref stores WORLD -> BODY'
+        * quaternion() returns BODY' -> WORLD
+        * quaternion_boat() returns physical BODY -> WORLD
 
-  Kalman3D_Wave_5
-
-  Full-matrix MEKF with linear navigation states:
-     v_w   (3) : velocity in world frame (NED)
-     p_w   (3) : displacement/position in world frame (NED)
-     b_aw  (3) : residual world-frame acceleration bias / command-correction (NED)
-
-  Notes:
-    - Acceleration is used as a command input in propagation.
-    - The RW variance of b_aw is scaled adaptively from external sigma_a commands.
-    - Acceleration-bias-like state expressed in WORLD frame.
-    - Accelerometer and magnetometer inputs are aerospace/NED (x north, y east, z down).
-    - Internal qref stores WORLD -> BODY' where BODY' is the virtual un-heeled frame.
-    - quaternion() returns BODY' -> WORLD.
-    - quaternion_boat() returns physical BODY -> WORLD.
-    - measurement_update_acc_only() is an attitude-centric specific-force-direction update.
-      It does not directly estimate a latent linear acceleration state.
+  This version is intentionally conservative:
+    - covariance is sanitized aggressively
+    - quaternion corrections are capped
+    - gyro / accel-bias-like states are clamped
+    - long dt spikes are bounded
+    - pseudo-measurement sigmas have floors
 */
 
 #ifdef EIGEN_NON_ARDUINO
@@ -69,7 +64,7 @@ inline Eigen::Quaternion<T> quat_from_delta_theta(const Eigen::Matrix<T,3,1>& dt
 
 template<typename T, int N>
 static inline void project_psd(Eigen::Matrix<T,N,N>& S,
-                               T rel_floor = T(64) * std::numeric_limits<T>::epsilon()) {
+                               T rel_floor = T(1e-12)) {
     S = T(0.5) * (S + S.transpose());
 
     T scale = T(0);
@@ -80,7 +75,7 @@ static inline void project_psd(Eigen::Matrix<T,N,N>& S,
     if (!(scale > T(0)) || !std::isfinite(scale)) scale = T(1);
 
     const T lam_floor = std::max(rel_floor * scale,
-                                 T(64) * std::numeric_limits<T>::epsilon());
+                                 std::numeric_limits<T>::min());
 
     for (int i = 0; i < N; ++i) {
         for (int j = 0; j < N; ++j) {
@@ -107,7 +102,7 @@ static inline void project_psd(Eigen::Matrix<T,N,N>& S,
 template <typename T = float, bool with_gyro_bias = true, bool with_accel_bias = true>
 class Kalman3D_Wave_5 {
     static constexpr int BASE_N = with_gyro_bias ? 6 : 3;
-    static constexpr int LIN_N  = 6 + (with_accel_bias ? 3 : 0);   // [v(3), p(3), b_aw(3?)]
+    static constexpr int LIN_N  = 6 + (with_accel_bias ? 3 : 0);
     static constexpr int NX     = BASE_N + LIN_N;
 
     static constexpr int OFF_V    = BASE_N + 0;
@@ -119,7 +114,6 @@ class Kalman3D_Wave_5 {
     typedef Matrix<T, BASE_N, BASE_N> MatrixBaseN;
     typedef Matrix<T, NX, NX> MatrixNX;
     typedef Matrix<T, NX, 3> MatrixNX3;
-    typedef Matrix<T, 9, 9> Matrix9;
 
     static constexpr T STD_GRAVITY = T(9.80665);
 
@@ -144,28 +138,705 @@ class Kalman3D_Wave_5 {
                     T b0  = T(1e-11),
                     T R_p0_noise_var = T(1.5),
                     T R_v0_noise_var = T(0.3),
-                    T gravity_magnitude = T(STD_GRAVITY));
+                    T gravity_magnitude = T(STD_GRAVITY))
+      : gravity_magnitude_(gravity_magnitude),
+        qref(Eigen::Quaternion<T>::Identity()),
+        Rmag(sigma_m.array().square().matrix().asDiagonal()),
+        Qbase(initialize_Q(sigma_g, b0)),
+        Racc(sigma_a.array().square().matrix().asDiagonal()) {
 
-    void initialize_from_acc_mag(Vector3 const& acc, Vector3 const& mag);
-    void initialize_from_acc(Vector3 const& acc);
-    static Eigen::Quaternion<T> quaternion_from_acc(Vector3 const& acc);
+        Rmag = T(0.5) * (Rmag + Rmag.transpose());
+        Racc = T(0.5) * (Racc + Racc.transpose());
 
-    void set_mag_world_ref(const Vector3& B_world) { v2ref = B_world; }
+        R_p0 = Matrix3::Identity() * std::max(T(1e-6), R_p0_noise_var);
+        R_v0 = Matrix3::Identity() * std::max(T(1e-6), R_v0_noise_var);
+
+        MatrixBaseN Pbase; Pbase.setZero();
+        Pbase.template topLeftCorner<3,3>() =
+            Matrix3::Identity() * std::max(T(1e-10), Pq0);
+        if constexpr (with_gyro_bias) {
+            Pbase.template block<3,3>(3,3) =
+                Matrix3::Identity() * std::max(T(1e-12), Pb0);
+        }
+
+        xext.setZero();
+        Pext.setZero();
+        Pext.topLeftCorner(BASE_N, BASE_N) = Pbase;
+
+        if constexpr (with_accel_bias) {
+            Pext.template block<3,3>(OFF_BAW, OFF_BAW) =
+                Matrix3::Identity() * initial_baw_std_(0) * initial_baw_std_(0);
+        }
+
+        const T sigma_v0 = T(1.0);
+        const T sigma_p0 = T(20.0);
+        set_initial_linear_uncertainty(sigma_v0, sigma_p0);
+
+        {
+            Vector3 sigma_acc0 = get_Racc_std();
+
+            const T sigma_p00 = std::sqrt(std::max(T(1e-12), R_p0_noise_var));
+            const T sigma_v00 = std::sqrt(std::max(T(1e-12), R_v0_noise_var));
+            Vector3 sigma_p00v = Vector3::Constant(sigma_p00);
+            Vector3 sigma_v00v = Vector3::Constant(sigma_v00);
+
+            log_sigma_acc_f_.x = clamp_pos_vec_(sigma_acc0, sigma_acc_min_, sigma_acc_max_).array().log().matrix();
+            log_sigma_p0_f_.x  = clamp_pos_vec_(sigma_p00v, sigma_p0_min_, sigma_p0_max_).array().log().matrix();
+            log_sigma_v0_f_.x  = clamp_pos_vec_(sigma_v00v, sigma_v0_min_, sigma_v0_max_).array().log().matrix();
+
+            log_sigma_acc_f_.P = Vector3::Constant(T(0.10) * T(0.10));
+            log_sigma_p0_f_.P  = Vector3::Constant(T(0.15) * T(0.15));
+            log_sigma_v0_f_.P  = Vector3::Constant(T(0.15) * T(0.15));
+
+            const T rw_sig_acc = T(0.02);
+            const T rw_sig_p0  = T(0.02);
+            const T rw_sig_v0  = T(0.02);
+            log_sigma_acc_f_.q = Vector3::Constant(rw_sig_acc * rw_sig_acc);
+            log_sigma_p0_f_.q  = Vector3::Constant(rw_sig_p0 * rw_sig_p0);
+            log_sigma_v0_f_.q  = Vector3::Constant(rw_sig_v0 * rw_sig_v0);
+
+            const T cmd_sig_acc = T(0.10);
+            const T cmd_sig_p0  = T(0.15);
+            const T cmd_sig_v0  = T(0.15);
+            log_sigma_acc_f_.r = Vector3::Constant(cmd_sig_acc * cmd_sig_acc);
+            log_sigma_p0_f_.r  = Vector3::Constant(cmd_sig_p0 * cmd_sig_p0);
+            log_sigma_v0_f_.r  = Vector3::Constant(cmd_sig_v0 * cmd_sig_v0);
+        }
+
+        refresh_baw_rw_from_sigma_acc_();
+        sanitize_and_clamp_state_();
+        sanitize_covariance_();
+    }
+
+    void initialize_from_acc_mag(Vector3 const& acc_body, Vector3 const& mag_body) {
+        const Vector3 acc = deheel_vector_(acc_body);
+        const Vector3 mag = deheel_vector_(mag_body);
+
+        const T anorm = acc.norm();
+        if (!(anorm > T(1e-8))) {
+            throw std::runtime_error("Invalid accelerometer vector: norm too small for initialization");
+        }
+        const Vector3 z_world = -(acc / anorm);
+
+        Vector3 x_world = mag - (mag.dot(z_world)) * z_world;
+        if (!(x_world.norm() > T(1e-8))) {
+            throw std::runtime_error("Magnetometer vector parallel to gravity — cannot initialize yaw");
+        }
+        x_world.normalize();
+        Vector3 y_world = z_world.cross(x_world);
+        if (!(y_world.norm() > T(1e-8))) {
+            throw std::runtime_error("Degenerate initialization basis");
+        }
+        y_world.normalize();
+        x_world = y_world.cross(z_world).normalized();
+
+        Matrix3 R_wb0;
+        R_wb0.col(0) = x_world;
+        R_wb0.col(1) = y_world;
+        R_wb0.col(2) = z_world;
+
+        qref = Eigen::Quaternion<T>(R_wb0);
+        qref.normalize();
+
+        v2ref = R_bw() * mag;
+        last_acc_body_cached_ = acc_body;
+        auto_zero_pseudo_elapsed_sec_ = T(0);
+        sanitize_and_clamp_state_();
+        sanitize_covariance_();
+    }
+
+    void initialize_from_acc(Vector3 const& acc_body) {
+        const Vector3 acc = deheel_vector_(acc_body);
+        const T anorm = acc.norm();
+        if (!(anorm > T(1e-8))) {
+            throw std::runtime_error("Invalid accelerometer vector: norm too small for initialization");
+        }
+        qref = quaternion_from_acc(acc / anorm);
+        qref.normalize();
+        last_acc_body_cached_ = acc_body;
+        auto_zero_pseudo_elapsed_sec_ = T(0);
+        sanitize_and_clamp_state_();
+        sanitize_covariance_();
+    }
+
+    static Eigen::Quaternion<T> quaternion_from_acc(Vector3 const& acc) {
+        Vector3 an = acc.normalized();
+        Vector3 zb = Vector3::UnitZ();
+
+        Vector3 target = -an;
+        T cos_theta = zb.dot(target);
+        Vector3 axis = zb.cross(target);
+        T norm_axis = axis.norm();
+
+        if (norm_axis < T(1e-8)) {
+            if (cos_theta > 0) return Eigen::Quaternion<T>::Identity();
+            return Eigen::Quaternion<T>(0, 1, 0, 0);
+        }
+
+        axis /= norm_axis;
+        cos_theta = std::max(T(-1), std::min(T(1), cos_theta));
+        const T angle = std::acos(cos_theta);
+
+        Eigen::AngleAxis<T> aa(angle, axis);
+        Eigen::Quaternion<T> q(aa);
+        q.normalize();
+        return q;
+    }
+
+    void set_mag_world_ref(const Vector3& B_world) {
+        if (B_world.allFinite() && B_world.norm() > T(1e-9)) v2ref = B_world;
+    }
 
     void time_update(Vector3 const& gyr_body,
                      Vector3 const& acc_body,
-                     T Ts);
+                     T Ts) {
+        if (!(Ts > T(1e-5)) || !std::isfinite(Ts)) return;
+        if (Ts > T(0.05)) Ts = T(0.05);
+        if (!gyr_body.allFinite() || !acc_body.allFinite()) return;
+
+        last_dt_ = Ts;
+        last_acc_body_cached_ = acc_body;
+
+        param_rw_predict_(Ts);
+
+        const Vector3 gyr = deheel_vector_(gyr_body);
+
+        Vector3 gyro_bias = Vector3::Zero();
+        if constexpr (with_gyro_bias) gyro_bias = xext.template segment<3>(3);
+        last_gyr_bias_corrected = gyr - gyro_bias;
+        if (!last_gyr_bias_corrected.allFinite()) {
+            last_gyr_bias_corrected.setZero();
+            return;
+        }
+
+        const Vector3 omega_b = last_gyr_bias_corrected;
+        if (have_prev_omega_ && Ts > T(0)) {
+            const Vector3 alpha_raw = (omega_b - prev_omega_b_) / Ts;
+            if (alpha_raw.allFinite()) {
+                if (alpha_smooth_tau_ > T(0)) {
+                    const T a = T(1) - std::exp(-Ts / alpha_smooth_tau_);
+                    alpha_b_ = (T(1) - a) * alpha_b_ + a * alpha_raw;
+                } else {
+                    alpha_b_ = alpha_raw;
+                }
+            } else {
+                alpha_b_.setZero();
+            }
+        } else {
+            alpha_b_.setZero();
+            have_prev_omega_ = true;
+        }
+        prev_omega_b_ = omega_b;
+        if (!alpha_b_.allFinite()) alpha_b_.setZero();
+        if (!prev_omega_b_.allFinite()) prev_omega_b_.setZero();
+
+        Eigen::Quaternion<T> dq = quat_from_delta_theta((last_gyr_bias_corrected * Ts).eval());
+        qref = qref * dq;
+        qref.normalize();
+
+        const Matrix3 I = Matrix3::Identity();
+        const Vector3 w = last_gyr_bias_corrected;
+        const T omega = w.norm();
+        const T theta = omega * Ts;
+
+        MatrixBaseN F_AA = MatrixBaseN::Identity();
+        if (theta < T(1e-5)) {
+            const Matrix3 Wx = skew_symmetric_matrix(w);
+            F_AA.template topLeftCorner<3,3>() = I - Wx * Ts + (Wx * Wx) * (Ts * Ts / T(2));
+        } else {
+            const Matrix3 Wn = skew_symmetric_matrix(w / (omega + std::numeric_limits<T>::epsilon()));
+            const T s = std::sin(theta), c = std::cos(theta);
+            F_AA.template topLeftCorner<3,3>() = I - s * Wn + (T(1) - c) * (Wn * Wn);
+        }
+
+        if constexpr (with_gyro_bias) {
+            Matrix3 Rstep, Bstep;
+            rot_and_B_from_wt_(w, Ts, Rstep, Bstep);
+            F_AA.template topLeftCorner<3,3>() = Rstep;
+            F_AA.template block<3,3>(0,3) = Bstep;
+        }
+
+        MatrixBaseN Q_AA = MatrixBaseN::Zero();
+        if (!use_exact_att_bias_Qd_) {
+            Q_AA = Qbase * Ts;
+        } else {
+            const Matrix3 Qg = Qbase.template topLeftCorner<3,3>();
+            Matrix3 Qbg = Matrix3::Zero();
+            if constexpr (with_gyro_bias) Qbg = Qbase.template bottomRightCorner<3,3>();
+
+            Matrix3 I_R;
+            if (is_isotropic3_(Qg)) I_R = Matrix3::Identity() * (Qg(0,0) * Ts);
+            else I_R = simpson_R_Q_RT_(w, Ts, Qg);
+
+            Matrix3 I_BB = Matrix3::Zero();
+            if constexpr (with_gyro_bias) I_BB = simpson_B_Q_BT_(w, Ts, Qbg);
+
+            Q_AA.template topLeftCorner<3,3>() = I_R + I_BB;
+            if constexpr (with_gyro_bias) {
+                Matrix3 Qbb = Qbg * Ts;
+                Matrix3 IB; integral_B_ds_(w, Ts, IB);
+                Matrix3 Qtb = IB * Qbg;
+                Q_AA.template topRightCorner<3,3>() = Qtb;
+                Q_AA.template bottomLeftCorner<3,3>() = Qtb.transpose();
+                Q_AA.template bottomRightCorner<3,3>() = Qbb;
+            }
+            Q_AA = T(0.5) * (Q_AA + Q_AA.transpose());
+            if constexpr (with_gyro_bias) project_psd<T,6>(Q_AA, T(1e-12));
+            else project_psd<T,3>(Q_AA, T(1e-12));
+        }
+
+        MatrixNX Fext = MatrixNX::Identity();
+        MatrixNX Qext = MatrixNX::Zero();
+
+        Fext.template block<BASE_N,BASE_N>(0,0) = F_AA;
+        Qext.template block<BASE_N,BASE_N>(0,0) = Q_AA;
+
+        if (linear_block_enabled_) {
+            const Vector3 acc_cmd = deheel_vector_(acc_body);
+
+            Vector3 lever = Vector3::Zero();
+            Matrix3 Jlever_dbg = Matrix3::Zero();
+
+            if (use_imu_lever_arm_) {
+                const Vector3 r_imu_bprime = deheel_vector_(r_imu_wrt_cog_body_phys_);
+                lever.noalias() += alpha_b_.cross(r_imu_bprime)
+                                +  omega_b.cross(omega_b.cross(r_imu_bprime));
+
+                if constexpr (with_gyro_bias) {
+                    T k_alpha = T(0);
+                    if (have_prev_omega_ && Ts > T(0)) {
+                        if (alpha_smooth_tau_ > T(0)) {
+                            const T a = T(1) - std::exp(-Ts / alpha_smooth_tau_);
+                            k_alpha = a / Ts;
+                        } else {
+                            k_alpha = T(1) / Ts;
+                        }
+                    }
+                    const Matrix3 J_alpha_part = k_alpha * skew_symmetric_matrix(r_imu_bprime);
+                    const Matrix3 J_omega_part = d_omega_x_omega_x_r_domega_(omega_b, r_imu_bprime);
+                    Jlever_dbg = J_alpha_part - J_omega_part;
+                }
+            }
+
+            if (!lever.allFinite()) {
+                lever.setZero();
+                Jlever_dbg.setZero();
+            }
+
+            const Matrix3 Rbw = R_bw();
+            const Vector3 g_world(0,0,+gravity_magnitude_);
+
+            const Vector3 u_rot = Rbw * (acc_cmd - lever);
+            const Vector3 u_w   = u_rot + g_world;
+            if (!u_rot.allFinite() || !u_w.allFinite()) return;
+
+            Vector3 v = xext.template segment<3>(OFF_V);
+            Vector3 p = xext.template segment<3>(OFF_P);
+
+            if constexpr (with_accel_bias) {
+                Vector3 b_aw = xext.template segment<3>(OFF_BAW);
+                clamp_vec_(b_aw, T(3.0));
+                const Vector3 a_eff = u_w - b_aw;
+
+                xext.template segment<3>(OFF_V) = v + Ts * a_eff;
+                xext.template segment<3>(OFF_P) = p + Ts * v + (T(0.5) * Ts * Ts) * a_eff;
+            } else {
+                xext.template segment<3>(OFF_V) = v + Ts * u_w;
+                xext.template segment<3>(OFF_P) = p + Ts * v + (T(0.5) * Ts * Ts) * u_w;
+            }
+
+            // Keep linear states bounded to avoid catastrophic integrator runaway from one bad frame.
+            Vector3 vv = xext.template segment<3>(OFF_V);
+            Vector3 pp = xext.template segment<3>(OFF_P);
+            clamp_vec_(vv, T(50.0));
+            clamp_vec_(pp, T(500.0));
+            xext.template segment<3>(OFF_V) = vv;
+            xext.template segment<3>(OFF_P) = pp;
+
+            Fext.template block<3,3>(OFF_V, OFF_V) = Matrix3::Identity();
+            Fext.template block<3,3>(OFF_P, OFF_V) = Matrix3::Identity() * Ts;
+            Fext.template block<3,3>(OFF_P, OFF_P) = Matrix3::Identity();
+
+            if constexpr (with_accel_bias) {
+                Fext.template block<3,3>(OFF_BAW, OFF_BAW) = Matrix3::Identity();
+                // Conservative bias coupling to prevent runaway.
+                const T bias_cpl = T(0.25);
+                Fext.template block<3,3>(OFF_V, OFF_BAW)   = -Matrix3::Identity() * (bias_cpl * Ts);
+                Fext.template block<3,3>(OFF_P, OFF_BAW)   = -Matrix3::Identity() * (bias_cpl * T(0.5) * Ts * Ts);
+            }
+
+            const Matrix3 J_u_att = skew_symmetric_matrix(u_rot);
+            Fext.template block<3,3>(OFF_V, 0) = J_u_att * Ts;
+            Fext.template block<3,3>(OFF_P, 0) = J_u_att * (T(0.5) * Ts * Ts);
+
+            if constexpr (with_gyro_bias) {
+                if (use_imu_lever_arm_) {
+                    const Matrix3 J_u_bg = -Rbw * Jlever_dbg;
+                    Fext.template block<3,3>(OFF_V, 3) = J_u_bg * Ts;
+                    Fext.template block<3,3>(OFF_P, 3) = J_u_bg * (T(0.5) * Ts * Ts);
+                }
+            }
+
+            Matrix3 Ru_world = Rbw * Racc * Rbw.transpose();
+            Ru_world = T(0.5) * (Ru_world + Ru_world.transpose());
+            project_psd<T,3>(Ru_world, T(1e-12));
+
+            const T dt  = Ts;
+            const T dt2 = dt * dt;
+            const T dt3 = dt2 * dt;
+            const T dt4 = dt2 * dt2;
+            const T dt5 = dt4 * dt;
+
+            Qext.template block<3,3>(OFF_V, OFF_V).noalias() += dt2 * Ru_world;
+            Qext.template block<3,3>(OFF_V, OFF_P).noalias() += (T(0.5) * dt3) * Ru_world;
+            Qext.template block<3,3>(OFF_P, OFF_V) = Qext.template block<3,3>(OFF_V, OFF_P).transpose();
+            Qext.template block<3,3>(OFF_P, OFF_P).noalias() += (T(0.25) * dt4) * Ru_world;
+
+            if constexpr (with_accel_bias) {
+                for (int axis = 0; axis < 3; ++axis) {
+                    const T q = acc_bias_updates_enabled_ ? Q_baw_rw_(axis, axis) : T(0);
+                    const T q_limited = std::min(q, T(1.0));
+
+                    Qext(OFF_V + axis, OFF_V + axis)         += q_limited * dt3 / T(3);
+                    Qext(OFF_V + axis, OFF_P + axis)         += q_limited * dt4 / T(8);
+                    Qext(OFF_P + axis, OFF_V + axis)          = Qext(OFF_V + axis, OFF_P + axis);
+                    Qext(OFF_P + axis, OFF_P + axis)         += q_limited * dt5 / T(20);
+
+                    Qext(OFF_V + axis, OFF_BAW + axis)       += -q_limited * dt2 / T(2);
+                    Qext(OFF_BAW + axis, OFF_V + axis)        = Qext(OFF_V + axis, OFF_BAW + axis);
+
+                    Qext(OFF_P + axis, OFF_BAW + axis)       += -q_limited * dt3 / T(6);
+                    Qext(OFF_BAW + axis, OFF_P + axis)        = Qext(OFF_P + axis, OFF_BAW + axis);
+
+                    Qext(OFF_BAW + axis, OFF_BAW + axis)     += q_limited * dt;
+                }
+            }
+        }
+
+        Qext = T(0.5) * (Qext + Qext.transpose());
+        MatrixNX Pnew = Fext * Pext * Fext.transpose() + Qext;
+        Pext = Pnew;
+        sanitize_and_clamp_state_();
+        sanitize_covariance_();
+
+        maybe_run_auto_zero_pseudos_(Ts);
+    }
 
     void time_update(Vector3 const& gyr_body, T Ts) {
         time_update(gyr_body, last_acc_body_cached_, Ts);
     }
 
-    void measurement_update_acc_only(Vector3 const& acc_body);
-    void measurement_update_mag_only(Vector3 const& mag_body);
+    void measurement_update_acc_only(Vector3 const& acc_meas_body) {
+        last_acc_diag_ = MeasDiag3{};
+        last_acc_diag_.accepted = false;
+        last_acc_body_cached_ = acc_meas_body;
 
-    void measurement_update_position_pseudo(const Vector3& p_meas, const Vector3& sigma_meas);
-    void measurement_update_velocity_pseudo(const Vector3& v_meas, const Vector3& sigma_meas);
-    void measurement_update_vert_velocity_pseudo(T vz_meas, T sigma_meas);
+        const Vector3 acc_meas = deheel_vector_(acc_meas_body);
+        if (!acc_meas.allFinite()) return;
+
+        const T anorm = acc_meas.norm();
+        if (!(anorm > T(1e-6))) return;
+
+        const Vector3 z_meas = acc_meas / anorm;
+
+        const Matrix3 Rwb = R_wb();
+        const Vector3 g_world(0, 0, +gravity_magnitude_);
+
+        Vector3 lever = Vector3::Zero();
+        if (use_imu_lever_arm_) {
+            const Vector3 r_imu_bprime = deheel_vector_(r_imu_wrt_cog_body_phys_);
+            lever.noalias() += alpha_b_.cross(r_imu_bprime)
+                            +  last_gyr_bias_corrected.cross(last_gyr_bias_corrected.cross(r_imu_bprime));
+        }
+        if (!lever.allFinite()) lever.setZero();
+
+        // Gravity-direction update only; linear accel/bias remain nuisance here.
+        const Vector3 f_cog_b = Rwb * (Vector3::Zero() - g_world);
+        const Vector3 f_pred  = f_cog_b + lever;
+
+        const T fnorm = f_pred.norm();
+        if (!(fnorm > T(1e-6))) return;
+
+        const Vector3 zhat = f_pred / fnorm;
+        const Vector3 innov = z_meas - zhat;
+        last_acc_diag_.r = innov;
+
+        const Matrix3 I3 = Matrix3::Identity();
+        const Matrix3 Nproj = (I3 - zhat * zhat.transpose()) / fnorm;
+
+        const Matrix3 Jf_att = -skew_symmetric_matrix(f_cog_b);
+        const Matrix3 J_att  = Nproj * Jf_att;
+
+        Matrix3 J_bg = Matrix3::Zero();
+        if constexpr (with_gyro_bias) {
+            if (use_imu_lever_arm_) {
+                const Vector3 r_imu_bprime = deheel_vector_(r_imu_wrt_cog_body_phys_);
+                const Vector3& w = last_gyr_bias_corrected;
+
+                T k_alpha = T(0);
+                if (have_prev_omega_ && last_dt_ > T(0)) {
+                    if (alpha_smooth_tau_ > T(0)) {
+                        const T a = T(1) - std::exp(-last_dt_ / alpha_smooth_tau_);
+                        k_alpha = a / last_dt_;
+                    } else {
+                        k_alpha = T(1) / last_dt_;
+                    }
+                }
+
+                const Matrix3 J_alpha_part = k_alpha * skew_symmetric_matrix(r_imu_bprime);
+                const Matrix3 J_omega_part = d_omega_x_omega_x_r_domega_(w, r_imu_bprime);
+                const Matrix3 Jf_bg = J_alpha_part - J_omega_part;
+                J_bg = Nproj * Jf_bg;
+            }
+        }
+
+        Matrix3 J_baw = Matrix3::Zero();
+        if constexpr (with_accel_bias) {
+            const Matrix3 Jf_baw = -Rwb;
+            J_baw = Nproj * Jf_baw;
+        }
+
+        Matrix3& S_mat = S_scratch_;
+        S_mat.setZero();
+        S_mat.noalias() = Nproj * Racc * Nproj.transpose();
+
+        {
+            const T dir_noise_scale = (Racc.trace() / T(3)) / std::max(T(1), fnorm * fnorm);
+            const T floor = std::max(T(1e-9), T(1e-6) * dir_noise_scale);
+            S_mat.diagonal().array() += floor;
+        }
+
+        const Matrix3 P_th_th = Pext.template block<3,3>(0,0);
+        S_mat.noalias() += J_att * P_th_th * J_att.transpose();
+
+        if constexpr (with_gyro_bias) {
+            if (use_imu_lever_arm_) {
+                const Matrix3 P_th_bg = Pext.template block<3,3>(0,3);
+                const Matrix3 P_bg_bg = Pext.template block<3,3>(3,3);
+
+                S_mat.noalias() += J_att * P_th_bg * J_bg.transpose();
+                S_mat.noalias() += J_bg  * P_th_bg.transpose() * J_att.transpose();
+                S_mat.noalias() += J_bg  * P_bg_bg * J_bg.transpose();
+            }
+        }
+
+        if constexpr (with_accel_bias) {
+            const Matrix3 P_th_baw  = Pext.template block<3,3>(0, OFF_BAW);
+            const Matrix3 P_baw_baw = Pext.template block<3,3>(OFF_BAW, OFF_BAW);
+
+            S_mat.noalias() += J_att * P_th_baw * J_baw.transpose();
+            S_mat.noalias() += J_baw * P_th_baw.transpose() * J_att.transpose();
+            S_mat.noalias() += J_baw * P_baw_baw * J_baw.transpose();
+
+            if constexpr (with_gyro_bias) {
+                if (use_imu_lever_arm_) {
+                    const Matrix3 P_bg_baw = Pext.template block<3,3>(3, OFF_BAW);
+                    S_mat.noalias() += J_bg  * P_bg_baw * J_baw.transpose();
+                    S_mat.noalias() += J_baw * P_bg_baw.transpose() * J_bg.transpose();
+                }
+            }
+        }
+
+        MatrixNX3& PCt = PCt_scratch_;
+        PCt.setZero();
+        PCt.noalias() += Pext.template block<NX,3>(0,0) * J_att.transpose();
+
+        if constexpr (with_gyro_bias) {
+            if (use_imu_lever_arm_) {
+                PCt.noalias() += Pext.template block<NX,3>(0,3) * J_bg.transpose();
+            }
+        }
+
+        freeze_linear_rows_(PCt);
+
+        Eigen::LDLT<Matrix3> ldlt;
+        if (!safe_ldlt3_(S_mat, ldlt, S_mat.norm())) {
+            last_acc_diag_.S = S_mat;
+            last_acc_diag_.nis = std::numeric_limits<T>::quiet_NaN();
+            last_acc_diag_.accepted = false;
+            return;
+        }
+
+        last_acc_diag_.S = S_mat;
+        last_acc_diag_.nis = nis3_from_ldlt_(ldlt, innov);
+
+        MatrixNX3& K = K_scratch_;
+        K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
+        freeze_linear_rows_(K);
+
+        xext.noalias() += K * innov;
+        joseph_update3_(K, S_mat, PCt);
+
+        applyQuaternionCorrectionFromErrorState();
+        last_acc_diag_.accepted = true;
+    }
+
+    void measurement_update_mag_only(const Vector3& mag_meas_body) {
+        last_mag_diag_ = MeasDiag3{};
+        last_mag_diag_.accepted = false;
+
+        const Vector3 mag_meas = deheel_vector_(mag_meas_body);
+        if (!mag_meas.allFinite()) return;
+        const T mag_norm = mag_meas.norm();
+        if (!(mag_norm > T(1e-6))) return;
+
+        Vector3 v2hat = R_wb() * v2ref;
+        if (v2hat.dot(mag_meas) < T(0)) v2hat = -v2hat;
+
+        const Vector3 r = mag_meas - v2hat;
+        last_mag_diag_.r = r;
+
+        const Matrix3 J_att = -skew_symmetric_matrix(v2hat);
+
+        Matrix3& S_mat = S_scratch_;
+        S_mat = Rmag;
+        const Matrix3 P_th_th = Pext.template block<3,3>(0,0);
+        S_mat.noalias() += J_att * P_th_th * J_att.transpose();
+
+        MatrixNX3& PCt = PCt_scratch_;
+        PCt.setZero();
+        PCt.noalias() += Pext.template block<NX,3>(0,0) * J_att.transpose();
+        freeze_linear_rows_(PCt);
+
+        Eigen::LDLT<Matrix3> ldlt;
+        if (!safe_ldlt3_(S_mat, ldlt, Rmag.norm())) {
+            last_mag_diag_.S = S_mat;
+            last_mag_diag_.nis = std::numeric_limits<T>::quiet_NaN();
+            last_mag_diag_.accepted = false;
+            return;
+        }
+
+        last_mag_diag_.S = S_mat;
+        last_mag_diag_.nis = nis3_from_ldlt_(ldlt, r);
+
+        MatrixNX3& K = K_scratch_;
+        K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
+        freeze_linear_rows_(K);
+
+        xext.noalias() += K * r;
+        joseph_update3_(K, S_mat, PCt);
+        applyQuaternionCorrectionFromErrorState();
+        last_mag_diag_.accepted = true;
+    }
+
+    void measurement_update_position_pseudo(const Vector3& p_meas, const Vector3& sigma_meas) {
+        if (!linear_block_enabled_) return;
+
+        const Vector3 p_pred = xext.template segment<3>(OFF_P);
+        const Vector3 r = p_meas - p_pred;
+        if (!r.allFinite()) return;
+
+        Matrix3& S_mat = S_scratch_;
+        S_mat = Pext.template block<3,3>(OFF_P, OFF_P);
+
+        Matrix3 R_meas = Matrix3::Zero();
+        const T sx = std::max(T(1e-6), std::abs(sigma_meas.x()));
+        const T sy = std::max(T(1e-6), std::abs(sigma_meas.y()));
+        const T sz = std::max(T(1e-6), std::abs(sigma_meas.z()));
+        R_meas(0,0) = sx * sx;
+        R_meas(1,1) = sy * sy;
+        R_meas(2,2) = sz * sz;
+        S_mat.noalias() += R_meas;
+
+        MatrixNX3& PCt = PCt_scratch_;
+        PCt.noalias() = Pext.template block<NX,3>(0, OFF_P);
+
+        freeze_base_rows_(PCt);
+        freeze_baw_rows_(PCt);
+
+        Eigen::LDLT<Matrix3> ldlt;
+        if (!safe_ldlt3_(S_mat, ldlt, R_meas.norm())) return;
+
+        MatrixNX3& K = K_scratch_;
+        K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
+
+        freeze_base_rows_(K);
+        freeze_baw_rows_(K);
+
+        xext.noalias() += K * r;
+        joseph_update3_(K, S_mat, PCt);
+        applyQuaternionCorrectionFromErrorState();
+    }
+
+    void measurement_update_velocity_pseudo(const Vector3& v_meas, const Vector3& sigma_meas) {
+        if (!linear_block_enabled_) return;
+
+        const Vector3 v_pred = xext.template segment<3>(OFF_V);
+        const Vector3 r = v_meas - v_pred;
+        if (!r.allFinite()) return;
+
+        Matrix3& S_mat = S_scratch_;
+        S_mat = Pext.template block<3,3>(OFF_V, OFF_V);
+
+        Matrix3 R_meas = Matrix3::Zero();
+        const T sx = std::max(T(1e-6), std::abs(sigma_meas.x()));
+        const T sy = std::max(T(1e-6), std::abs(sigma_meas.y()));
+        const T sz = std::max(T(1e-6), std::abs(sigma_meas.z()));
+        R_meas(0,0) = sx * sx;
+        R_meas(1,1) = sy * sy;
+        R_meas(2,2) = sz * sz;
+        S_mat.noalias() += R_meas;
+
+        MatrixNX3& PCt = PCt_scratch_;
+        PCt.noalias() = Pext.template block<NX,3>(0, OFF_V);
+
+        freeze_base_rows_(PCt);
+        if constexpr (with_accel_bias) {
+            if (!acc_bias_updates_enabled_) freeze_baw_rows_(PCt);
+        }
+
+        Eigen::LDLT<Matrix3> ldlt;
+        if (!safe_ldlt3_(S_mat, ldlt, R_meas.norm())) return;
+
+        MatrixNX3& K = K_scratch_;
+        K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
+
+        freeze_base_rows_(K);
+        if constexpr (with_accel_bias) {
+            if (!acc_bias_updates_enabled_) freeze_baw_rows_(K);
+        }
+
+        xext.noalias() += K * r;
+        joseph_update3_(K, S_mat, PCt);
+        applyQuaternionCorrectionFromErrorState();
+    }
+
+    void measurement_update_vert_velocity_pseudo(T vz_meas, T sigma_meas) {
+        if (!linear_block_enabled_) return;
+
+        constexpr int idx_vz = OFF_V + 2;
+        if (!std::isfinite(vz_meas)) return;
+
+        const T r = vz_meas - xext(idx_vz);
+        if (!std::isfinite(r)) return;
+
+        const T sigma = std::max(T(1e-6), std::abs(sigma_meas));
+        const T R = sigma * sigma;
+        const T S = Pext(idx_vz, idx_vz) + R;
+        if (!(S > T(0)) || !std::isfinite(S)) return;
+
+        Eigen::Matrix<T, NX, 1> PCt;
+        PCt.noalias() = Pext.col(idx_vz);
+
+        freeze_base_rows_(PCt);
+        freeze_baw_rows_(PCt);
+
+        Eigen::Matrix<T, NX, 1> K;
+        K.noalias() = PCt / S;
+
+        freeze_base_rows_(K);
+        freeze_baw_rows_(K);
+
+        xext.noalias() += K * r;
+
+        Pext.noalias() -= K * PCt.transpose();
+        Pext.noalias() -= PCt * K.transpose();
+        Pext.noalias() += K * S * K.transpose();
+        sanitize_and_clamp_state_();
+        sanitize_covariance_();
+
+        applyQuaternionCorrectionFromErrorState();
+    }
 
     [[nodiscard]] Eigen::Quaternion<T> quaternion() const { return qref.conjugate(); }
     [[nodiscard]] MatrixBaseN covariance_base() const { return Pext.topLeftCorner(BASE_N, BASE_N); }
@@ -228,19 +899,20 @@ class Kalman3D_Wave_5 {
                 }
                 Pext.template block<3,3>(OFF_BAW, OFF_BAW) = Pba;
             }
+            sanitize_covariance_();
         }
         acc_bias_updates_enabled_ = en;
     }
 
     void set_Rp0_noise_std(const Vector3& sigma_p0) {
         if (param_rw_enabled_) { param_rw_update_sigma_p0_cmd_(sigma_p0); return; }
-        R_p0 = sigma_p0.array().square().matrix().asDiagonal();
+        R_p0 = sigma_p0.cwiseMax(T(1e-6)).array().square().matrix().asDiagonal();
         R_p0 = T(0.5) * (R_p0 + R_p0.transpose());
     }
 
     void set_Rp0_noise_matrix(const Matrix3& R) {
         Matrix3 S = T(0.5) * (R + R.transpose());
-        project_psd<T,3>(S, T(1e-8));
+        project_psd<T,3>(S, T(1e-12));
         if (param_rw_enabled_) {
             Vector3 sig;
             sig.x() = std::sqrt(std::max(T(0), S(0,0)));
@@ -254,13 +926,13 @@ class Kalman3D_Wave_5 {
 
     void set_Rv0_noise_std(const Vector3& sigma_v0) {
         if (param_rw_enabled_) { param_rw_update_sigma_v0_cmd_(sigma_v0); return; }
-        R_v0 = sigma_v0.array().square().matrix().asDiagonal();
+        R_v0 = sigma_v0.cwiseMax(T(1e-6)).array().square().matrix().asDiagonal();
         R_v0 = T(0.5) * (R_v0 + R_v0.transpose());
     }
 
     void set_Rv0_noise_matrix(const Matrix3& R) {
         Matrix3 S = T(0.5) * (R + R.transpose());
-        project_psd<T,3>(S, T(1e-8));
+        project_psd<T,3>(S, T(1e-12));
         if (param_rw_enabled_) {
             Vector3 sig;
             sig.x() = std::sqrt(std::max(T(0), S(0,0)));
@@ -274,19 +946,22 @@ class Kalman3D_Wave_5 {
 
     void set_Racc_std(const Vector3& sigma_acc) {
         if (param_rw_enabled_) { param_rw_update_sigma_acc_cmd_(sigma_acc); return; }
-        Racc = sigma_acc.array().square().matrix().asDiagonal();
+        Racc = sigma_acc.cwiseMax(T(1e-6)).array().square().matrix().asDiagonal();
         Racc = T(0.5) * (Racc + Racc.transpose());
         refresh_baw_rw_from_sigma_acc_();
     }
 
     void set_Rmag_std(const Vector3& sigma_mag) {
-        Rmag = sigma_mag.array().square().matrix().asDiagonal();
+        Rmag = sigma_mag.cwiseMax(T(1e-6)).array().square().matrix().asDiagonal();
         Rmag = T(0.5) * (Rmag + Rmag.transpose());
     }
 
     void set_initial_linear_uncertainty(T sigma_v0, T sigma_p0) {
+        sigma_v0 = std::max(T(1e-6), std::abs(sigma_v0));
+        sigma_p0 = std::max(T(1e-6), std::abs(sigma_p0));
         Pext.template block<3,3>(OFF_V, OFF_V) = Matrix3::Identity() * (sigma_v0 * sigma_v0);
         Pext.template block<3,3>(OFF_P, OFF_P) = Matrix3::Identity() * (sigma_p0 * sigma_p0);
+        sanitize_covariance_();
     }
 
     void set_initial_acc_bias_std(T s) {
@@ -294,11 +969,15 @@ class Kalman3D_Wave_5 {
             const T ss = std::max(T(0), s);
             initial_baw_std_ = Vector3::Constant(ss);
             Pext.template block<3,3>(OFF_BAW, OFF_BAW) = Matrix3::Identity() * ss * ss;
+            sanitize_covariance_();
         }
     }
 
     void set_initial_acc_bias(const Vector3& b0_world) {
-        if constexpr (with_accel_bias) xext.template segment<3>(OFF_BAW) = b0_world;
+        if constexpr (with_accel_bias) {
+            xext.template segment<3>(OFF_BAW) = b0_world;
+            sanitize_and_clamp_state_();
+        }
     }
 
     void set_world_accel_bias_rw_gain(const Vector3& gain) {
@@ -332,15 +1011,29 @@ class Kalman3D_Wave_5 {
     void initialize_from_truth(const Vector3 &p_ned,
                                const Vector3 &v_ned,
                                const Eigen::Quaternion<T> &q_bw,
-                               const Vector3 &b_aw_ned);
+                               const Vector3 &b_aw_ned) {
+        xext.setZero();
+        xext.template segment<3>(OFF_V) = v_ned;
+        xext.template segment<3>(OFF_P) = p_ned;
+        if constexpr (with_accel_bias) xext.template segment<3>(OFF_BAW) = b_aw_ned;
+        if constexpr (with_gyro_bias) xext.template segment<3>(3).setZero();
+
+        qref = q_bw.conjugate();
+        qref.normalize();
+
+        Pext.setZero();
+        const T p_0 = T(1e-5);
+        Pext.diagonal().array() = p_0;
+
+        auto_zero_pseudo_elapsed_sec_ = T(0);
+        sanitize_and_clamp_state_();
+        sanitize_covariance_();
+    }
 
     void set_param_rw_enabled(bool on) {
         param_rw_enabled_ = on;
-        if (param_rw_enabled_) {
-            refresh_model_params_from_filtered_();
-        } else {
-            refresh_baw_rw_from_sigma_acc_();
-        }
+        if (param_rw_enabled_) refresh_model_params_from_filtered_();
+        else refresh_baw_rw_from_sigma_acc_();
     }
 
     void set_param_rw_process_std_log(Vector3 sigma_acc_rw_log,
@@ -491,8 +1184,6 @@ class Kalman3D_Wave_5 {
     Vector3 baw_rw_gain_  = Vector3::Constant(T(0.25));
     Vector3 baw_rw_floor_ = Vector3::Constant(T(1e-4));
 
-    MatrixBaseN  F_AA_scratch_;
-    MatrixBaseN  Q_AA_scratch_;
     MatrixNX3    PCt_scratch_;
     MatrixNX3    K_scratch_;
     Matrix3      S_scratch_;
@@ -513,27 +1204,125 @@ class Kalman3D_Wave_5 {
     EIGEN_STRONG_INLINE Matrix3 R_wb() const { return qref.toRotationMatrix(); }
     EIGEN_STRONG_INLINE Matrix3 R_bw() const { return qref.toRotationMatrix().transpose(); }
 
-    Matrix3 skew_symmetric_matrix(const Eigen::Ref<const Vector3>& vec) const;
+    Matrix3 skew_symmetric_matrix(const Eigen::Ref<const Vector3>& vec) const {
+        Matrix3 M;
+        M << T(0),    -vec(2),  vec(1),
+             vec(2),  T(0),    -vec(0),
+            -vec(1),  vec(0),   T(0);
+        return M;
+    }
 
-    static MatrixBaseN initialize_Q(Vector3 sigma_g, T b0);
-    void applyQuaternionCorrectionFromErrorState();
+    static MatrixBaseN initialize_Q(Vector3 sigma_g, T b0) {
+        MatrixBaseN Q; Q.setZero();
+        if constexpr (with_gyro_bias) {
+            Q.template topLeftCorner<3,3>() = sigma_g.array().square().matrix().asDiagonal();
+            Q.template bottomRightCorner<3,3>() = Matrix3::Identity() * std::max(T(0), b0);
+        } else {
+            Q = sigma_g.array().square().matrix().asDiagonal();
+        }
+        return Q;
+    }
+
+    void applyQuaternionCorrectionFromErrorState() {
+        Vector3 dtheta = xext.template segment<3>(0);
+        if (!dtheta.allFinite()) {
+            xext.template head<3>().setZero();
+            sanitize_and_clamp_state_();
+            sanitize_covariance_();
+            return;
+        }
+
+        const T max_corr = T(0.35);
+        const T n = dtheta.norm();
+        if (n > max_corr) dtheta *= (max_corr / n);
+
+        const Matrix3 Gtheta = Matrix3::Identity() - T(0.5) * skew_symmetric_matrix(dtheta);
+
+        Eigen::Quaternion<T> corr = quat_from_delta_theta(dtheta);
+        qref = qref * corr;
+        qref.normalize();
+
+        {
+            Eigen::Matrix<T,3,3> Ptt = Pext.template block<3,3>(0,0);
+            Pext.template block<3,3>(0,0) = Gtheta * Ptt * Gtheta.transpose();
+        }
+        if constexpr (NX > 3) {
+            Eigen::Matrix<T,3,NX-3> Ptx = Pext.template block<3,NX-3>(0,3);
+            Pext.template block<3,NX-3>(0,3) = Gtheta * Ptx;
+            Pext.template block<NX-3,3>(3,0) = Pext.template block<3,NX-3>(0,3).transpose();
+        }
+
+        xext.template head<3>().setZero();
+        sanitize_and_clamp_state_();
+        sanitize_covariance_();
+    }
 
     EIGEN_STRONG_INLINE bool safe_ldlt3_(Matrix3& S, Eigen::LDLT<Matrix3>& ldlt, T noise_scale) const {
-        ldlt.compute(S);
-        if (ldlt.info() == Eigen::Success) return true;
-    
-        const T bump = std::max(std::numeric_limits<T>::epsilon(), T(1e-6) * (noise_scale + T(1)));
-        S.diagonal().array() += bump;
-        ldlt.compute(S);
-        return (ldlt.info() == Eigen::Success);
+        S = T(0.5) * (S + S.transpose());
+
+        const T ns = std::isfinite(noise_scale) ? std::abs(noise_scale) : T(0);
+        T bump = std::max(T(1e-9), T(1e-6) * (ns + T(1)));
+
+        for (int pass = 0; pass < 3; ++pass) {
+            for (int i = 0; i < 3; ++i) {
+                for (int j = 0; j < 3; ++j) {
+                    if (!std::isfinite(S(i,j))) S(i,j) = (i == j) ? bump : T(0);
+                }
+                if (!(S(i,i) > T(0)) || !std::isfinite(S(i,i))) S(i,i) = bump;
+            }
+
+            S = T(0.5) * (S + S.transpose());
+            ldlt.compute(S);
+            if (ldlt.info() == Eigen::Success) return true;
+
+            S.diagonal().array() += bump;
+            bump *= T(10);
+        }
+
+        return false;
     }
-    
+
     EIGEN_STRONG_INLINE T nis3_from_ldlt_(const Eigen::LDLT<Matrix3>& ldlt,
                                           const Vector3& r) const {
         Vector3 x = ldlt.solve(r);
         if (!x.allFinite()) return std::numeric_limits<T>::quiet_NaN();
         const T v = r.dot(x);
         return std::isfinite(v) ? v : std::numeric_limits<T>::quiet_NaN();
+    }
+
+    EIGEN_STRONG_INLINE void sanitize_and_clamp_state_() {
+        if (!qref.coeffs().allFinite()) qref = Eigen::Quaternion<T>::Identity();
+        else qref.normalize();
+
+        for (int i = 0; i < NX; ++i) {
+            if (!std::isfinite(xext(i))) xext(i) = T(0);
+        }
+
+        if constexpr (with_gyro_bias) {
+            Vector3 bg = xext.template segment<3>(3);
+            clamp_vec_(bg, T(0.5));
+            xext.template segment<3>(3) = bg;
+        }
+
+        if constexpr (with_accel_bias) {
+            Vector3 ba = xext.template segment<3>(OFF_BAW);
+            clamp_vec_(ba, T(3.0));
+            xext.template segment<3>(OFF_BAW) = ba;
+        }
+    }
+
+    EIGEN_STRONG_INLINE void sanitize_covariance_() {
+        const T diag_floor = T(1e-12);
+        for (int i = 0; i < NX; ++i) {
+            for (int j = 0; j < NX; ++j) {
+                if (!std::isfinite(Pext(i,j))) Pext(i,j) = (i == j) ? diag_floor : T(0);
+            }
+        }
+        symmetrize_Pext_();
+        for (int i = 0; i < NX; ++i) {
+            if (!(Pext(i,i) > diag_floor)) Pext(i,i) = diag_floor;
+        }
+        symmetrize_Pext_();
     }
 
     EIGEN_STRONG_INLINE void joseph_update3_(const Eigen::Matrix<T,NX,3>& K,
@@ -567,7 +1356,7 @@ class Kalman3D_Wave_5 {
                 if (j != i) Pext(j,i) = Pext(i,j);
             }
         }
-        symmetrize_Pext_();
+        sanitize_covariance_();
     }
 
     void zero_AL_cross_cov_once_() {
@@ -590,17 +1379,19 @@ class Kalman3D_Wave_5 {
             v.template segment<3>(OFF_BAW).setZero();
         }
     }
-    EIGEN_STRONG_INLINE void freeze_vp_rows_(MatrixNX3& M) const {
-        M.template block<6,3>(OFF_V, 0).setZero();   // freeze v(3), p(3); keep b_aw alive
-    }
-    EIGEN_STRONG_INLINE void freeze_vp_rows_(Eigen::Matrix<T, NX, 1>& v) const {
-        v.template segment<6>(OFF_V).setZero();      // freeze v(3), p(3); keep b_aw alive
-    }
     EIGEN_STRONG_INLINE void freeze_base_rows_(MatrixNX3& M) const {
         M.template block<BASE_N,3>(0, 0).setZero();
     }
     EIGEN_STRONG_INLINE void freeze_base_rows_(Eigen::Matrix<T, NX, 1>& v) const {
         v.template segment<BASE_N>(0).setZero();
+    }
+
+    template<typename Vec3Like>
+    static inline void clamp_vec_(Vec3Like& v, T lim) {
+        for (int i = 0; i < 3; ++i) {
+            if (!std::isfinite(v(i))) v(i) = T(0);
+            v(i) = std::max(-lim, std::min(lim, v(i)));
+        }
     }
 
     T wind_heel_rad_ = T(0);
@@ -659,7 +1450,8 @@ class Kalman3D_Wave_5 {
         if constexpr (with_gyro_bias) Tm.template block<3,3>(3,3) = R;
 
         Pext = Tm * Pext * Tm.transpose();
-        symmetrize_Pext_();
+        sanitize_and_clamp_state_();
+        sanitize_covariance_();
     }
 
     EIGEN_STRONG_INLINE void rot_and_B_from_wt_(const Vector3& w, T t, Matrix3& R, Matrix3& B) const {
@@ -888,796 +1680,3 @@ class Kalman3D_Wave_5 {
         }
     }
 };
-
-// ========================== Implementation ==========================
-
-template <typename T, bool with_gyro_bias, bool with_accel_bias>
-Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::Kalman3D_Wave_5(
-    Vector3 const& sigma_a,
-    Vector3 const& sigma_g,
-    Vector3 const& sigma_m,
-    T Pq0, T Pb0, T b0, T R_p0_noise_var, T R_v0_noise_var, T gravity_magnitude)
-  : gravity_magnitude_(gravity_magnitude),
-    qref(Eigen::Quaternion<T>::Identity()),
-    Rmag(sigma_m.array().square().matrix().asDiagonal()),
-    Qbase(initialize_Q(sigma_g, b0)),
-    Racc(sigma_a.array().square().matrix().asDiagonal())
-{
-    Rmag = T(0.5) * (Rmag + Rmag.transpose());
-    Racc = T(0.5) * (Racc + Racc.transpose());
-
-    R_p0 = Matrix3::Identity() * R_p0_noise_var;
-    R_v0 = Matrix3::Identity() * R_v0_noise_var;
-
-    MatrixBaseN Pbase;
-    Pbase.setIdentity();
-    Pbase.template topLeftCorner<3,3>() = Matrix3::Identity() * Pq0;
-    if constexpr (with_gyro_bias) {
-        Pbase.template block<3,3>(3,3) = Matrix3::Identity() * Pb0;
-    }
-
-    xext.setZero();
-    Pext.setZero();
-    Pext.topLeftCorner(BASE_N, BASE_N) = Pbase;
-
-    if constexpr (with_accel_bias) {
-        Pext.template block<3,3>(OFF_BAW, OFF_BAW) =
-            Matrix3::Identity() * initial_baw_std_(0) * initial_baw_std_(0);
-    }
-
-    const T sigma_v0 = T(1.0);
-    const T sigma_p0 = T(20.0);
-    set_initial_linear_uncertainty(sigma_v0, sigma_p0);
-
-    {
-        Vector3 sigma_acc0 = get_Racc_std();
-
-        const T sigma_p00 = std::sqrt(std::max(T(1e-12), R_p0_noise_var));
-        const T sigma_v00 = std::sqrt(std::max(T(1e-12), R_v0_noise_var));
-        Vector3 sigma_p00v = Vector3::Constant(sigma_p00);
-        Vector3 sigma_v00v = Vector3::Constant(sigma_v00);
-
-        log_sigma_acc_f_.x = clamp_pos_vec_(sigma_acc0, sigma_acc_min_, sigma_acc_max_).array().log().matrix();
-        log_sigma_p0_f_.x  = clamp_pos_vec_(sigma_p00v, sigma_p0_min_, sigma_p0_max_).array().log().matrix();
-        log_sigma_v0_f_.x  = clamp_pos_vec_(sigma_v00v, sigma_v0_min_, sigma_v0_max_).array().log().matrix();
-
-        log_sigma_acc_f_.P = Vector3::Constant(T(0.10) * T(0.10));
-        log_sigma_p0_f_.P  = Vector3::Constant(T(0.15) * T(0.15));
-        log_sigma_v0_f_.P  = Vector3::Constant(T(0.15) * T(0.15));
-
-        const T rw_sig_acc = T(0.02);
-        const T rw_sig_p0  = T(0.02);
-        const T rw_sig_v0  = T(0.02);
-        log_sigma_acc_f_.q = Vector3::Constant(rw_sig_acc * rw_sig_acc);
-        log_sigma_p0_f_.q  = Vector3::Constant(rw_sig_p0 * rw_sig_p0);
-        log_sigma_v0_f_.q  = Vector3::Constant(rw_sig_v0 * rw_sig_v0);
-
-        const T cmd_sig_acc = T(0.10);
-        const T cmd_sig_p0  = T(0.15);
-        const T cmd_sig_v0  = T(0.15);
-        log_sigma_acc_f_.r = Vector3::Constant(cmd_sig_acc * cmd_sig_acc);
-        log_sigma_p0_f_.r  = Vector3::Constant(cmd_sig_p0 * cmd_sig_p0);
-        log_sigma_v0_f_.r  = Vector3::Constant(cmd_sig_v0 * cmd_sig_v0);
-    }
-
-    refresh_baw_rw_from_sigma_acc_();
-}
-
-template<typename T, bool with_gyro_bias, bool with_accel_bias>
-typename Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::MatrixBaseN
-Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::initialize_Q(
-    Vector3 sigma_g, T b0) {
-    MatrixBaseN Q; Q.setZero();
-    if constexpr (with_gyro_bias) {
-        Q.template topLeftCorner<3,3>() = sigma_g.array().square().matrix().asDiagonal();
-        Q.template bottomRightCorner<3,3>() = Matrix3::Identity() * b0;
-    } else {
-        Q = sigma_g.array().square().matrix().asDiagonal();
-    }
-    return Q;
-}
-
-template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::initialize_from_acc_mag(
-    Vector3 const& acc_body, Vector3 const& mag_body) {
-    const Vector3 acc = deheel_vector_(acc_body);
-    const Vector3 mag = deheel_vector_(mag_body);
-
-    const T anorm = acc.norm();
-    if (anorm < T(1e-8)) {
-        throw std::runtime_error("Invalid accelerometer vector: norm too small for initialization");
-    }
-    const Vector3 acc_n = acc / anorm;
-
-    Vector3 z_world = -acc_n;
-    Vector3 mag_h = mag - (mag.dot(z_world)) * z_world;
-    if (mag_h.norm() < T(1e-8)) {
-        throw std::runtime_error("Magnetometer vector parallel to gravity — cannot initialize yaw");
-    }
-    mag_h.normalize();
-    const Vector3 x_world = mag_h;
-    const Vector3 y_world = z_world.cross(x_world).normalized();
-
-    Matrix3 R_wb0;
-    R_wb0.col(0) = x_world;
-    R_wb0.col(1) = y_world;
-    R_wb0.col(2) = z_world;
-
-    qref = Eigen::Quaternion<T>(R_wb0);
-    qref.normalize();
-
-    v2ref = R_bw() * mag;
-    last_acc_body_cached_ = acc_body;
-    auto_zero_pseudo_elapsed_sec_ = T(0);
-}
-
-template<typename T, bool with_gyro_bias, bool with_accel_bias>
-Eigen::Quaternion<T>
-Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::quaternion_from_acc(Vector3 const& acc) {
-    Vector3 an = acc.normalized();
-    Vector3 zb = Vector3::UnitZ();
-
-    Vector3 target = -an;
-    T cos_theta = zb.dot(target);
-    Vector3 axis = zb.cross(target);
-    T norm_axis = axis.norm();
-
-    if (norm_axis < T(1e-8)) {
-        if (cos_theta > 0) return Eigen::Quaternion<T>::Identity();
-        return Eigen::Quaternion<T>(0, 1, 0, 0);
-    }
-
-    axis /= norm_axis;
-    cos_theta = std::max(T(-1), std::min(T(1), cos_theta));
-    const T angle = std::acos(cos_theta);
-
-    Eigen::AngleAxis<T> aa(angle, axis);
-    Eigen::Quaternion<T> q(aa);
-    q.normalize();
-    return q;
-}
-
-template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::initialize_from_acc(Vector3 const& acc_body) {
-    const Vector3 acc = deheel_vector_(acc_body);
-
-    const T anorm = acc.norm();
-    if (anorm < T(1e-8)) {
-        throw std::runtime_error("Invalid accelerometer vector: norm too small for initialization");
-    }
-    const Vector3 acc_n = acc / anorm;
-    qref = quaternion_from_acc(acc_n);
-    qref.normalize();
-    last_acc_body_cached_ = acc_body;
-    auto_zero_pseudo_elapsed_sec_ = T(0);
-}
-
-template <typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::initialize_from_truth(
-    const Vector3 &p_ned, const Vector3 &v_ned,
-    const Eigen::Quaternion<T> &q_bw, const Vector3 &b_aw_ned) {
-    xext.setZero();
-    xext.template segment<3>(OFF_V) = v_ned;
-    xext.template segment<3>(OFF_P) = p_ned;
-    if constexpr (with_accel_bias) xext.template segment<3>(OFF_BAW) = b_aw_ned;
-
-    if constexpr (with_gyro_bias) xext.template segment<3>(3).setZero();
-
-    qref = q_bw.conjugate();
-    qref.normalize();
-
-    Pext.setZero();
-    const T p_0 = T(1e-5);
-    Pext.diagonal().array() = p_0;
-
-    auto_zero_pseudo_elapsed_sec_ = T(0);
-}
-
-template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::time_update(
-    Vector3 const& gyr_body, Vector3 const& acc_body, T Ts) {
-    if (!(Ts > T(0)) || !std::isfinite(Ts)) return;
-
-    last_dt_ = Ts;
-    last_acc_body_cached_ = acc_body;
-
-    param_rw_predict_(Ts);
-
-    const Vector3 gyr = deheel_vector_(gyr_body);
-
-    Vector3 gyro_bias = Vector3::Zero();
-    if constexpr (with_gyro_bias) gyro_bias = xext.template segment<3>(3);
-    last_gyr_bias_corrected = gyr - gyro_bias;
-
-    const Vector3 omega_b = last_gyr_bias_corrected;
-    if (have_prev_omega_ && Ts > T(0)) {
-        const Vector3 alpha_raw = (omega_b - prev_omega_b_) / Ts;
-        if (alpha_smooth_tau_ > T(0)) {
-            const T a = T(1) - std::exp(-Ts / alpha_smooth_tau_);
-            alpha_b_ = (T(1) - a) * alpha_b_ + a * alpha_raw;
-        } else {
-            alpha_b_ = alpha_raw;
-        }
-    } else {
-        alpha_b_.setZero();
-        have_prev_omega_ = true;
-    }
-    prev_omega_b_ = omega_b;
-
-    Eigen::Quaternion<T> dq = quat_from_delta_theta((last_gyr_bias_corrected * Ts).eval());
-    qref = qref * dq;
-    qref.normalize();
-
-    const Matrix3 I = Matrix3::Identity();
-    const Vector3 w = last_gyr_bias_corrected;
-    const T omega = w.norm();
-    const T theta = omega * Ts;
-
-    MatrixBaseN& F_AA = F_AA_scratch_;
-    F_AA.setIdentity();
-
-    if (theta < T(1e-5)) {
-        const Matrix3 Wx = skew_symmetric_matrix(w);
-        F_AA.template topLeftCorner<3,3>() = I - Wx*Ts + (Wx*Wx)*(Ts*Ts/T(2));
-    } else {
-        const Matrix3 W = skew_symmetric_matrix(w / (omega + std::numeric_limits<T>::epsilon()));
-        const T s = std::sin(theta), c = std::cos(theta);
-        F_AA.template topLeftCorner<3,3>() = I - s*W + (T(1)-c)*(W*W);
-    }
-
-    if constexpr (with_gyro_bias) {
-        Matrix3 Rstep, Bstep;
-        rot_and_B_from_wt_(w, Ts, Rstep, Bstep);
-        F_AA.template topLeftCorner<3,3>() = Rstep;
-        F_AA.template block<3,3>(0,3) = Bstep;
-    }
-
-    MatrixBaseN& Q_AA = Q_AA_scratch_;
-    Q_AA.setZero();
-
-    if (!use_exact_att_bias_Qd_) {
-        Q_AA = Qbase * Ts;
-    } else {
-        const Matrix3 Qg  = Qbase.template topLeftCorner<3,3>();
-        Matrix3 Qbg = Matrix3::Zero();
-        if constexpr (with_gyro_bias) Qbg = Qbase.template bottomRightCorner<3,3>();
-
-        Matrix3 I_R;
-        if (is_isotropic3_(Qg)) {
-            I_R = Matrix3::Identity() * (Qg(0,0) * Ts);
-        } else {
-            I_R = simpson_R_Q_RT_(w, Ts, Qg);
-        }
-
-        Matrix3 I_BB = Matrix3::Zero();
-        if constexpr (with_gyro_bias) I_BB = simpson_B_Q_BT_(w, Ts, Qbg);
-
-        const Matrix3 Qtt = I_R + I_BB;
-
-        Matrix3 Qbb = Matrix3::Zero();
-        if constexpr (with_gyro_bias) Qbb = Qbg * Ts;
-
-        Matrix3 Qtb = Matrix3::Zero();
-        if constexpr (with_gyro_bias) {
-            Matrix3 IB;
-            integral_B_ds_(w, Ts, IB);
-            Qtb = IB * Qbg;
-        }
-
-        Q_AA.template topLeftCorner<3,3>() = Qtt;
-        if constexpr (with_gyro_bias) {
-            Q_AA.template topRightCorner<3,3>() = Qtb;
-            Q_AA.template bottomLeftCorner<3,3>() = Qtb.transpose();
-            Q_AA.template bottomRightCorner<3,3>() = Qbb;
-        }
-
-        Q_AA = T(0.5) * (Q_AA + Q_AA.transpose());
-        if constexpr (with_gyro_bias) project_psd<T,6>(Q_AA, T(1e-12));
-        else project_psd<T,3>(Q_AA, T(1e-12));
-    }
-
-    MatrixNX Fext = MatrixNX::Identity();
-    MatrixNX Qext = MatrixNX::Zero();
-
-    Fext.template block<BASE_N,BASE_N>(0,0) = F_AA;
-    Qext.template block<BASE_N,BASE_N>(0,0) = Q_AA;
-
-    if (linear_block_enabled_) {
-        const Vector3 acc_cmd = deheel_vector_(acc_body);
-
-        Vector3 lever = Vector3::Zero();
-        Matrix3 Jlever_dbg = Matrix3::Zero();
-
-        if (use_imu_lever_arm_) {
-            const Vector3 r_imu_bprime = deheel_vector_(r_imu_wrt_cog_body_phys_);
-            lever.noalias() += alpha_b_.cross(r_imu_bprime)
-                            +  omega_b.cross(omega_b.cross(r_imu_bprime));
-
-            if constexpr (with_gyro_bias) {
-                T k_alpha = T(0);
-                if (have_prev_omega_ && Ts > T(0)) {
-                    if (alpha_smooth_tau_ > T(0)) {
-                        const T a = T(1) - std::exp(-Ts / alpha_smooth_tau_);
-                        k_alpha = a / Ts;
-                    } else {
-                        k_alpha = T(1) / Ts;
-                    }
-                }
-                const Matrix3 J_alpha_part = k_alpha * skew_symmetric_matrix(r_imu_bprime);
-                const Matrix3 J_omega_part = d_omega_x_omega_x_r_domega_(omega_b, r_imu_bprime);
-                Jlever_dbg = J_alpha_part - J_omega_part;
-            }
-        }
-
-        const Matrix3 Rbw = R_bw();
-        const Vector3 g_world(0,0,+gravity_magnitude_);
-
-        const Vector3 u_rot = Rbw * (acc_cmd - lever);
-        const Vector3 u_w   = u_rot + g_world;
-
-        Vector3 v = xext.template segment<3>(OFF_V);
-        Vector3 p = xext.template segment<3>(OFF_P);
-
-        if constexpr (with_accel_bias) {
-            const Vector3 b_aw = xext.template segment<3>(OFF_BAW);
-            const Vector3 a_eff = u_w - b_aw;
-
-            xext.template segment<3>(OFF_V) = v + Ts * a_eff;
-            xext.template segment<3>(OFF_P) = p + Ts * v + (T(0.5) * Ts * Ts) * a_eff;
-        } else {
-            xext.template segment<3>(OFF_V) = v + Ts * u_w;
-            xext.template segment<3>(OFF_P) = p + Ts * v + (T(0.5) * Ts * Ts) * u_w;
-        }
-
-        // Linear-state transition
-        Fext.template block<3,3>(OFF_V, OFF_V) = Matrix3::Identity();
-        Fext.template block<3,3>(OFF_P, OFF_V) = Matrix3::Identity() * Ts;
-        Fext.template block<3,3>(OFF_P, OFF_P) = Matrix3::Identity();
-
-        if constexpr (with_accel_bias) {
-            Fext.template block<3,3>(OFF_BAW, OFF_BAW) = Matrix3::Identity();
-            Fext.template block<3,3>(OFF_V, OFF_BAW)   = -Matrix3::Identity() * Ts;
-            Fext.template block<3,3>(OFF_P, OFF_BAW)   = -Matrix3::Identity() * (T(0.5) * Ts * Ts);
-        }
-
-        // Attitude -> linear coupling:
-        // u_rot = R_bw * (acc_cmd - lever), so delta u_rot ≈ [u_rot]_x * delta_theta
-        const Matrix3 J_u_att = skew_symmetric_matrix(u_rot);
-        Fext.template block<3,3>(OFF_V, 0) = J_u_att * Ts;
-        Fext.template block<3,3>(OFF_P, 0) = J_u_att * (T(0.5) * Ts * Ts);
-
-        // Gyro-bias -> linear coupling through lever-arm dynamics
-        if constexpr (with_gyro_bias) {
-            if (use_imu_lever_arm_) {
-                const Matrix3 J_u_bg = -Rbw * Jlever_dbg;
-                Fext.template block<3,3>(OFF_V, 3) = J_u_bg * Ts;
-                Fext.template block<3,3>(OFF_P, 3) = J_u_bg * (T(0.5) * Ts * Ts);
-            }
-        }
-
-        // Accelerometer command noise injection into linear process
-        Matrix3 Ru_world = Rbw * Racc * Rbw.transpose();
-        Ru_world = T(0.5) * (Ru_world + Ru_world.transpose());
-        project_psd<T,3>(Ru_world, T(1e-12));
-
-        const T dt  = Ts;
-        const T dt2 = dt * dt;
-        const T dt3 = dt2 * dt;
-        const T dt4 = dt2 * dt2;
-        const T dt5 = dt4 * dt;
-
-        Qext.template block<3,3>(OFF_V, OFF_V).noalias() += dt2 * Ru_world;
-        Qext.template block<3,3>(OFF_V, OFF_P).noalias() += (T(0.5) * dt3) * Ru_world;
-        Qext.template block<3,3>(OFF_P, OFF_V) = Qext.template block<3,3>(OFF_V, OFF_P).transpose();
-        Qext.template block<3,3>(OFF_P, OFF_P).noalias() += (T(0.25) * dt4) * Ru_world;
-
-        // Random walk on b_aw and its induced v/p uncertainty
-        if constexpr (with_accel_bias) {
-            for (int axis = 0; axis < 3; ++axis) {
-                const T q = acc_bias_updates_enabled_ ? Q_baw_rw_(axis, axis) : T(0);
-
-                Qext(OFF_V + axis, OFF_V + axis)         += q * dt3 / T(3);
-                Qext(OFF_V + axis, OFF_P + axis)         += q * dt4 / T(8);
-                Qext(OFF_P + axis, OFF_V + axis)          = Qext(OFF_V + axis, OFF_P + axis);
-                Qext(OFF_P + axis, OFF_P + axis)         += q * dt5 / T(20);
-
-                Qext(OFF_V + axis, OFF_BAW + axis)       += -q * dt2 / T(2);
-                Qext(OFF_BAW + axis, OFF_V + axis)        = Qext(OFF_V + axis, OFF_BAW + axis);
-
-                Qext(OFF_P + axis, OFF_BAW + axis)       += -q * dt3 / T(6);
-                Qext(OFF_BAW + axis, OFF_P + axis)        = Qext(OFF_P + axis, OFF_BAW + axis);
-
-                Qext(OFF_BAW + axis, OFF_BAW + axis)     += q * dt;
-            }
-        }
-    }
-
-    Qext = T(0.5) * (Qext + Qext.transpose());
-    MatrixNX Pnew = Fext * Pext * Fext.transpose() + Qext;
-    Pext = Pnew;
-    symmetrize_Pext_();
-
-    maybe_run_auto_zero_pseudos_(Ts);
-}
-
-template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_acc_only(
-    Vector3 const& acc_meas_body)
-{
-    last_acc_diag_ = MeasDiag3{};
-    last_acc_diag_.accepted = false;
-    last_acc_body_cached_ = acc_meas_body;
-
-    const Vector3 acc_meas = deheel_vector_(acc_meas_body);
-    if (!acc_meas.allFinite()) return;
-
-    const T anorm = acc_meas.norm();
-    if (!(anorm > T(1e-6))) return;
-
-    const Vector3 z_meas = acc_meas / anorm;
-
-    const Matrix3 Rwb = R_wb();
-    const Vector3 g_world(0, 0, +gravity_magnitude_);
-
-    Vector3 lever = Vector3::Zero();
-    if (use_imu_lever_arm_) {
-        const Vector3 r_imu_bprime = deheel_vector_(r_imu_wrt_cog_body_phys_);
-        lever.noalias() += alpha_b_.cross(r_imu_bprime)
-                        +  last_gyr_bias_corrected.cross(last_gyr_bias_corrected.cross(r_imu_bprime));
-    }
-
-    // Stable default:
-    // use gravity-only mean for direction update,
-    // but account for b_aw as nuisance uncertainty in S.
-    const Vector3 f_cog_b = Rwb * (Vector3::Zero() - g_world);
-    const Vector3 f_pred  = f_cog_b + lever;
-
-    const T fnorm = f_pred.norm();
-    if (!(fnorm > T(1e-6))) return;
-
-    const Vector3 zhat = f_pred / fnorm;
-    const Vector3 innov = z_meas - zhat;
-
-    last_acc_diag_.r = innov;
-
-    const Matrix3 I3 = Matrix3::Identity();
-    const Matrix3 Nproj = (I3 - zhat * zhat.transpose()) / fnorm;
-
-    const Matrix3 Jf_att = -skew_symmetric_matrix(f_cog_b);
-    const Matrix3 J_att  = Nproj * Jf_att;
-
-    Matrix3 J_bg = Matrix3::Zero();
-    if constexpr (with_gyro_bias) {
-        if (use_imu_lever_arm_) {
-            const Vector3 r_imu_bprime = deheel_vector_(r_imu_wrt_cog_body_phys_);
-            const Vector3& w = last_gyr_bias_corrected;
-
-            T k_alpha = T(0);
-            if (have_prev_omega_ && last_dt_ > T(0)) {
-                if (alpha_smooth_tau_ > T(0)) {
-                    const T a = T(1) - std::exp(-last_dt_ / alpha_smooth_tau_);
-                    k_alpha = a / last_dt_;
-                } else {
-                    k_alpha = T(1) / last_dt_;
-                }
-            }
-
-            const Matrix3 J_alpha_part = k_alpha * skew_symmetric_matrix(r_imu_bprime);
-            const Matrix3 J_omega_part = d_omega_x_omega_x_r_domega_(w, r_imu_bprime);
-            const Matrix3 Jf_bg = J_alpha_part - J_omega_part;
-
-            J_bg = Nproj * Jf_bg;
-        }
-    }
-
-    Matrix3 J_baw = Matrix3::Zero();
-    if constexpr (with_accel_bias) {
-        // b_aw is treated as nuisance in S, not in the mean.
-        const Matrix3 Jf_baw = -Rwb;
-        J_baw = Nproj * Jf_baw;
-    }
-
-    Matrix3& S_mat = S_scratch_;
-    S_mat.setZero();
-
-    S_mat.noalias() = Nproj * Racc * Nproj.transpose();
-    {
-        const T dir_noise_scale =
-            (Racc.trace() / T(3)) / std::max(T(1), fnorm * fnorm);
-        const T floor = std::max(T(1e-9), T(1e-6) * dir_noise_scale);
-        S_mat.diagonal().array() += floor;
-    }
-
-    const Matrix3 P_th_th = Pext.template block<3,3>(0,0);
-    S_mat.noalias() += J_att * P_th_th * J_att.transpose();
-
-    if constexpr (with_gyro_bias) {
-        if (use_imu_lever_arm_) {
-            const Matrix3 P_th_bg = Pext.template block<3,3>(0,3);
-            const Matrix3 P_bg_bg = Pext.template block<3,3>(3,3);
-
-            S_mat.noalias() += J_att * P_th_bg * J_bg.transpose();
-            S_mat.noalias() += J_bg  * P_th_bg.transpose() * J_att.transpose();
-            S_mat.noalias() += J_bg  * P_bg_bg * J_bg.transpose();
-        }
-    }
-
-    if constexpr (with_accel_bias) {
-        const Matrix3 P_th_baw  = Pext.template block<3,3>(0, OFF_BAW);
-        const Matrix3 P_baw_baw = Pext.template block<3,3>(OFF_BAW, OFF_BAW);
-
-        S_mat.noalias() += J_att * P_th_baw * J_baw.transpose();
-        S_mat.noalias() += J_baw * P_th_baw.transpose() * J_att.transpose();
-        S_mat.noalias() += J_baw * P_baw_baw * J_baw.transpose();
-
-        if constexpr (with_gyro_bias) {
-            if (use_imu_lever_arm_) {
-                const Matrix3 P_bg_baw = Pext.template block<3,3>(3, OFF_BAW);
-                S_mat.noalias() += J_bg  * P_bg_baw * J_baw.transpose();
-                S_mat.noalias() += J_baw * P_bg_baw.transpose() * J_bg.transpose();
-            }
-        }
-    }
-
-    MatrixNX3& PCt = PCt_scratch_;
-    PCt.setZero();
-    PCt.noalias() += Pext.template block<NX,3>(0,0) * J_att.transpose();
-
-    if constexpr (with_gyro_bias) {
-        if (use_imu_lever_arm_) {
-            PCt.noalias() += Pext.template block<NX,3>(0,3) * J_bg.transpose();
-        }
-    }
-
-    // accel update remains base-only
-    freeze_linear_rows_(PCt);
-
-    Eigen::LDLT<Matrix3> ldlt;
-    if (!safe_ldlt3_(S_mat, ldlt, S_mat.norm())) {
-        last_acc_diag_.S = S_mat;
-        last_acc_diag_.nis = std::numeric_limits<T>::quiet_NaN();
-        last_acc_diag_.accepted = false;
-        return;
-    }
-
-    last_acc_diag_.S = S_mat;
-    last_acc_diag_.nis = nis3_from_ldlt_(ldlt, innov);
-
-    MatrixNX3& K = K_scratch_;
-    K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
-
-    freeze_linear_rows_(K);
-
-    xext.noalias() += K * innov;
-    joseph_update3_(K, S_mat, PCt);
-
-    applyQuaternionCorrectionFromErrorState();
-    last_acc_diag_.accepted = true;
-}
-
-template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_mag_only(
-    const Vector3& mag_meas_body) {
-    last_mag_diag_ = MeasDiag3{};
-    last_mag_diag_.accepted = false;
-
-    const Vector3 mag_meas = deheel_vector_(mag_meas_body);
-    if (!mag_meas.allFinite()) return;
-    const T mag_norm = mag_meas.norm();
-    if (!(mag_norm > T(1e-6))) return;
-
-    Vector3 v2hat = R_wb() * v2ref;
-    if (v2hat.dot(mag_meas) < T(0)) v2hat = -v2hat;
-
-    const Vector3 zhat = v2hat;
-    const Vector3 r = mag_meas - zhat;
-    last_mag_diag_.r = r;
-
-    const Matrix3 J_att = -skew_symmetric_matrix(v2hat);
-
-    Matrix3& S_mat = S_scratch_;
-    S_mat = Rmag;
-    const Matrix3 P_th_th = Pext.template block<3,3>(0,0);
-    S_mat.noalias() += J_att * P_th_th * J_att.transpose();
-
-    MatrixNX3& PCt = PCt_scratch_;
-    PCt.setZero();
-    PCt.noalias() += Pext.template block<NX,3>(0,0) * J_att.transpose();
-
-    // IMPORTANT: mag update must remain base-only.
-    freeze_linear_rows_(PCt);
-
-    Eigen::LDLT<Matrix3> ldlt;
-    if (!safe_ldlt3_(S_mat, ldlt, Rmag.norm())) {
-        last_mag_diag_.S = S_mat;
-        last_mag_diag_.nis = std::numeric_limits<T>::quiet_NaN();
-        last_mag_diag_.accepted = false;
-        return;
-    }
-
-    last_mag_diag_.S = S_mat;
-    last_mag_diag_.nis = nis3_from_ldlt_(ldlt, r);
-
-    MatrixNX3& K = K_scratch_;
-    K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
-
-    // IMPORTANT: mag update must remain base-only.
-    freeze_linear_rows_(K);
-
-    xext.noalias() += K * r;
-    joseph_update3_(K, S_mat, PCt);
-    applyQuaternionCorrectionFromErrorState();
-    last_mag_diag_.accepted = true;
-}
-
-template<typename T, bool with_gyro_bias, bool with_accel_bias>
-Matrix<T, 3, 3> Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::skew_symmetric_matrix(
-    const Eigen::Ref<const Vector3>& vec) const {
-    Matrix3 M;
-    M << T(0),    -vec(2),  vec(1),
-         vec(2),  T(0),    -vec(0),
-        -vec(1),  vec(0),   T(0);
-    return M;
-}
-
-template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::applyQuaternionCorrectionFromErrorState() {
-    const Vector3 dtheta = xext.template segment<3>(0);
-    if (!dtheta.allFinite()) {
-        xext.template head<3>().setZero();
-        return;
-    }
-
-    const Matrix3 Gtheta = Matrix3::Identity() - T(0.5) * skew_symmetric_matrix(dtheta);
-
-    Eigen::Quaternion<T> corr = quat_from_delta_theta(dtheta);
-    qref = qref * corr;
-    qref.normalize();
-
-    {
-        Eigen::Matrix<T,3,3> Ptt = Pext.template block<3,3>(0,0);
-        Pext.template block<3,3>(0,0) = Gtheta * Ptt * Gtheta.transpose();
-    }
-    if constexpr (NX > 3) {
-        Eigen::Matrix<T,3,NX-3> Ptx = Pext.template block<3,NX-3>(0,3);
-        Pext.template block<3,NX-3>(0,3) = Gtheta * Ptx;
-        Pext.template block<NX-3,3>(3,0) = Pext.template block<3,NX-3>(0,3).transpose();
-    }
-
-    xext.template head<3>().setZero();
-    symmetrize_Pext_();
-}
-
-template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_position_pseudo(
-    const Vector3& p_meas, const Vector3& sigma_meas) {
-    if (!linear_block_enabled_) return;
-
-    constexpr int off_P = OFF_P;
-
-    const Vector3 p_pred = xext.template segment<3>(off_P);
-    const Vector3 r = p_meas - p_pred;
-    if (!r.allFinite()) return;
-
-    Matrix3& S_mat = S_scratch_;
-    S_mat = Pext.template block<3,3>(off_P, off_P);
-
-    Matrix3 R_meas = Matrix3::Zero();
-    const T sx = std::max(T(0), sigma_meas.x());
-    const T sy = std::max(T(0), sigma_meas.y());
-    const T sz = std::max(T(0), sigma_meas.z());
-    R_meas(0,0) = sx * sx;
-    R_meas(1,1) = sy * sy;
-    R_meas(2,2) = sz * sz;
-    S_mat.noalias() += R_meas;
-
-    MatrixNX3& PCt = PCt_scratch_;
-    PCt.noalias() = Pext.template block<NX,3>(0, off_P);
-
-    // Pseudo updates must not feed base or b_aw.
-    freeze_base_rows_(PCt);
-    freeze_baw_rows_(PCt);
-
-    Eigen::LDLT<Matrix3> ldlt;
-    if (!safe_ldlt3_(S_mat, ldlt, R_meas.norm())) return;
-
-    MatrixNX3& K = K_scratch_;
-    K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
-
-    freeze_base_rows_(K);
-    freeze_baw_rows_(K);
-
-    xext.noalias() += K * r;
-    joseph_update3_(K, S_mat, PCt);
-    applyQuaternionCorrectionFromErrorState();
-}
-
-template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_velocity_pseudo(
-    const Vector3& v_meas, const Vector3& sigma_meas) {
-    if (!linear_block_enabled_) return;
-
-    constexpr int off_V = OFF_V;
-
-    const Vector3 v_pred = xext.template segment<3>(off_V);
-    const Vector3 r = v_meas - v_pred;
-    if (!r.allFinite()) return;
-
-    Matrix3& S_mat = S_scratch_;
-    S_mat = Pext.template block<3,3>(off_V, off_V);
-
-    Matrix3 R_meas = Matrix3::Zero();
-    const T sx = std::max(T(0), sigma_meas.x());
-    const T sy = std::max(T(0), sigma_meas.y());
-    const T sz = std::max(T(0), sigma_meas.z());
-    R_meas(0,0) = sx * sx;
-    R_meas(1,1) = sy * sy;
-    R_meas(2,2) = sz * sz;
-    S_mat.noalias() += R_meas;
-
-    MatrixNX3& PCt = PCt_scratch_;
-    PCt.noalias() = Pext.template block<NX,3>(0, off_V);
-
-    // pseudo updates do not feed base/attitude
-    freeze_base_rows_(PCt);
-
-    if constexpr (with_accel_bias) {
-        if (!acc_bias_updates_enabled_) freeze_baw_rows_(PCt);
-    }
-
-    Eigen::LDLT<Matrix3> ldlt;
-    if (!safe_ldlt3_(S_mat, ldlt, R_meas.norm())) return;
-
-    MatrixNX3& K = K_scratch_;
-    K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
-
-    freeze_base_rows_(K);
-
-    if constexpr (with_accel_bias) {
-        if (!acc_bias_updates_enabled_) freeze_baw_rows_(K);
-    }
-
-    xext.noalias() += K * r;
-    joseph_update3_(K, S_mat, PCt);
-    applyQuaternionCorrectionFromErrorState();
-}
-
-template<typename T, bool with_gyro_bias, bool with_accel_bias>
-void Kalman3D_Wave_5<T, with_gyro_bias, with_accel_bias>::measurement_update_vert_velocity_pseudo(
-    T vz_meas, T sigma_meas) {
-    if (!linear_block_enabled_) return;
-
-    constexpr int idx_vz = OFF_V + 2;
-
-    if (!std::isfinite(vz_meas)) return;
-
-    const T r = vz_meas - xext(idx_vz);
-    if (!std::isfinite(r)) return;
-
-    const T sigma = std::max(T(0), sigma_meas);
-    const T R = sigma * sigma;
-    const T S = Pext(idx_vz, idx_vz) + R;
-    if (!(S > T(0)) || !std::isfinite(S)) return;
-
-    Eigen::Matrix<T, NX, 1> PCt;
-    PCt.noalias() = Pext.col(idx_vz);
-
-    // Pseudo updates must not feed base or b_aw.
-    freeze_base_rows_(PCt);
-    freeze_baw_rows_(PCt);
-
-    Eigen::Matrix<T, NX, 1> K;
-    K.noalias() = PCt / S;
-
-    freeze_base_rows_(K);
-    freeze_baw_rows_(K);
-
-    xext.noalias() += K * r;
-
-    Pext.noalias() -= K * PCt.transpose();
-    Pext.noalias() -= PCt * K.transpose();
-    Pext.noalias() += K * S * K.transpose();
-    Pext = T(0.5) * (Pext + Pext.transpose());
-
-    applyQuaternionCorrectionFromErrorState();
-}
