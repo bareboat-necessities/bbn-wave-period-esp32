@@ -57,12 +57,6 @@
     that your Mahony implementation expects.
 
   Mahony gain adaptation
-  ----------------------
-  Frequency is intentionally NOT used here.
-
-  Mahony tilt affects the computed world-vertical acceleration, and the
-  vertical acceleration feeds the wave-frequency tracker. Feeding that
-  frequency back into Mahony creates a bad back-loop.
 
   So Mahony gains are adapted only from accelerometer trust:
 
