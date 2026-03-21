@@ -39,6 +39,7 @@ public:
     void updateMag(const Vector3f& mag_body_ned) override {
         last_mag_body_zu_ = ned_to_zu(mag_body_ned);
         have_mag_ = true;
+        mag_pending_ = true;
     }
 
     void update(float dt,
@@ -51,13 +52,17 @@ public:
         const Vector3f gyr_body_zu = ned_to_zu(gyr_meas_ned);
         const Vector3f acc_body_zu = ned_to_zu(acc_meas_ned);
 
-        if (with_mag_ && have_mag_) {
+        // IMPORTANT:
+        // Use magnetometer only on the IMU step immediately following a fresh
+        // mag sample. Do NOT reuse the same mag sample on every IMU frame.
+        if (with_mag_ && have_mag_ && mag_pending_) {
             filter_.updateIMUMag(
                 gyr_body_zu.x(), gyr_body_zu.y(), gyr_body_zu.z(),
                 acc_body_zu.x(), acc_body_zu.y(), acc_body_zu.z(),
                 last_mag_body_zu_.x(), last_mag_body_zu_.y(), last_mag_body_zu_.z(),
                 dt
             );
+            mag_pending_ = false;
         } else {
             filter_.updateIMU(
                 gyr_body_zu.x(), gyr_body_zu.y(), gyr_body_zu.z(),
@@ -247,6 +252,7 @@ private:
 private:
     bool with_mag_ = true;
     bool have_mag_ = false;
+    bool mag_pending_ = false;
     Vector3f last_mag_body_zu_ = Vector3f::Zero();
     HeaveFilter filter_;
 };
