@@ -85,17 +85,14 @@ public:
         s.vel_est_zu  = Vector3f(0.0f, 0.0f, filter_.velocity());
         s.acc_est_zu  = Vector3f(0.0f, 0.0f, filter_.accelFiltered());
 
-        // Internal transport is now consistent.
-        // Remaining mismatch versus the sim reference is reporting convention:
-        // roll needs sign flip; pitch and yaw are already in the matching convention.
-        const float roll_sim_deg  = -filter_.rollDeg();
+        const float roll_sim_deg  =  filter_.rollDeg();
         const float pitch_sim_deg =  filter_.pitchDeg();
-        const float yaw_sim_deg   =  filter_.yawDeg();
+        const float yaw_sim_deg   =  wrapDeg(filter_.yawDeg() + 90.0f);
 
         s.euler_nautical_deg = Vector3f(roll_sim_deg,
                                         pitch_sim_deg,
                                         yaw_sim_deg);
-
+        
         s.acc_bias_est_ned    = Vector3f::Zero();
         s.gyro_bias_est_ned   = Vector3f::Zero();
         s.mag_bias_est_ned_uT = Vector3f::Zero();
