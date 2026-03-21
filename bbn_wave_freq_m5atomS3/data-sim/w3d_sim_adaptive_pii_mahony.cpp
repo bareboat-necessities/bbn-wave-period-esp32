@@ -38,10 +38,11 @@ public:
 
     void updateMag(const Vector3f& mag_body_ned) override {
         // Runner gives NED body-frame. Convert back to the sim's Z-up body frame,
-        // then remap into the body convention Mahony actually expects.
-        last_mag_body_mahony_ = simBodyZuToMahonyBody_(ned_to_zu(mag_body_ned));
+        // then remap into the Mahony body convention.
+        //
+        // Magnetometer is a POLAR vector.
+        last_mag_body_mahony_ = simBodyZuToMahonyPolar_(ned_to_zu(mag_body_ned));
         have_mag_ = true;
-        mag_pending_ = true;   // IMPORTANT: only consume mag once per fresh mag tick
     }
 
     void update(float dt,
@@ -55,22 +56,25 @@ public:
         const Vector3f gyr_body_zu = ned_to_zu(gyr_meas_ned);
         const Vector3f acc_body_zu = ned_to_zu(acc_meas_ned);
 
-        // Mahony path needs Y mirrored relative to the sim body convention.
-        const Vector3f gyr_body_mahony = simBodyZuToMahonyBody_(gyr_body_zu);
-        const Vector3f acc_body_mahony = simBodyZuToMahonyBody_(acc_body_zu);
-
         // IMPORTANT:
-        //   - call updateIMUMag() only on a fresh mag sample
-        //   - otherwise call updateIMU()
-        // Reusing the same mag sample every 200 Hz IMU tick makes yaw unstable.
-        if (with_mag_ && have_mag_ && mag_pending_) {
+        //   accel and mag are POLAR vectors
+        //   gyro is an AXIAL vector
+        //
+        // Because the sim-body -> Mahony-body conversion is a handedness flip
+        // (mirror of Y), gyro must NOT use the same mapping as accel/mag.
+        const Vector3f gyr_body_mahony = simBodyZuToMahonyAxial_(gyr_body_zu);
+        const Vector3f acc_body_mahony = simBodyZuToMahonyPolar_(acc_body_zu);
+
+        // Use zero-order-held magnetometer every IMU step once it is available.
+        // That is the correct way to let Mahony continuously constrain yaw when
+        // mag arrives at a lower ODR than the IMU.
+        if (with_mag_ && have_mag_) {
             filter_.updateIMUMag(
                 gyr_body_mahony.x(), gyr_body_mahony.y(), gyr_body_mahony.z(),
                 acc_body_mahony.x(), acc_body_mahony.y(), acc_body_mahony.z(),
                 last_mag_body_mahony_.x(), last_mag_body_mahony_.y(), last_mag_body_mahony_.z(),
                 dt
             );
-            mag_pending_ = false;
         } else {
             filter_.updateIMU(
                 gyr_body_mahony.x(), gyr_body_mahony.y(), gyr_body_mahony.z(),
@@ -90,11 +94,13 @@ public:
         s.vel_est_zu  = Vector3f(0.0f, 0.0f, filter_.velocity());
         s.acc_est_zu  = Vector3f(0.0f, 0.0f, filter_.accelFiltered());
 
-        // IMPORTANT:
-        // Do NOT compare raw Mahony roll/pitch/yaw directly to sim reference.
-        // Convert q_body->world into the same nautical convention used elsewhere
-        // in the simulator, otherwise sign mismatches appear (especially pitch/yaw).
-        s.euler_nautical_deg = quatBodyToWorldToNauticalDeg_(hs);
+        // Use the wrapper’s own Euler outputs again.
+        //
+        // The quaternion->nautical conversion I suggested earlier was the wrong
+        // layer for this particular problem and caused roll/pitch swapping.
+        s.euler_nautical_deg = Vector3f(filter_.rollDeg(),
+                                        filter_.pitchDeg(),
+                                        filter_.yawDeg());
 
         s.acc_bias_est_ned    = Vector3f::Zero();
         s.gyro_bias_est_ned   = Vector3f::Zero();
@@ -148,49 +154,26 @@ public:
     }
 
 private:
-    // Sim body Z-up -> Mahony body convention.
+    // Sim Z-up body -> Mahony body for POLAR vectors (accel, mag).
     //
-    // This is the missing handedness fix:
+    // Mirror Y:
     //   x stays the same
     //   y flips sign
     //   z stays the same
-    //
-    // Symptom without this:
-    //   pitch roughly correct
-    //   roll opposite sign
-    //   yaw sign / magnetometer correction wrong
-    static Vector3f simBodyZuToMahonyBody_(const Vector3f& v) {
+    static Vector3f simBodyZuToMahonyPolar_(const Vector3f& v) {
         return Vector3f(v.x(), -v.y(), v.z());
     }
 
-    // Convert wrapper q_body->world into the same nautical Euler convention used
-    // by the rest of the simulator. This fixes pitch/yaw sign mismatches caused by
-    // comparing raw Mahony Euler outputs directly to the sim reference.
-    static Vector3f quatBodyToWorldToNauticalDeg_(const typename HeaveFilter::Snapshot& hs) {
-        const float x = hs.q_body_to_world.x;
-        const float y = hs.q_body_to_world.y;
-        const float z = hs.q_body_to_world.z;
-        const float w = hs.q_body_to_world.w;
-        const float two = 2.0f;
-
-        // Aerospace ZYX from q_body->world
-        const float s_yaw = two * std::fma(w, z, x * y);
-        const float c_yaw = 1.0f - two * std::fma(y, y, z * z);
-        float yaw = std::atan2(s_yaw, c_yaw);
-
-        float s_pitch = two * std::fma(w, y, -z * x);
-        s_pitch = std::max(-1.0f, std::min(1.0f, s_pitch));
-        float pitch = std::asin(s_pitch);
-
-        const float s_roll = two * std::fma(w, x, y * z);
-        const float c_roll = 1.0f - two * std::fma(x, x, y * y);
-        float roll = std::atan2(s_roll, c_roll);
-
-        // Convert to same nautical convention used by the rest of the sim
-        aero_to_nautical(roll, pitch, yaw);
-
-        constexpr float RAD2DEG = 57.29577951308232f;
-        return Vector3f(roll * RAD2DEG, pitch * RAD2DEG, yaw * RAD2DEG);
+    // Sim Z-up body -> Mahony body for AXIAL vectors (gyro).
+    //
+    // Under a handedness flip, angular-rate components transform differently
+    // from ordinary vectors:
+    //   w' = det(R) * R * w
+    //
+    // For R = diag(1, -1, 1), det(R) = -1, so:
+    //   w' = diag(-1, 1, -1) * w
+    static Vector3f simBodyZuToMahonyAxial_(const Vector3f& v) {
+        return Vector3f(-v.x(), v.y(), -v.z());
     }
 
     static HeaveFilter::Config make_config_(bool with_mag,
@@ -305,7 +288,6 @@ private:
 private:
     bool with_mag_ = true;
     bool have_mag_ = false;
-    bool mag_pending_ = false;
 
     Vector3f last_mag_body_mahony_ = Vector3f::Zero();
     HeaveFilter filter_;
