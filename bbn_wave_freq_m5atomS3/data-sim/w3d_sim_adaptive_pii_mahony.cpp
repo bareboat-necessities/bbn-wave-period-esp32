@@ -37,9 +37,11 @@ public:
     }
 
     void updateMag(const Vector3f& mag_body_ned) override {
-        last_mag_body_zu_ = ned_to_zu(mag_body_ned);
+        // Runner gives NED body-frame. Convert back to the sim's Z-up body frame,
+        // then remap into the body convention Mahony actually expects.
+        last_mag_body_mahony_ = simBodyZuToMahonyBody_(ned_to_zu(mag_body_ned));
         have_mag_ = true;
-        mag_pending_ = true;
+        mag_pending_ = true;   // IMPORTANT: only consume mag once per fresh mag tick
     }
 
     void update(float dt,
@@ -49,23 +51,30 @@ public:
     {
         (void)temperature_c;
 
+        // Runner gives NED body-frame. Convert back to the original sim Z-up body frame.
         const Vector3f gyr_body_zu = ned_to_zu(gyr_meas_ned);
         const Vector3f acc_body_zu = ned_to_zu(acc_meas_ned);
 
-        // Use magnetometer only on a fresh mag tick.
-        // Reusing the same mag sample every IMU step makes yaw behave badly.
+        // Mahony path needs Y mirrored relative to the sim body convention.
+        const Vector3f gyr_body_mahony = simBodyZuToMahonyBody_(gyr_body_zu);
+        const Vector3f acc_body_mahony = simBodyZuToMahonyBody_(acc_body_zu);
+
+        // IMPORTANT:
+        //   - call updateIMUMag() only on a fresh mag sample
+        //   - otherwise call updateIMU()
+        // Reusing the same mag sample every 200 Hz IMU tick makes yaw unstable.
         if (with_mag_ && have_mag_ && mag_pending_) {
             filter_.updateIMUMag(
-                gyr_body_zu.x(), gyr_body_zu.y(), gyr_body_zu.z(),
-                acc_body_zu.x(), acc_body_zu.y(), acc_body_zu.z(),
-                last_mag_body_zu_.x(), last_mag_body_zu_.y(), last_mag_body_zu_.z(),
+                gyr_body_mahony.x(), gyr_body_mahony.y(), gyr_body_mahony.z(),
+                acc_body_mahony.x(), acc_body_mahony.y(), acc_body_mahony.z(),
+                last_mag_body_mahony_.x(), last_mag_body_mahony_.y(), last_mag_body_mahony_.z(),
                 dt
             );
             mag_pending_ = false;
         } else {
             filter_.updateIMU(
-                gyr_body_zu.x(), gyr_body_zu.y(), gyr_body_zu.z(),
-                acc_body_zu.x(), acc_body_zu.y(), acc_body_zu.z(),
+                gyr_body_mahony.x(), gyr_body_mahony.y(), gyr_body_mahony.z(),
+                acc_body_mahony.x(), acc_body_mahony.y(), acc_body_mahony.z(),
                 dt
             );
         }
@@ -81,8 +90,7 @@ public:
         s.vel_est_zu  = Vector3f(0.0f, 0.0f, filter_.velocity());
         s.acc_est_zu  = Vector3f(0.0f, 0.0f, filter_.accelFiltered());
 
-        // These are now computed in the wrapper from q_body->world, so do not
-        // apply extra sign hacks here.
+        // These are already computed inside the wrapper from q_body->world.
         s.euler_nautical_deg = Vector3f(filter_.rollDeg(),
                                         filter_.pitchDeg(),
                                         filter_.yawDeg());
@@ -103,7 +111,6 @@ public:
         const float f_used_hz     = (obs.f_disp_filt_hz > 1e-6f) ? obs.f_disp_filt_hz : f_raw_hz;
         const float omega_used    = (f_used_hz > 1e-6f) ? (2.0f * float(M_PI) * f_used_hz) : NAN;
 
-        // Store ACTIVE values in the generic result fields.
         s.tau_target     = tau_d_active;
         s.sigma_target   = sigma_raw;
         s.tuning_target  = kb_active;
@@ -112,7 +119,6 @@ public:
         s.sigma_applied  = sigma_used;
         s.tuning_applied = r_active;
 
-        // Store the USED scheduling frequency, not the raw tracker output.
         s.freq_hz = f_used_hz;
         s.period_sec = (f_used_hz > 1e-6f) ? (1.0f / f_used_hz) : NAN;
         s.accel_variance = hs.core.accel_var;
@@ -141,6 +147,21 @@ public:
     }
 
 private:
+    // Sim body Z-up -> Mahony body convention.
+    //
+    // This is the missing handedness fix:
+    //   x stays the same
+    //   y flips sign
+    //   z stays the same
+    //
+    // Symptom without this:
+    //   pitch roughly correct
+    //   roll opposite sign
+    //   yaw sign / magnetometer correction wrong
+    static Vector3f simBodyZuToMahonyBody_(const Vector3f& v) {
+        return Vector3f(v.x(), -v.y(), v.z());
+    }
+
     static HeaveFilter::Config make_config_(bool with_mag,
                                             const Vector3f& sigma_a_init,
                                             const Vector3f& sigma_g,
@@ -255,7 +276,8 @@ private:
     bool with_mag_ = true;
     bool have_mag_ = false;
     bool mag_pending_ = false;
-    Vector3f last_mag_body_zu_ = Vector3f::Zero();
+
+    Vector3f last_mag_body_mahony_ = Vector3f::Zero();
     HeaveFilter filter_;
 };
 
