@@ -151,7 +151,6 @@ public:
         resetSchedulerState_();
     }
 
-    // ------------------------------------------------------------------------
     // Per-sample update
     //
     // Call this on every IMU sample with already gravity-compensated vertical
@@ -167,7 +166,6 @@ public:
     //   keep auto_schedule_from_accel_freq = false
     //   call updateAdaptationFromDisplacementFrequency(...) from your external
     //   displacement-frequency tracker instead.
-    // ------------------------------------------------------------------------
     T update(T a_meas, T dt) {
         if (!(std::isfinite(dt) && dt > T(0))) {
             return observer_.displacement();
@@ -192,13 +190,11 @@ public:
         return observer_.update(a_meas, dt);
     }
 
-    // ------------------------------------------------------------------------
     // Preferred adaptation hook:
     // use externally estimated DISPLACEMENT frequency + internally estimated sigma
     //
     // Call this whenever your displacement-frequency tracker updates.
     // dt_est is the elapsed time since the previous adaptation update from that tracker.
-    // ------------------------------------------------------------------------
     void updateAdaptationFromDisplacementFrequency(T f_disp_hz,
                                                    T dt_est,
                                                    T confidence = std::numeric_limits<T>::quiet_NaN())
@@ -217,13 +213,11 @@ public:
         );
     }
 
-    // ------------------------------------------------------------------------
     // Explicit external hook:
     // use externally provided displacement frequency AND externally provided sigma
     //
     // Useful if you already estimate sigma elsewhere and don't want the wrapper's
     // internal sigma estimator.
-    // ------------------------------------------------------------------------
     void updateAdaptationExternal(T f_disp_hz,
                                   T sigma_a,
                                   T dt_est,
@@ -243,13 +237,11 @@ public:
         );
     }
 
-    // ------------------------------------------------------------------------
     // Fallback adaptation hook:
     // use internal ACCELERATION frequency tracker as a proxy for displacement frequency
     //
     // This is weaker / less preferred than displacement-frequency scheduling,
     // but useful when no displacement-frequency estimate is available yet.
-    // ------------------------------------------------------------------------
     void updateAdaptationFromAccelFrequencyProxy(T dt_est) {
         observer_.update_adaptation(
             accel_freq_tracker_.getFrequencyHz(),
@@ -259,9 +251,7 @@ public:
         );
     }
 
-    // ------------------------------------------------------------------------
     // Convenience controls
-    // ------------------------------------------------------------------------
     void setAutoScheduleFromAccelFreq(bool on) {
         cfg_.auto_schedule_from_accel_freq = on;
     }
@@ -272,9 +262,7 @@ public:
         }
     }
 
-    // ------------------------------------------------------------------------
     // Accessors
-    // ------------------------------------------------------------------------
     Observer& observer() { return observer_; }
     const Observer& observer() const { return observer_; }
 
@@ -390,9 +378,7 @@ private:
 
 
 /*
-------------------------------------------------------------------------------
 EXAMPLE USAGE
-------------------------------------------------------------------------------
 
 #include "AdaptiveVerticalPII.h"
 
@@ -417,26 +403,21 @@ cfg.auto_schedule_period_s = 0.25f;
 
 HeaveAdaptive heave(cfg);
 
-// ---------------------------------------------------------------------------
 // Every IMU sample:
 //   a_world_z is vertical world-frame inertial acceleration (gravity removed)
-// ---------------------------------------------------------------------------
 float z = heave.update(a_world_z, dt_imu);
 
-// ---------------------------------------------------------------------------
 // Whenever your DISPLACEMENT-frequency tracker updates (preferred path):
-// ---------------------------------------------------------------------------
 heave.updateAdaptationFromDisplacementFrequency(
     f_disp_hz,     // preferred scheduling frequency input
     dt_tracker,    // elapsed time since last tracker update
     confidence     // [0..1], or omit if unavailable
 );
 
-// ---------------------------------------------------------------------------
 // If you do NOT yet have displacement frequency:
 // enable fallback and let the wrapper schedule from internal accel-frequency
 // tracker automatically.
-// ---------------------------------------------------------------------------
+//
 // cfg.auto_schedule_from_accel_freq = true;
 //
 // Then heave.update(...) will periodically call:
@@ -445,9 +426,7 @@ heave.updateAdaptationFromDisplacementFrequency(
 // This is less preferred than displacement-frequency scheduling, but useful as
 // a fallback.
 //
-// ---------------------------------------------------------------------------
 // If you already estimate sigma elsewhere and want full external control:
-// ---------------------------------------------------------------------------
 heave.updateAdaptationExternal(
     f_disp_hz,
     sigma_a_external,
@@ -455,5 +434,4 @@ heave.updateAdaptationExternal(
     confidence
 );
 
-------------------------------------------------------------------------------
 */
