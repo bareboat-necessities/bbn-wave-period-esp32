@@ -1,55 +1,5 @@
 #pragma once
 
-/*
-
-  Wrapper / scheduler around VerticalPIIObserver
-
-  What this class does
-  
-  1) Owns a VerticalPIIObserver<T, WithBias>
-  2) Tracks acceleration sigma (std dev / RMS-like scale) online
-  3) Optionally owns a WaveFrequencyTracker<T> for acceleration-frequency fallback
-  4) Calls VerticalPIIObserver::update_adaptation(...) using:
-       - displacement frequency estimate (preferred), OR
-       - acceleration frequency estimate (fallback proxy)
-
-  This wrapper adds the outer adaptation logic:
-      - signal statistics
-      - optional frequency tracker integration
-      - scheduling cadence
-      - preferred source selection for frequency updates
-
-  Preferred adaptation source
-
-  BEST:
-      displacement-frequency estimate from your external wave/displacement tracker
-
-  FALLBACK:
-      acceleration-frequency estimate from WaveFrequencyTracker
-
-  Typical usage
-
-      marine_obs::AdaptiveVerticalPII<float, true> heave;
-
-      // Every IMU sample:
-      float z = heave.update(vertical_world_accel, dt_imu);
-
-      // Whenever displacement-frequency estimate updates (preferred):
-      heave.updateAdaptationFromDisplacementFrequency(f_disp_hz, dt_track, confidence);
-
-  If no displacement-frequency estimate is available:
-      cfg.auto_schedule_from_accel_freq = true;
-      heave.update(vertical_world_accel, dt_imu); // wrapper will periodically schedule from internal accel tracker
-
-  Notes
-
-  - This wrapper is header-only and embedded-friendly.
-  - No dynamic allocation.
-  - No exceptions.
-  - No std::vector / std::string / RTTI required.
-  - Requires VerticalPIIObserver.h and WaveFrequencyTracker.h.
-*/
-
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -62,7 +12,8 @@ namespace marine_obs {
 
 template<typename T = float, bool WithBias = true, typename AccelFreqTrackerT = WaveFrequencyTracker<T>>
 class AdaptiveVerticalPII {
-    static_assert(std::is_floating_point<T>::value, "AdaptiveVerticalPII<T>: T must be a floating-point type.");
+    static_assert(std::is_floating_point<T>::value,
+                  "AdaptiveVerticalPII<T>: T must be a floating-point type.");
 
 public:
     using Observer = VerticalPIIObserver<T, WithBias>;
@@ -73,35 +24,42 @@ public:
     using AccelFreqTrackerConfig = typename AccelFreqTracker::Config;
 
     struct Config {
-        // Core observer config
         ObserverConfig observer{};
         ObserverAdaptConfig adaptation{};
-
-        // Internal acceleration-frequency tracker config
         AccelFreqTrackerConfig accel_freq_tracker{};
 
-        // Online acceleration sigma estimation:
-        //   mean_lp tracks slow mean / drift
-        //   var_lp tracks variance of (a - mean_lp)
         T sigma_mean_tau_s = T(20.0);
         T sigma_var_tau_s  = T(6.0);
-        T sigma_floor      = T(1e-4); // lower bound returned by accelSigma()
+        T sigma_floor      = T(1e-4);
 
-        // If true, update() will periodically call observer.update_adaptation()
-        // using the internal acceleration-frequency tracker as a fallback proxy.
-        //
-        // Recommended:
-        //   false when you have displacement-frequency estimates
-        //   true only as fallback
         bool auto_schedule_from_accel_freq = true;
-        T auto_schedule_period_s = T(0.25); // cadence of fallback adaptation calls
+        T auto_schedule_period_s = T(0.25);
 
-        // If the caller omits confidence or passes NaN, this is used.
+        // When auto scheduling is enabled, also force observer adaptation on.
+        bool force_enable_adaptation_when_auto_schedule = true;
+
+        // External default confidence for explicit user-provided scheduling calls.
         T default_external_confidence = T(1.0);
+
+        // Fallback confidence shaping for the INTERNAL accel-frequency path.
+        //
+        // Raw tracker confidence can stay too low for too long, which makes the
+        // auto scheduler look "dead" because VerticalPIIObserver holds params
+        // below AdaptConfig::min_confidence.
+        //
+        // So:
+        //   - if coarse estimate exists, raise confidence at least to this floor
+        //   - if the tracker says it is locked, raise confidence at least to this
+        //
+        // These do NOT force bad frequencies into the observer from t=0; they only
+        // help the auto path actually schedule once the tracker has some structure.
+        T fallback_confidence_floor = T(0.35);
+        T fallback_confidence_when_locked = T(0.70);
     };
 
     struct Snapshot {
         ObserverSnapshot observer{};
+
         T accel_mean = T(0);
         T accel_var  = T(0);
         T accel_sigma = T(0);
@@ -110,8 +68,14 @@ public:
         T sched_accum_s = T(0);
 
         bool auto_schedule_from_accel_freq = true;
+        bool observer_adaptation_enabled = false;
+
         T accel_freq_hz = T(0);
-        T accel_freq_confidence = T(0);
+        T accel_freq_confidence_raw = T(0);
+        T accel_freq_confidence_used = T(0);
+
+        bool accel_freq_locked = false;
+        bool accel_freq_has_coarse = false;
     };
 
 public:
@@ -129,7 +93,11 @@ public:
         observer_.configure_adaptation(cfg_.adaptation);
         accel_freq_tracker_.configure(cfg_.accel_freq_tracker);
 
-        // keep current state, but reset outer adaptation helpers
+        if (cfg_.auto_schedule_from_accel_freq &&
+            cfg_.force_enable_adaptation_when_auto_schedule) {
+            observer_.set_adaptation_enabled(true);
+        }
+
         resetSchedulerState_();
     }
 
@@ -151,50 +119,31 @@ public:
         resetSchedulerState_();
     }
 
-    // Per-sample update
-    //
-    // Call this on every IMU sample with already gravity-compensated vertical
-    // world-frame inertial acceleration.
-    //
-    // If cfg.auto_schedule_from_accel_freq is enabled, this also periodically
-    // calls observer.update_adaptation() using:
-    //   f_disp_hz <- internal acceleration-frequency tracker output (proxy)
-    //   sigma_a   <- internal sigma estimate
-    //   confidence<- internal tracker confidence
-    //
-    // Preferred real use:
-    //   keep auto_schedule_from_accel_freq = false
-    //   call updateAdaptationFromDisplacementFrequency(...) from your external
-    //   displacement-frequency tracker instead.
     T update(T a_meas, T dt) {
         if (!(std::isfinite(dt) && dt > T(0))) {
             return observer_.displacement();
         }
 
-        // 1) Update outer statistics / trackers first
         updateAccelSigma_(a_meas, dt);
         accel_freq_tracker_.update(a_meas, dt);
 
-        // 2) Optional fallback scheduling from acceleration frequency proxy
-        if (cfg_.auto_schedule_from_accel_freq && observer_.adaptation_enabled()) {
+        if (cfg_.auto_schedule_from_accel_freq) {
             sched_accum_s_ += dt;
+
             if (sched_accum_s_ >= cfg_.auto_schedule_period_s) {
                 const T dt_sched = sched_accum_s_;
                 sched_accum_s_ = T(0);
                 last_sched_dt_ = dt_sched;
-                updateAdaptationFromAccelFrequencyProxy(dt_sched);
+
+                if (observer_.adaptation_enabled()) {
+                    updateAdaptationFromAccelFrequencyProxy(dt_sched);
+                }
             }
         }
 
-        // 3) Propagate the core observer
         return observer_.update(a_meas, dt);
     }
 
-    // Preferred adaptation hook:
-    // use externally estimated DISPLACEMENT frequency + internally estimated sigma
-    //
-    // Call this whenever your displacement-frequency tracker updates.
-    // dt_est is the elapsed time since the previous adaptation update from that tracker.
     void updateAdaptationFromDisplacementFrequency(T f_disp_hz,
                                                    T dt_est,
                                                    T confidence = std::numeric_limits<T>::quiet_NaN())
@@ -205,6 +154,8 @@ public:
         confidence = clamp01_(confidence);
 
         last_sched_dt_ = dt_est;
+        last_auto_confidence_used_ = confidence;
+
         observer_.update_adaptation(
             f_disp_hz,
             accel_sigma_,
@@ -213,11 +164,6 @@ public:
         );
     }
 
-    // Explicit external hook:
-    // use externally provided displacement frequency AND externally provided sigma
-    //
-    // Useful if you already estimate sigma elsewhere and don't want the wrapper's
-    // internal sigma estimator.
     void updateAdaptationExternal(T f_disp_hz,
                                   T sigma_a,
                                   T dt_est,
@@ -229,6 +175,8 @@ public:
         confidence = clamp01_(confidence);
 
         last_sched_dt_ = dt_est;
+        last_auto_confidence_used_ = confidence;
+
         observer_.update_adaptation(
             f_disp_hz,
             sigma_a,
@@ -237,23 +185,31 @@ public:
         );
     }
 
-    // Fallback adaptation hook:
-    // use internal ACCELERATION frequency tracker as a proxy for displacement frequency
-    //
-    // This is weaker / less preferred than displacement-frequency scheduling,
-    // but useful when no displacement-frequency estimate is available yet.
     void updateAdaptationFromAccelFrequencyProxy(T dt_est) {
+        const T f_hz = accel_freq_tracker_.getFrequencyHz();
+        if (!(std::isfinite(f_hz) && f_hz > T(0))) {
+            return;
+        }
+
+        const T conf_used = computeFallbackConfidence_();
+        last_auto_confidence_used_ = conf_used;
+        last_auto_tracker_locked_ = accel_freq_tracker_.isLocked();
+        last_auto_tracker_has_coarse_ = accel_freq_tracker_.hasCoarseEstimate();
+
         observer_.update_adaptation(
-            accel_freq_tracker_.getFrequencyHz(),
+            f_hz,
             accel_sigma_,
-            accel_freq_tracker_.getConfidence(),
+            conf_used,
             dt_est
         );
     }
 
-    // Convenience controls
     void setAutoScheduleFromAccelFreq(bool on) {
         cfg_.auto_schedule_from_accel_freq = on;
+
+        if (on && cfg_.force_enable_adaptation_when_auto_schedule) {
+            observer_.set_adaptation_enabled(true);
+        }
     }
 
     void setAutoSchedulePeriod(T period_s) {
@@ -262,7 +218,18 @@ public:
         }
     }
 
-    // Accessors
+    void setFallbackConfidenceFloor(T c) {
+        if (std::isfinite(c)) {
+            cfg_.fallback_confidence_floor = clamp01_(c);
+        }
+    }
+
+    void setFallbackConfidenceWhenLocked(T c) {
+        if (std::isfinite(c)) {
+            cfg_.fallback_confidence_when_locked = clamp01_(c);
+        }
+    }
+
     Observer& observer() { return observer_; }
     const Observer& observer() const { return observer_; }
 
@@ -281,18 +248,28 @@ public:
     T accelFrequencyConfidence() const { return accel_freq_tracker_.getConfidence(); }
 
     T lastSchedulerDt() const { return last_sched_dt_; }
+    T autoScheduledConfidenceUsed() const { return last_auto_confidence_used_; }
 
     Snapshot snapshot() const {
         Snapshot s;
         s.observer = observer_.snapshot();
+
         s.accel_mean = accel_mean_;
         s.accel_var = accel_var_;
         s.accel_sigma = accel_sigma_;
+
         s.last_sched_dt = last_sched_dt_;
         s.sched_accum_s = sched_accum_s_;
+
         s.auto_schedule_from_accel_freq = cfg_.auto_schedule_from_accel_freq;
+        s.observer_adaptation_enabled = observer_.adaptation_enabled();
+
         s.accel_freq_hz = accel_freq_tracker_.getFrequencyHz();
-        s.accel_freq_confidence = accel_freq_tracker_.getConfidence();
+        s.accel_freq_confidence_raw = accel_freq_tracker_.getConfidence();
+        s.accel_freq_confidence_used = last_auto_confidence_used_;
+
+        s.accel_freq_locked = accel_freq_tracker_.isLocked();
+        s.accel_freq_has_coarse = accel_freq_tracker_.hasCoarseEstimate();
         return s;
     }
 
@@ -320,26 +297,35 @@ private:
         cfg.sigma_mean_tau_s = std::max(finite_or_default_(cfg.sigma_mean_tau_s, T(20)), eps_());
         cfg.sigma_var_tau_s  = std::max(finite_or_default_(cfg.sigma_var_tau_s,  T(6)),  eps_());
         cfg.sigma_floor      = std::max(finite_or_default_(cfg.sigma_floor, T(1e-4)), T(0));
+
         cfg.auto_schedule_period_s =
             std::max(finite_or_default_(cfg.auto_schedule_period_s, T(0.25)), eps_());
+
         cfg.default_external_confidence =
             clamp01_(finite_or_default_(cfg.default_external_confidence, T(1)));
 
-        if (cfg.auto_schedule_from_accel_freq) {
+        cfg.fallback_confidence_floor =
+            clamp01_(finite_or_default_(cfg.fallback_confidence_floor, T(0.35)));
+
+        cfg.fallback_confidence_when_locked =
+            clamp01_(finite_or_default_(cfg.fallback_confidence_when_locked, T(0.70)));
+
+        if (cfg.auto_schedule_from_accel_freq &&
+            cfg.force_enable_adaptation_when_auto_schedule) {
             cfg.adaptation.enabled = true;
         }
+
         return cfg;
     }
 
     void resetSchedulerState_() {
         sched_accum_s_ = T(0);
         last_sched_dt_ = T(0);
+        last_auto_confidence_used_ = T(0);
+        last_auto_tracker_locked_ = false;
+        last_auto_tracker_has_coarse_ = false;
     }
 
-    // Online sigma estimator for vertical acceleration.
-    //
-    // We estimate sigma from variance of (a - mean_lp), where mean_lp is a very slow
-    // one-pole mean estimate. This is intentionally simple and embedded-friendly.
     void updateAccelSigma_(T a_meas, T dt) {
         if (!std::isfinite(a_meas) || !(std::isfinite(dt) && dt > T(0))) {
             return;
@@ -362,80 +348,41 @@ private:
         }
     }
 
+    T computeFallbackConfidence_() const {
+        T conf = accel_freq_tracker_.getConfidence();
+        if (!std::isfinite(conf)) {
+            conf = T(0);
+        }
+
+        // If the tracker has at least coarse structure, do not leave the fallback
+        // path stuck forever below the observer's min_confidence gate.
+        if (accel_freq_tracker_.hasCoarseEstimate()) {
+            conf = std::max(conf, cfg_.fallback_confidence_floor);
+        }
+
+        if (accel_freq_tracker_.isLocked()) {
+            conf = std::max(conf, cfg_.fallback_confidence_when_locked);
+        }
+
+        return clamp01_(conf);
+    }
+
 private:
     Config cfg_{};
 
     Observer observer_;
     AccelFreqTracker accel_freq_tracker_;
 
-    // outer stats
     T accel_mean_  = T(0);
     T accel_var_   = T(0);
     T accel_sigma_ = T(1e-4);
 
-    // fallback scheduler cadence
     T sched_accum_s_ = T(0);
     T last_sched_dt_ = T(0);
+
+    T last_auto_confidence_used_ = T(0);
+    bool last_auto_tracker_locked_ = false;
+    bool last_auto_tracker_has_coarse_ = false;
 };
 
 } // namespace marine_obs
-
-
-/*
-EXAMPLE USAGE
-
-#include "AdaptiveVerticalPII.h"
-
-// Bias-enabled
-using HeaveAdaptive = marine_obs::AdaptiveVerticalPII<float, true>;
-
-HeaveAdaptive::Config cfg;
-cfg.observer.r = 0.16f;
-cfg.observer.tau_a = 0.60f;
-cfg.observer.tau_d = 40.0f;
-cfg.observer.kb = 1e-4f;
-cfg.observer.lambda_b = 1e-2f;
-
-// Core adaptation behavior (same hooks already supported by VerticalPIIObserver)
-cfg.adaptation.enabled = true;
-cfg.adaptation.f_disp_ref_hz = 0.17f;
-cfg.adaptation.sigma_a_ref = 0.30f;
-
-// Optional acceleration-frequency fallback
-cfg.auto_schedule_from_accel_freq = false; // preferred OFF if you have displacement frequency
-cfg.auto_schedule_period_s = 0.25f;
-
-HeaveAdaptive heave(cfg);
-
-// Every IMU sample:
-//   a_world_z is vertical world-frame inertial acceleration (gravity removed)
-float z = heave.update(a_world_z, dt_imu);
-
-// Whenever your DISPLACEMENT-frequency tracker updates (preferred path):
-heave.updateAdaptationFromDisplacementFrequency(
-    f_disp_hz,     // preferred scheduling frequency input
-    dt_tracker,    // elapsed time since last tracker update
-    confidence     // [0..1], or omit if unavailable
-);
-
-// If you do NOT yet have displacement frequency:
-// enable fallback and let the wrapper schedule from internal accel-frequency
-// tracker automatically.
-//
-// cfg.auto_schedule_from_accel_freq = true;
-//
-// Then heave.update(...) will periodically call:
-//   observer.update_adaptation(accel_freq, accel_sigma, accel_freq_confidence, dt_sched)
-//
-// This is less preferred than displacement-frequency scheduling, but useful as
-// a fallback.
-//
-// If you already estimate sigma elsewhere and want full external control:
-heave.updateAdaptationExternal(
-    f_disp_hz,
-    sigma_a_external,
-    dt_tracker,
-    confidence
-);
-
-*/
