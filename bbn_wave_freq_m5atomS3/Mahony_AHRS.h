@@ -5,25 +5,11 @@
 // Madgwick’s implementation of Mahony’s AHRS algorithm.
 // See: http://www.x-io.co.uk/node/8#open_source_ahrs_and_imu_algorithms
 //
-// Fixes applied (no algorithm changes, no public API changes):
-//   1) All function definitions marked inline  -> no ODR violation in multi-TU builds
-//   2) invSqrt uses memcpy for type-punning    -> no C++ UB
-//   3) Consistent f-suffix math throughout     -> no hidden double promotion
-//   4) #define macros replaced with constexpr  -> no global namespace pollution
-//   5) Redundant forward declaration removed
-//   6) mahony_AHRS_init documented: gains-only, does NOT reset quaternion/integrals
-//   7) mahony_AHRS_reset() added: full state reset to identity + zero integrals
-//   8) halfvz formula unified between update() and update_mag()
-//   9) Dead commented-out Euler formulas removed
-//  10) #include <math.h> -> <cmath> for C++ correctness
-//
 
 #include <cmath>
 #include <cstdint>
 #include <cstring>
 
-// Use constexpr instead of #define to avoid global namespace pollution.
-// Names are kept identical so all existing call sites continue to compile.
 static constexpr float twoKpDef = 2.0f * 1.0f;   // 2 * proportional gain
 static constexpr float twoKiDef = 2.0f * 0.0f;   // 2 * integral gain
 
