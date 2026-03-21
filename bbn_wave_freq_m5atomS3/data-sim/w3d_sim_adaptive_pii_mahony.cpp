@@ -90,10 +90,11 @@ public:
         s.vel_est_zu  = Vector3f(0.0f, 0.0f, filter_.velocity());
         s.acc_est_zu  = Vector3f(0.0f, 0.0f, filter_.accelFiltered());
 
-        // These are already computed inside the wrapper from q_body->world.
-        s.euler_nautical_deg = Vector3f(filter_.rollDeg(),
-                                        filter_.pitchDeg(),
-                                        filter_.yawDeg());
+        // IMPORTANT:
+        // Do NOT compare raw Mahony roll/pitch/yaw directly to sim reference.
+        // Convert q_body->world into the same nautical convention used elsewhere
+        // in the simulator, otherwise sign mismatches appear (especially pitch/yaw).
+        s.euler_nautical_deg = quatBodyToWorldToNauticalDeg_(hs);
 
         s.acc_bias_est_ned    = Vector3f::Zero();
         s.gyro_bias_est_ned   = Vector3f::Zero();
@@ -160,6 +161,36 @@ private:
     //   yaw sign / magnetometer correction wrong
     static Vector3f simBodyZuToMahonyBody_(const Vector3f& v) {
         return Vector3f(v.x(), -v.y(), v.z());
+    }
+
+    // Convert wrapper q_body->world into the same nautical Euler convention used
+    // by the rest of the simulator. This fixes pitch/yaw sign mismatches caused by
+    // comparing raw Mahony Euler outputs directly to the sim reference.
+    static Vector3f quatBodyToWorldToNauticalDeg_(const typename HeaveFilter::Snapshot& hs) {
+        const float x = hs.q_body_to_world.x;
+        const float y = hs.q_body_to_world.y;
+        const float z = hs.q_body_to_world.z;
+        const float w = hs.q_body_to_world.w;
+        const float two = 2.0f;
+
+        // Aerospace ZYX from q_body->world
+        const float s_yaw = two * std::fma(w, z, x * y);
+        const float c_yaw = 1.0f - two * std::fma(y, y, z * z);
+        float yaw = std::atan2(s_yaw, c_yaw);
+
+        float s_pitch = two * std::fma(w, y, -z * x);
+        s_pitch = std::max(-1.0f, std::min(1.0f, s_pitch));
+        float pitch = std::asin(s_pitch);
+
+        const float s_roll = two * std::fma(w, x, y * z);
+        const float c_roll = 1.0f - two * std::fma(x, x, y * y);
+        float roll = std::atan2(s_roll, c_roll);
+
+        // Convert to same nautical convention used by the rest of the sim
+        aero_to_nautical(roll, pitch, yaw);
+
+        constexpr float RAD2DEG = 57.29577951308232f;
+        return Vector3f(roll * RAD2DEG, pitch * RAD2DEG, yaw * RAD2DEG);
     }
 
     static HeaveFilter::Config make_config_(bool with_mag,
