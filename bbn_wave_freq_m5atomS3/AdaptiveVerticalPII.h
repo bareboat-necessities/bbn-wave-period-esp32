@@ -55,6 +55,11 @@ public:
         // help the auto path actually schedule once the tracker has some structure.
         T fallback_confidence_floor = T(0.35);
         T fallback_confidence_when_locked = T(0.70);
+
+        // Blend the PLL-style estimate with the coarse zero-crossing helper while
+        // the tracker is still learning the dominant sea state.
+        T coarse_schedule_blend = T(0.50);
+        T coarse_schedule_confidence_floor = T(0.45);
     };
 
     struct Snapshot {
@@ -73,6 +78,8 @@ public:
         T accel_freq_hz = T(0);
         T accel_freq_confidence_raw = T(0);
         T accel_freq_confidence_used = T(0);
+        T accel_freq_sched_hz = T(0);
+        T accel_freq_coarse_hz = T(0);
 
         bool accel_freq_locked = false;
         bool accel_freq_has_coarse = false;
@@ -186,8 +193,8 @@ public:
     }
 
     void updateAdaptationFromAccelFrequencyProxy(T dt_est) {
-        const T f_hz = accel_freq_tracker_.getFrequencyHz();
-        if (!(std::isfinite(f_hz) && f_hz > T(0))) {
+        const T f_sched_hz = computeScheduledFrequencyHz_();
+        if (!(std::isfinite(f_sched_hz) && f_sched_hz > T(0))) {
             return;
         }
 
@@ -195,9 +202,11 @@ public:
         last_auto_confidence_used_ = conf_used;
         last_auto_tracker_locked_ = accel_freq_tracker_.isLocked();
         last_auto_tracker_has_coarse_ = accel_freq_tracker_.hasCoarseEstimate();
+        last_auto_sched_freq_hz_ = f_sched_hz;
+        last_auto_coarse_freq_hz_ = accel_freq_tracker_.getCoarseFrequencyHz();
 
         observer_.update_adaptation(
-            f_hz,
+            f_sched_hz,
             accel_sigma_,
             conf_used,
             dt_est
@@ -267,6 +276,8 @@ public:
         s.accel_freq_hz = accel_freq_tracker_.getFrequencyHz();
         s.accel_freq_confidence_raw = accel_freq_tracker_.getConfidence();
         s.accel_freq_confidence_used = last_auto_confidence_used_;
+        s.accel_freq_sched_hz = last_auto_sched_freq_hz_;
+        s.accel_freq_coarse_hz = last_auto_coarse_freq_hz_;
 
         s.accel_freq_locked = accel_freq_tracker_.isLocked();
         s.accel_freq_has_coarse = accel_freq_tracker_.hasCoarseEstimate();
@@ -310,6 +321,12 @@ private:
         cfg.fallback_confidence_when_locked =
             clamp01_(finite_or_default_(cfg.fallback_confidence_when_locked, T(0.70)));
 
+        cfg.coarse_schedule_blend =
+            clamp01_(finite_or_default_(cfg.coarse_schedule_blend, T(0.50)));
+
+        cfg.coarse_schedule_confidence_floor =
+            clamp01_(finite_or_default_(cfg.coarse_schedule_confidence_floor, T(0.45)));
+
         if (cfg.auto_schedule_from_accel_freq &&
             cfg.force_enable_adaptation_when_auto_schedule) {
             cfg.adaptation.enabled = true;
@@ -322,6 +339,8 @@ private:
         sched_accum_s_ = T(0);
         last_sched_dt_ = T(0);
         last_auto_confidence_used_ = T(0);
+        last_auto_sched_freq_hz_ = T(0);
+        last_auto_coarse_freq_hz_ = T(0);
         last_auto_tracker_locked_ = false;
         last_auto_tracker_has_coarse_ = false;
     }
@@ -348,6 +367,30 @@ private:
         }
     }
 
+    T computeScheduledFrequencyHz_() const {
+        T f_sched = accel_freq_tracker_.getFrequencyHz();
+        if (!(std::isfinite(f_sched) && f_sched > T(0))) {
+            f_sched = accel_freq_tracker_.getRawFrequencyHz();
+        }
+
+        if (accel_freq_tracker_.hasCoarseEstimate()) {
+            const T coarse_hz = accel_freq_tracker_.getCoarseFrequencyHz();
+            if (std::isfinite(coarse_hz) && coarse_hz > T(0)) {
+                T blend = cfg_.coarse_schedule_blend;
+                if (!accel_freq_tracker_.isLocked()) {
+                    blend = std::max(blend, T(0.75) * cfg_.coarse_schedule_blend);
+                }
+                if (!(std::isfinite(f_sched) && f_sched > T(0))) {
+                    f_sched = coarse_hz;
+                } else {
+                    f_sched += blend * (coarse_hz - f_sched);
+                }
+            }
+        }
+
+        return f_sched;
+    }
+
     T computeFallbackConfidence_() const {
         T conf = accel_freq_tracker_.getConfidence();
         if (!std::isfinite(conf)) {
@@ -357,7 +400,8 @@ private:
         // If the tracker has at least coarse structure, do not leave the fallback
         // path stuck forever below the observer's min_confidence gate.
         if (accel_freq_tracker_.hasCoarseEstimate()) {
-            conf = std::max(conf, cfg_.fallback_confidence_floor);
+            conf = std::max(conf, std::max(cfg_.fallback_confidence_floor,
+                                           cfg_.coarse_schedule_confidence_floor));
         }
 
         if (accel_freq_tracker_.isLocked()) {
@@ -381,6 +425,8 @@ private:
     T last_sched_dt_ = T(0);
 
     T last_auto_confidence_used_ = T(0);
+    T last_auto_sched_freq_hz_ = T(0);
+    T last_auto_coarse_freq_hz_ = T(0);
     bool last_auto_tracker_locked_ = false;
     bool last_auto_tracker_has_coarse_ = false;
 };
