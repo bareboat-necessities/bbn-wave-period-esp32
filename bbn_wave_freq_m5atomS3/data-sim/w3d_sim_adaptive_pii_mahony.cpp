@@ -41,6 +41,7 @@ public:
         // Do NOT apply any extra Mahony remap here.
         last_mag_body_zu_ = ned_to_zu(mag_body_ned);
         have_mag_ = true;
+        mag_pending_ = true;   // consume this mag sample exactly once
     }
 
     void update(float dt,
@@ -58,14 +59,18 @@ public:
         // accel, gyro, and mag come from the same IMU body frame in the sim.
         // After ned_to_zu(...), pass them directly to Mahony in that same frame.
         //
-        // Magnetometer is used as zero-order hold between mag ticks.
-        if (with_mag_ && have_mag_) {
+        // CRITICAL FIX:
+        //   Call updateIMUMag() only on a FRESH magnetometer sample.
+        //   Reusing the same held mag sample every IMU tick over-weights the mag
+        //   correction by roughly IMU_ODR / MAG_ODR and makes yaw drift badly.
+        if (with_mag_ && have_mag_ && mag_pending_) {
             filter_.updateIMUMag(
                 gyr_body_zu.x(), gyr_body_zu.y(), gyr_body_zu.z(),
                 acc_body_zu.x(), acc_body_zu.y(), acc_body_zu.z(),
                 last_mag_body_zu_.x(), last_mag_body_zu_.y(), last_mag_body_zu_.z(),
                 dt
             );
+            mag_pending_ = false;
         } else {
             filter_.updateIMU(
                 gyr_body_zu.x(), gyr_body_zu.y(), gyr_body_zu.z(),
@@ -266,6 +271,7 @@ private:
 private:
     bool with_mag_ = true;
     bool have_mag_ = false;
+    bool mag_pending_ = false;
 
     Vector3f last_mag_body_zu_ = Vector3f::Zero();
     HeaveFilter filter_;
