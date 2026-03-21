@@ -13,61 +13,48 @@
 static constexpr float twoKpDef = 2.0f * 1.0f;   // 2 * proportional gain
 static constexpr float twoKiDef = 2.0f * 0.0f;   // 2 * integral gain
 
-// File-local conversion constant — not a macro.
 static constexpr double kRadToDeg = 57.295779513082320876798154814105;
 
 typedef struct mahony_AHRS_vars {
-float twoKp       = twoKpDef;
-float twoKi       = twoKiDef;
-float q0          = 1.0f;
-float q1          = 0.0f;
-float q2          = 0.0f;
-float q3          = 0.0f;   // quaternion of sensor frame relative to auxiliary frame
-float integralFBx = 0.0f;
-float integralFBy = 0.0f;
-float integralFBz = 0.0f;   // integral error terms scaled by Ki
+    float twoKp       = twoKpDef;
+    float twoKi       = twoKiDef;
+    float q0          = 1.0f;
+    float q1          = 0.0f;
+    float q2          = 0.0f;
+    float q3          = 0.0f;   // quaternion of sensor frame relative to auxiliary frame
+    float integralFBx = 0.0f;
+    float integralFBy = 0.0f;
+    float integralFBz = 0.0f;   // integral error terms scaled by Ki
 } Mahony_AHRS_Vars;
 
-// —————————————————————————
-// invSqrt
-//
 // Fast inverse square root.
 // Uses memcpy for type-punning — well-defined in both C and C++.
 // Magic constant 0x5f375a86 (Lomont) gives ~0.18% error after one
 // Newton-Raphson step.
-// —————————————————————————
 inline float invSqrt(float number) {
-float y = number;
-int32_t i;
-std::memcpy(&i, &y, sizeof(i));
-i = 0x5f375a86 - (i >> 1);
-std::memcpy(&y, &i, sizeof(y));
-y = y * (1.5f - (number * 0.5f * y * y));
-return y;
+    float y = number;
+    int32_t i;
+    std::memcpy(&i, &y, sizeof(i));
+    i = 0x5f375a86 - (i >> 1);
+    std::memcpy(&y, &i, sizeof(y));
+    y = y * (1.5f - (number * 0.5f * y * y));
+    return y;
 }
 
-// —————————————————————————
-// mahony_AHRS_init
-//
 // Sets gains only. Does NOT reset quaternion or integral states.
 // Use this to change gains on a running filter without disturbing attitude.
 // Use mahony_AHRS_reset() for a full state reset.
-// —————————————————————————
 inline void mahony_AHRS_init(Mahony_AHRS_Vars* m, float twoKp, float twoKi) {
-m->twoKp = twoKp;
-m->twoKi = twoKi;
+    m->twoKp = twoKp;
+    m->twoKi = twoKi;
 }
 
-// —————————————————————————
-// mahony_AHRS_reset
-//
 // Full state reset: identity quaternion, zero integral accumulators.
 // Gains are preserved unless positive values are passed.
 // Pass twoKp <= 0 to leave gains unchanged.
-// —————————————————————————
 inline void mahony_AHRS_reset(Mahony_AHRS_Vars* m,
-float twoKp = -1.0f,
-float twoKi = -1.0f)
+                              float twoKp = -1.0f,
+                              float twoKi = -1.0f)
 {
 if (twoKp > 0.0f)  m->twoKp = twoKp;
 if (twoKi >= 0.0f) m->twoKi = twoKi;
