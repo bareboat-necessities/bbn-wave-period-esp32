@@ -252,7 +252,7 @@ private:
         cfg.mahony_twoKp_calm  = 0.90f;
         cfg.mahony_twoKp_rough = 0.18f;
         cfg.mahony_twoKi_calm  = 0.020f;
-        cfg.mahony_twoKi_rough = 0.000f;
+        cfg.mahony_twoKi_rough = 0.002f;
         cfg.mahony_sigma_ref = 0.18f;
         cfg.mahony_norm_err_ref = 0.08f;
         cfg.mahony_gain_smooth_tau_s = 2.0f;
