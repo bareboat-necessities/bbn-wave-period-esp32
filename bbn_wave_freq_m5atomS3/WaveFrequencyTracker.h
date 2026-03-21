@@ -6,13 +6,10 @@
 #include <limits>
 
 /*
-  WaveFrequencyTracker.h
-  ----------------------
 
   Standalone frequency tracker for dominant wave frequency from an acceleration-like signal.
 
   Design goals:
-    - No dependency on old estimator cores
     - Numerically stable with variable dt
     - Control-theory style tracker (PLL/FLL-like), not Kalman
     - Robust to low-frequency drift and moderate broadband noise
@@ -33,11 +30,8 @@
     6) Run a bounded PI loop on oscillator frequency
 
   Notes:
-    - Acceleration and displacement share the same oscillation frequency.
-      So this estimates wave displacement frequency directly from acceleration,
-      without integrating to displacement.
     - This tracks ONE dominant narrowband component. If the sea is strongly
-      bimodal/multimodal, any single-frequency tracker can hop or average.
+      bimodal/multimodal, any single-frequency tracker can hop from one harmonic to another or average.
     - For best results, combine this with a slower outer spectral estimate.
 
   Usage:
@@ -325,7 +319,7 @@ private:
   void stepInternal(Real x, Real dt) {
     const Real eps = Real(1e-12);
 
-    // ---------- 1) Front-end broad bandpass ----------
+    // 1) Front-end broad bandpass
     //
     // HP formed as x - LP(x)
     // Then LP the HP result to limit high-frequency junk.
@@ -341,13 +335,13 @@ private:
 
     bp_ = mixExp(bp_, hp, a_lp);
 
-    // ---------- 2) Update energy / RMS ----------
+    // 2) Update energy / RMS
     const Real a_pow = alphaFromTau(cfg_.power_tau_s, dt);
     power_lp_ = mixExp(power_lp_, bp_ * bp_, a_pow);
     power_lp_ = maxValue(power_lp_, Real(0));
     rms_ = std::sqrt(power_lp_ + eps);
 
-    // ---------- 3) Demodulate with internal oscillator ----------
+    // 3) Demodulate with internal oscillator
     //
     // If bp_ ~ A cos(phi + delta), then after LP:
     //   I ~ A/2 cos(delta)
@@ -372,7 +366,7 @@ private:
     const Real denom = maxValue(std::sqrt(Real(2)) * rms_, eps);
     coherence_ = clamp(amplitude_ / denom, Real(0), Real(1));
 
-    // ---------- 4) Lock / confidence logic ----------
+    // 4) Lock / confidence logic
     const Real rms_score = clamp(rms_ / maxValue(cfg_.lock_rms_min, eps), Real(0), Real(1));
     const Real conf_target = clamp(rms_score * coherence_, Real(0), Real(1));
 
@@ -393,14 +387,14 @@ private:
       }
     }
 
-    // ---------- 5) Phase detector ----------
+    // 5) Phase detector
     phase_error_rad_ = std::atan2(q_lp_, i_lp_);
 
     // Clamp very large errors to keep loop tame during acquisition / disturbances.
     const Real max_phase_err = Real(1.2); // ~69 degrees
     phase_error_rad_ = clamp(phase_error_rad_, -max_phase_err, max_phase_err);
 
-    // ---------- 6) PI loop on oscillator frequency ----------
+    // 6) PI loop on oscillator frequency
     //
     // Type-II PLL style:
     //   phi_dot   = omega + Kp * e
@@ -456,7 +450,7 @@ private:
     phase_rad_ += (omega_rad_s_ + kp * adapt_gain * phase_error_rad_) * dt;
     phase_rad_ = wrapPi(phase_rad_);
 
-    // ---------- 7) Output frequency ----------
+    // 7) Output frequency
     raw_freq_hz_ = radToHz(omega_rad_s_);
 
     const Real a_out = alphaFromTau(cfg_.output_smooth_tau_s, dt);
