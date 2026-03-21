@@ -51,7 +51,7 @@
   dt       : sample period [s]
 
   Notes
-  - Mahony state is float-only because your Mahony implementation is float-only.
+  - Mahony state is templated on T and defaults to float.
   - The adaptive vertical observer remains templated on T.
   - This wrapper does not remap axes. Feed data in the SAME axis convention
     that your Mahony implementation expects.
@@ -91,11 +91,11 @@ public:
         CoreConfig core{};
 
         // Mahony gains
-        float mahony_twoKp = twoKpDef;
-        float mahony_twoKi = twoKiDef;
+        T mahony_twoKp = static_cast<T>(Mahony_AHRS<T>::twoKpDef);
+        T mahony_twoKi = static_cast<T>(Mahony_AHRS<T>::twoKiDef);
 
         // Gravity magnitude used to convert specific force -> inertial accel
-        float gravity_mps2 = 9.80665f;
+        T gravity_mps2 = static_cast<T>(9.80665);
 
         // If true, updateIMU() will call magless Mahony update only.
         // If you want magnetometer support, call updateIMUMag().
@@ -118,9 +118,9 @@ public:
 
         T vertical_world_accel_up = T(0);
 
-        float mahony_twoKp = twoKpDef;
-        float mahony_twoKi = twoKiDef;
-        float gravity_mps2 = 9.80665f;
+        T mahony_twoKp = static_cast<T>(Mahony_AHRS<T>::twoKpDef);
+        T mahony_twoKi = static_cast<T>(Mahony_AHRS<T>::twoKiDef);
+        T gravity_mps2 = static_cast<T>(9.80665);
     };
 
 public:
@@ -151,7 +151,7 @@ public:
                T b0 = T(0))
     {
         // Reset Mahony state
-        mahony_ = Mahony_AHRS_Vars{};
+        mahony_ = Mahony_AHRS<T>{};
         mahony_AHRS_init(&mahony_, cfg_.mahony_twoKp, cfg_.mahony_twoKi);
 
         last_roll_deg_ = T(0);
@@ -164,7 +164,7 @@ public:
         core_.reset(p0, v0, a_f0, S0, d0, b0);
     }
 
-    void setMahonyGains(float twoKp, float twoKi) {
+    void setMahonyGains(T twoKp, T twoKi) {
         if (std::isfinite(twoKp)) mahony_.twoKp = twoKp;
         if (std::isfinite(twoKi)) mahony_.twoKi = twoKi;
         cfg_.mahony_twoKp = mahony_.twoKp;
@@ -181,23 +181,19 @@ public:
             return core_.displacement();
         }
 
-        float pitch_deg = 0.0f;
-        float roll_deg  = 0.0f;
-        float yaw_deg   = 0.0f;
+        T pitch_deg = T(0);
+        T roll_deg  = T(0);
+        T yaw_deg   = T(0);
 
         mahony_AHRS_update(&mahony_,
-                           static_cast<float>(gx_rad_s),
-                           static_cast<float>(gy_rad_s),
-                           static_cast<float>(gz_rad_s),
-                           static_cast<float>(ax_mps2),
-                           static_cast<float>(ay_mps2),
-                           static_cast<float>(az_mps2),
+                           gx_rad_s, gy_rad_s, gz_rad_s,
+                           ax_mps2, ay_mps2, az_mps2,
                            &pitch_deg, &roll_deg, &yaw_deg,
-                           static_cast<float>(dt_s));
+                           dt_s);
 
-        last_pitch_deg_ = static_cast<T>(pitch_deg);
-        last_roll_deg_  = static_cast<T>(roll_deg);
-        last_yaw_deg_   = static_cast<T>(yaw_deg);
+        last_pitch_deg_ = pitch_deg;
+        last_roll_deg_  = roll_deg;
+        last_yaw_deg_   = yaw_deg;
 
         computeWorldAccelAndVertical_(ax_mps2, ay_mps2, az_mps2);
 
@@ -215,26 +211,20 @@ public:
             return core_.displacement();
         }
 
-        float pitch_deg = 0.0f;
-        float roll_deg  = 0.0f;
-        float yaw_deg   = 0.0f;
+        T pitch_deg = T(0);
+        T roll_deg  = T(0);
+        T yaw_deg   = T(0);
 
         mahony_AHRS_update_mag(&mahony_,
-                               static_cast<float>(gx_rad_s),
-                               static_cast<float>(gy_rad_s),
-                               static_cast<float>(gz_rad_s),
-                               static_cast<float>(ax_mps2),
-                               static_cast<float>(ay_mps2),
-                               static_cast<float>(az_mps2),
-                               static_cast<float>(mx),
-                               static_cast<float>(my),
-                               static_cast<float>(mz),
+                               gx_rad_s, gy_rad_s, gz_rad_s,
+                               ax_mps2, ay_mps2, az_mps2,
+                               mx, my, mz,
                                &pitch_deg, &roll_deg, &yaw_deg,
-                               static_cast<float>(dt_s));
+                               dt_s);
 
-        last_pitch_deg_ = static_cast<T>(pitch_deg);
-        last_roll_deg_  = static_cast<T>(roll_deg);
-        last_yaw_deg_   = static_cast<T>(yaw_deg);
+        last_pitch_deg_ = pitch_deg;
+        last_roll_deg_  = roll_deg;
+        last_yaw_deg_   = yaw_deg;
 
         computeWorldAccelAndVertical_(ax_mps2, ay_mps2, az_mps2);
 
@@ -276,8 +266,8 @@ public:
     Core& core() { return core_; }
     const Core& core() const { return core_; }
 
-    Mahony_AHRS_Vars& mahonyState() { return mahony_; }
-    const Mahony_AHRS_Vars& mahonyState() const { return mahony_; }
+    Mahony_AHRS<T>& mahonyState() { return mahony_; }
+    const Mahony_AHRS<T>& mahonyState() const { return mahony_; }
 
     QuaternionT quaternionWorldToBody() const {
         QuaternionT q;
@@ -335,10 +325,10 @@ public:
 private:
     static Config sanitizeConfig_(Config cfg) {
         if (!(std::isfinite(cfg.gravity_mps2) && cfg.gravity_mps2 > 0.0f)) {
-            cfg.gravity_mps2 = 9.80665f;
+            cfg.gravity_mps2 = static_cast<T>(9.80665);
         }
-        if (!std::isfinite(cfg.mahony_twoKp)) cfg.mahony_twoKp = twoKpDef;
-        if (!std::isfinite(cfg.mahony_twoKi)) cfg.mahony_twoKi = twoKiDef;
+        if (!std::isfinite(cfg.mahony_twoKp)) cfg.mahony_twoKp = static_cast<T>(Mahony_AHRS<T>::twoKpDef);
+        if (!std::isfinite(cfg.mahony_twoKi)) cfg.mahony_twoKi = static_cast<T>(Mahony_AHRS<T>::twoKiDef);
         return cfg;
     }
 
@@ -350,7 +340,7 @@ private:
     // Uses the efficient quaternion-vector rotation formula:
     //   v' = v + w*t + cross(qv, t),  t = 2 * cross(qv, v)
     // for q = body->world.
-    static void rotateBodyToWorldZUp_(const Mahony_AHRS_Vars& m,
+    static void rotateBodyToWorldZUp_(const Mahony_AHRS<T>& m,
                                       T vx, T vy, T vz,
                                       T& ox, T& oy, T& oz)
     {
@@ -386,9 +376,9 @@ private:
     Config cfg_{};
 
     Core core_;
-    Mahony_AHRS_Vars mahony_{};
+    Mahony_AHRS<T> mahony_{};
 
-    float gravity_mps2_ = 9.80665f;
+    T gravity_mps2_ = static_cast<T>(9.80665);
 
     T last_roll_deg_  = T(0);
     T last_pitch_deg_ = T(0);
