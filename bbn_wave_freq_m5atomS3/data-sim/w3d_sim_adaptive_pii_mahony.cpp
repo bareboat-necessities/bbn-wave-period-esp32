@@ -66,8 +66,6 @@ public:
         const Vector3f acc_body_mahony = simBodyZuToMahonyPolar_(acc_body_zu);
 
         // Use zero-order-held magnetometer every IMU step once it is available.
-        // That is the correct way to let Mahony continuously constrain yaw when
-        // mag arrives at a lower ODR than the IMU.
         if (with_mag_ && have_mag_) {
             filter_.updateIMUMag(
                 gyr_body_mahony.x(), gyr_body_mahony.y(), gyr_body_mahony.z(),
@@ -94,13 +92,23 @@ public:
         s.vel_est_zu  = Vector3f(0.0f, 0.0f, filter_.velocity());
         s.acc_est_zu  = Vector3f(0.0f, 0.0f, filter_.accelFiltered());
 
-        // Use the wrapper’s own Euler outputs again.
+        // The internal transport is now consistent, but the raw Mahony Euler output
+        // is still not in the same attitude-reporting convention as the simulator
+        // reference used by W3dSimulationRunner.
         //
-        // The quaternion->nautical conversion I suggested earlier was the wrong
-        // layer for this particular problem and caused roll/pitch swapping.
-        s.euler_nautical_deg = Vector3f(filter_.rollDeg(),
-                                        filter_.pitchDeg(),
-                                        filter_.yawDeg());
+        // Empirically with the now-correct vector mappings:
+        //   - roll is opposite sign
+        //   - pitch already matches
+        //   - yaw is offset into Mahony heading convention and needs conversion
+        //
+        // Convert ONLY for reporting/comparison here.
+        const float roll_sim_deg  = -filter_.rollDeg();
+        const float pitch_sim_deg =  filter_.pitchDeg();
+        const float yaw_sim_deg   =  wrapDeg(90.0f - filter_.yawDeg());
+
+        s.euler_nautical_deg = Vector3f(roll_sim_deg,
+                                        pitch_sim_deg,
+                                        yaw_sim_deg);
 
         s.acc_bias_est_ned    = Vector3f::Zero();
         s.gyro_bias_est_ned   = Vector3f::Zero();
@@ -166,11 +174,10 @@ private:
 
     // Sim Z-up body -> Mahony body for AXIAL vectors (gyro).
     //
-    // Under a handedness flip, angular-rate components transform differently
-    // from ordinary vectors:
+    // Under a handedness flip:
     //   w' = det(R) * R * w
     //
-    // For R = diag(1, -1, 1), det(R) = -1, so:
+    // For R = diag(1, -1, 1):
     //   w' = diag(-1, 1, -1) * w
     static Vector3f simBodyZuToMahonyAxial_(const Vector3f& v) {
         return Vector3f(-v.x(), v.y(), -v.z());
