@@ -45,10 +45,15 @@ height_groups = {
 # === Allowed wave types ===
 ALLOWED_WAVES = {"jonswap", "pmstokes"}
 
-# === Regex to extract wave type and height from filename ===
+# === Regex to extract wave type / height and optional dataset variant from filename ===
 pattern = re.compile(
     r".*?_(?P<wave>[a-zA-Z0-9]+)_H(?P<height>[-0-9\.]+).*?_fusion\.csv$"
 )
+variant_pattern = re.compile(r"(?:_(?P<variant>[A-Za-z0-9]+))?_fusion\.csv$")
+
+VARIANT_LABELS = {
+    "wavefreqtracker": "WaveFrequencyTracker adaptive PII/Mahony",
+}
 
 def latex_safe(s: str) -> str:
     return s.replace("_", r"\_")
@@ -110,6 +115,9 @@ for fname in files:
         height_val = float(m.group("height"))
     except (TypeError, ValueError):
         continue
+    variant_match = variant_pattern.search(basename)
+    variant = variant_match.group("variant") if variant_match else None
+    variant_label = VARIANT_LABELS.get(variant, variant.replace("_", " ").title()) if variant else "Kalman 3D"
     group_name = None
     for name, h in height_groups.items():
         if abs(height_val - h) < 1e-6:
@@ -118,18 +126,22 @@ for fname in files:
     if group_name is None:
         continue
 
-    outbase = f"w3d_{wave_type}_{group_name}"
+    outbase_tokens = ["w3d"]
+    if variant:
+        outbase_tokens.append(variant)
+    outbase_tokens.extend([wave_type, group_name])
+    outbase = "_".join(outbase_tokens)
     outbase = re.sub(r"[^A-Za-z0-9_\-]", "_", outbase)
     outbase = os.path.join(DATA_DIR, outbase)
 
-    print(f"Plotting {fname} → {outbase} ...")
+    print(f"Plotting {fname} → {outbase} ({variant_label}) ...")
     df = pd.read_csv(fname, nrows=MAX_ROWS)
     df = df[(df["time"] >= SKIP_TIME_S) & (df["time"] <= MAX_TIME_S)].reset_index(drop=True)
     time = df["time"]
 
     # === Angles (Reference vs Estimated, optional errors) ===
     nrows = 3 if not PLOT_ERRORS else 6
-    fig, axes = make_subplots(nrows, latex_safe(basename))
+    fig, axes = make_subplots(nrows, latex_safe(f"{variant_label}: {basename}"))
     for i, (ref_col, est_col, label) in enumerate([
         ("roll_ref", "roll_est", "Roll (deg)"),
         ("pitch_ref", "pitch_est", "Pitch (deg)"),
@@ -170,7 +182,7 @@ for fname in files:
             ("angle_err", "Quat err [deg]",  "tab:purple"),
         ]
         nrows = len(error_cols)
-        fig, axes = make_subplots(nrows, latex_safe(basename) + " (Angle Errors)")
+        fig, axes = make_subplots(nrows, latex_safe(f"{variant_label}: {basename}") + " (Angle Errors)")
         for ax, (col, ylabel, color) in zip(axes, error_cols):
             ax.plot(time, df[col], color=color)
             ax.set_ylabel(ylabel)
@@ -180,7 +192,7 @@ for fname in files:
 
     # === Z-axis kinematics ===
     nrows = 6 if PLOT_ERRORS else 3
-    fig, axes = make_subplots(nrows, latex_safe(basename) + " (Z-axis)")
+    fig, axes = make_subplots(nrows, latex_safe(f"{variant_label}: {basename}") + " (Z-axis)")
     for i, prefix in enumerate(["disp", "vel", "acc"]):
         if PLOT_ERRORS:
             ax_val = axes[2*i]
@@ -225,7 +237,7 @@ for fname in files:
 
     # === XY kinematics ===
     nrows = 6 if PLOT_ERRORS else 3
-    fig, axes = make_subplots(nrows, latex_safe(basename) + " (X/Y axes)")
+    fig, axes = make_subplots(nrows, latex_safe(f"{variant_label}: {basename}") + " (X/Y axes)")
     for i, prefix in enumerate(["disp", "vel", "acc"]):
         if PLOT_ERRORS:
             ax_val = axes[2*i]
@@ -258,7 +270,7 @@ for fname in files:
         ("acc_bias_y",  "acc_bias_est_y",  "Accel bias Y"),
         ("acc_bias_z",  "acc_bias_est_z",  "Accel bias Z"),
     ]
-    fig, axes = make_subplots(len(acc_pairs), latex_safe(basename) + " (Accelerometer Biases)")
+    fig, axes = make_subplots(len(acc_pairs), latex_safe(f"{variant_label}: {basename}") + " (Accelerometer Biases)")
     for ax, (true_col, est_col, label) in zip(axes, acc_pairs):
         ax.plot(time, df[true_col], label="True", linewidth=1.5)
         ax.plot(time, df[est_col], label="Estimated", linestyle="--", linewidth=1.0)
@@ -274,7 +286,7 @@ for fname in files:
         ("gyro_bias_y", "gyro_bias_est_y", "Gyro bias Y"),
         ("gyro_bias_z", "gyro_bias_est_z", "Gyro bias Z"),
     ]
-    fig, axes = make_subplots(len(gyro_pairs), latex_safe(basename) + " (Gyroscope Biases)")
+    fig, axes = make_subplots(len(gyro_pairs), latex_safe(f"{variant_label}: {basename}") + " (Gyroscope Biases)")
     for ax, (true_col, est_col, label) in zip(axes, gyro_pairs):
         ax.plot(time, df[true_col], label="True", linewidth=1.5)
         ax.plot(time, df[est_col], label="Estimated", linestyle="--", linewidth=1.0)
@@ -295,7 +307,7 @@ for fname in files:
     needed = [c for t,e,_ in mag_pairs for c in (t,e)]
     if all(c in df.columns for c in needed):
         nrows = 2 * len(mag_pairs) if PLOT_ERRORS else len(mag_pairs)
-        fig, axes = make_subplots(nrows, latex_safe(basename) + " (Magnetometer Biases)")
+        fig, axes = make_subplots(nrows, latex_safe(f"{variant_label}: {basename}") + " (Magnetometer Biases)")
 
         for i, (true_col, est_col, label) in enumerate(mag_pairs):
             if PLOT_ERRORS:
@@ -332,7 +344,7 @@ for fname in files:
         ("p0_combo",        r"$R_{p0}$ / $p_{0,S}$ applied"),
     ]
 
-    fig, axes = make_subplots(len(tuner_panels), latex_safe(basename) + " (Frequency / Tuner)")
+    fig, axes = make_subplots(len(tuner_panels), latex_safe(f"{variant_label}: {basename}") + " (Frequency / Tuner)")
     for ax, (key, ylabel) in zip(axes, tuner_panels):
 
         if key == "accel_std_combo":
@@ -399,7 +411,7 @@ for fname in files:
         ("dir_sign_num",   "Sign (+1/-1/0)"),
     ]
 
-    fig, axes = make_subplots(len(dir_cols), latex_safe(basename) + " (Direction)")
+    fig, axes = make_subplots(len(dir_cols), latex_safe(f"{variant_label}: {basename}") + " (Direction)")
     for ax, (col, ylabel) in zip(axes, dir_cols):
         if col not in df.columns:
             ax.text(0.01, 0.5, f"Missing: {latex_safe(col)}", transform=ax.transAxes)
