@@ -426,7 +426,7 @@ cfg.core.adaptation.f_disp_ref_hz = 0.17f;
 cfg.core.adaptation.sigma_a_ref = 0.30f;
 
 // optional accel-frequency fallback
-cfg.core.auto_schedule_from_accel_freq = false;
+cfg.core.auto_schedule_from_accel_freq = true;
 
 // Mahony
 cfg.mahony_twoKp = twoKpDef;
