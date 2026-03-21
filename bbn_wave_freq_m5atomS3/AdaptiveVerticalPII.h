@@ -1,27 +1,17 @@
 #pragma once
 
 /*
-  AdaptiveVerticalPII.h
-  ---------------------
 
-  Wrapper / scheduler around VerticalPIIObserver.h
+  Wrapper / scheduler around VerticalPIIObserver
 
   What this class does
-  --------------------
+  
   1) Owns a VerticalPIIObserver<T, WithBias>
   2) Tracks acceleration sigma (std dev / RMS-like scale) online
   3) Optionally owns a WaveFrequencyTracker<T> for acceleration-frequency fallback
   4) Calls VerticalPIIObserver::update_adaptation(...) using:
        - displacement frequency estimate (preferred), OR
        - acceleration frequency estimate (fallback proxy)
-
-  Why separate from VerticalPIIObserver?
-  --------------------------------------
-  The core observer should stay simple:
-      - state propagation
-      - PII dynamics
-      - optional slow bias-trend channel
-      - parameter hooks only
 
   This wrapper adds the outer adaptation logic:
       - signal statistics
@@ -30,7 +20,7 @@
       - preferred source selection for frequency updates
 
   Preferred adaptation source
-  ---------------------------
+
   BEST:
       displacement-frequency estimate from your external wave/displacement tracker
 
@@ -38,7 +28,7 @@
       acceleration-frequency estimate from WaveFrequencyTracker
 
   Typical usage
-  -------------
+
       marine_obs::AdaptiveVerticalPII<float, true> heave;
 
       // Every IMU sample:
@@ -49,11 +39,10 @@
 
   If no displacement-frequency estimate is available:
       cfg.auto_schedule_from_accel_freq = true;
-      heave.update(vertical_world_accel, dt_imu); // wrapper will periodically
-                                                  // schedule from internal accel tracker
+      heave.update(vertical_world_accel, dt_imu); // wrapper will periodically schedule from internal accel tracker
 
   Notes
-  -----
+
   - This wrapper is header-only and embedded-friendly.
   - No dynamic allocation.
   - No exceptions.
@@ -71,12 +60,9 @@
 
 namespace marine_obs {
 
-template<typename T = float,
-         bool WithBias = true,
-         typename AccelFreqTrackerT = WaveFrequencyTracker<T>>
+template<typename T = float, bool WithBias = true, typename AccelFreqTrackerT = WaveFrequencyTracker<T>>
 class AdaptiveVerticalPII {
-    static_assert(std::is_floating_point<T>::value,
-                  "AdaptiveVerticalPII<T>: T must be a floating-point type.");
+    static_assert(std::is_floating_point<T>::value, "AdaptiveVerticalPII<T>: T must be a floating-point type.");
 
 public:
     using Observer = VerticalPIIObserver<T, WithBias>;
@@ -107,7 +93,7 @@ public:
         // Recommended:
         //   false when you have displacement-frequency estimates
         //   true only as fallback
-        bool auto_schedule_from_accel_freq = false;
+        bool auto_schedule_from_accel_freq = true;
         T auto_schedule_period_s = T(0.25); // cadence of fallback adaptation calls
 
         // If the caller omits confidence or passes NaN, this is used.
@@ -123,7 +109,7 @@ public:
         T last_sched_dt = T(0);
         T sched_accum_s = T(0);
 
-        bool auto_schedule_from_accel_freq = false;
+        bool auto_schedule_from_accel_freq = true;
         T accel_freq_hz = T(0);
         T accel_freq_confidence = T(0);
     };
