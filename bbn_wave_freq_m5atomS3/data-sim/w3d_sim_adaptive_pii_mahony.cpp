@@ -1,5 +1,3 @@
-// w3d_sim_adaptive_pii_mahony.cpp
-
 #include <filesystem>
 #include <iostream>
 #include <string>
@@ -24,10 +22,6 @@ using Eigen::Vector3f;
 
 bool add_noise = true;
 
-// Heave-only adapter:
-// - accepts NED inputs from W3dSimulationRunner
-// - converts them back to Z-up/body convention for the Mahony-based wrapper
-// - outputs only Z displacement / velocity / vertical accel estimate
 class FusionAdapterAdaptivePIIMahony final : public IW3dFusionAdapter {
 public:
     using HeaveFilter = marine_obs::AdaptiveVerticalPIIMahony<float, true>;
@@ -43,7 +37,6 @@ public:
     }
 
     void updateMag(const Vector3f& mag_body_ned) override {
-        // Runner gives NED; Mahony wrapper expects the Z-up convention
         last_mag_body_zu_ = ned_to_zu(mag_body_ned);
         have_mag_ = true;
     }
@@ -55,7 +48,6 @@ public:
     {
         (void)temperature_c;
 
-        // Convert back from runner's NED body convention to the Mahony wrapper's Z-up body convention
         const Vector3f gyr_body_zu = ned_to_zu(gyr_meas_ned);
         const Vector3f acc_body_zu = ned_to_zu(acc_meas_ned);
 
@@ -81,17 +73,15 @@ public:
         const auto hs = filter_.snapshot();
         const auto& obs = hs.core.observer;
 
-        // Heave-only outputs in Z-up world
         s.disp_est_zu = Vector3f(0.0f, 0.0f, filter_.displacement());
         s.vel_est_zu  = Vector3f(0.0f, 0.0f, filter_.velocity());
         s.acc_est_zu  = Vector3f(0.0f, 0.0f, filter_.accelFiltered());
 
-        // Keep Mahony Euler outputs as-is for diagnostics.
+        // Now these are computed from q_body->world, not q_world->body.
         s.euler_nautical_deg = Vector3f(filter_.rollDeg(),
                                         filter_.pitchDeg(),
                                         filter_.yawDeg());
 
-        // This observer does not estimate full sensor biases.
         s.acc_bias_est_ned    = Vector3f::Zero();
         s.gyro_bias_est_ned   = Vector3f::Zero();
         s.mag_bias_est_ned_uT = Vector3f::Zero();
@@ -108,6 +98,7 @@ public:
         const float f_used_hz     = (obs.f_disp_filt_hz > 1e-6f) ? obs.f_disp_filt_hz : f_raw_hz;
         const float omega_used    = (f_used_hz > 1e-6f) ? (2.0f * float(M_PI) * f_used_hz) : NAN;
 
+        // Store ACTIVE values in the generic result fields.
         s.tau_target     = tau_d_active;
         s.sigma_target   = sigma_raw;
         s.tuning_target  = kb_active;
@@ -116,7 +107,8 @@ public:
         s.sigma_applied  = sigma_used;
         s.tuning_applied = r_active;
 
-        s.freq_hz = f_raw_hz;
+        // Store the USED scheduling frequency, not the raw tracker output.
+        s.freq_hz = f_used_hz;
         s.period_sec = (f_used_hz > 1e-6f) ? (1.0f / f_used_hz) : NAN;
         s.accel_variance = hs.core.accel_var;
 
@@ -157,15 +149,11 @@ private:
 
         HeaveFilter::Config cfg{};
 
-        // ----------------
-        // Core observer
-        // ----------------
-        // Fixed starting point for every run; sea state must be learned online.
-        cfg.core.observer.r         = 0.13f;
-        cfg.core.observer.tau_a     = 0.95f;
-        cfg.core.observer.tau_d     = 55.0f;
-        cfg.core.observer.kb        = 6e-5f;
-        cfg.core.observer.lambda_b  = 8e-3f;
+        cfg.core.observer.r          = 0.13f;
+        cfg.core.observer.tau_a      = 0.95f;
+        cfg.core.observer.tau_d      = 55.0f;
+        cfg.core.observer.kb         = 6e-5f;
+        cfg.core.observer.lambda_b   = 8e-3f;
         cfg.core.observer.bias_limit = 0.20f;
 
         cfg.core.observer.a_f_limit = 50.0f;
@@ -174,9 +162,6 @@ private:
         cfg.core.observer.S_limit   = 200.0f;
         cfg.core.observer.d_limit   = 20.0f;
 
-        // ----------------
-        // Adaptation
-        // ----------------
         cfg.core.adaptation.enabled = true;
         cfg.core.adaptation.min_confidence = 0.22f;
 
@@ -209,20 +194,12 @@ private:
         cfg.core.adaptation.kb_min = 1e-5f;
         cfg.core.adaptation.kb_max = 5e-4f;
 
-        // ----------------
-        // Auto scheduling from internally learned sea state only
-        // ----------------
         cfg.core.auto_schedule_from_accel_freq = true;
         cfg.core.auto_schedule_period_s = 0.50f;
         cfg.core.force_enable_adaptation_when_auto_schedule = true;
         cfg.core.fallback_confidence_floor = 0.45f;
         cfg.core.fallback_confidence_when_locked = 0.75f;
-        cfg.core.coarse_schedule_blend = 0.65f;
-        cfg.core.coarse_schedule_confidence_floor = 0.55f;
 
-        // ----------------
-        // Internal acceleration-frequency tracker
-        // ----------------
         cfg.core.accel_freq_tracker.f_min_hz = 0.045f;
         cfg.core.accel_freq_tracker.f_max_hz = 0.35f;
         cfg.core.accel_freq_tracker.f_init_hz = 0.12f;
@@ -246,13 +223,23 @@ private:
         cfg.core.accel_freq_tracker.coarse_pull_tau_s = 2.5f;
         cfg.core.accel_freq_tracker.coarse_timeout_s = 18.0f;
 
-        // ----------------
-        // Mahony
-        // ----------------
+        // Mahony base gains
         cfg.mahony_twoKp = 0.45f;
         cfg.mahony_twoKi = 0.015f;
         cfg.gravity_mps2 = g_std;
         cfg.use_mag = with_mag;
+
+        // Mahony sea-state scheduling
+        cfg.adapt_mahony_gains = true;
+        cfg.mahony_twoKp_calm  = 0.90f;
+        cfg.mahony_twoKp_rough = 0.18f;
+        cfg.mahony_twoKi_calm  = 0.020f;
+        cfg.mahony_twoKi_rough = 0.000f;
+        cfg.mahony_sigma_ref = 0.18f;
+        cfg.mahony_freq_ref_hz = 0.12f;
+        cfg.mahony_norm_err_ref = 0.08f;
+        cfg.mahony_gain_smooth_tau_s = 2.0f;
+        cfg.mahony_acc_trust_min = 0.05f;
 
         return cfg;
     }
@@ -273,7 +260,6 @@ static void print_vertical_only_summary(const W3dSimulationRunResult& result, fl
     const size_t start = result.errs_z.size() - N_last;
 
     RMSReport rms_z, rms_roll, rms_pitch, rms_yaw;
-
     for (size_t i = start; i < result.errs_z.size(); ++i) {
         rms_z.add(result.errs_z[i]);
         rms_roll.add(result.errs_roll[i]);
@@ -286,11 +272,6 @@ static void print_vertical_only_summary(const W3dSimulationRunResult& result, fl
 
     std::vector<float> vf(result.freq_hist.begin() + start, result.freq_hist.end());
 
-    const float f_used_last =
-        (std::isfinite(result.final_period_sec) && result.final_period_sec > 1e-6f)
-            ? (1.0f / result.final_period_sec)
-            : NAN;
-
     std::cout << "=== Last 60 s VERTICAL-ONLY summary for " << result.output_name << " ===\n";
     std::cout << "Z RMS (m): " << z_rms << "\n";
     std::cout << "Z RMS (%Hs): " << z_pct << "% (Hs=" << result.wave_params.height << ")\n";
@@ -298,13 +279,10 @@ static void print_vertical_only_summary(const W3dSimulationRunResult& result, fl
               << " Pitch=" << rms_pitch.rms()
               << " Yaw=" << rms_yaw.rms() << "\n";
 
-    std::cout << "f_raw_hz: mean=" << mean_vec(vf)
+    std::cout << "f_used_hz: mean=" << mean_vec(vf)
               << " median=" << median_vec(vf)
               << " p05=" << percentile_vec(vf, 0.05)
               << " p95=" << percentile_vec(vf, 0.95) << "\n";
-
-    std::cout << "last raw f_hz=" << result.final_freq_hz
-              << ", last used f_hz=" << f_used_last << "\n";
 
     std::cout << "active r=" << result.final_tuning_applied
               << ", active tau_a=" << result.final_tau_applied
@@ -314,10 +292,6 @@ static void print_vertical_only_summary(const W3dSimulationRunResult& result, fl
     std::cout << "raw sigma_a=" << result.final_sigma_target
               << ", used sigma_a=" << result.final_sigma_applied
               << ", raw accel_var=" << result.final_accel_variance << "\n";
-
-    std::cout << "disp_scale_m=" << result.wave_params.height
-              << " reference Hs, est scale=" << result.final_tuning_applied
-              << " (r field shown above)\n";
 
     std::cout << "===========================================================\n\n";
 }
@@ -329,7 +303,6 @@ process_wave_file_for_adaptive_pii_mahony(const std::string& filename,
                                           bool add_noise,
                                           float mag_odr_hz)
 {
-    // Reuse the same noise settings as the Kalman simulation example
     const float acc_sigma = 1.51e-3f * g_std;
     const float gyr_sigma = 0.00157f;
     const float acc_bias_range = 5e-3f * g_std;
