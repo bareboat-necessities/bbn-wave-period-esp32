@@ -111,11 +111,7 @@ public:
         // If you want magnetometer support, call updateIMUMag().
         bool use_mag = false;
 
-        // --------------------------------------------------------------------
         // Optional Mahony sea-state adaptation
-        //
-        // Frequency is intentionally NOT used here.
-        // --------------------------------------------------------------------
         bool adapt_mahony_gains = false;
 
         // "Calm" = stronger accelerometer correction when accelerometer looks trustworthy.
