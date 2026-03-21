@@ -89,41 +89,73 @@ public:
         s.vel_est_zu  = Vector3f(0.0f, 0.0f, filter_.velocity());
         s.acc_est_zu  = Vector3f(0.0f, 0.0f, filter_.accelFiltered());
 
-        // Mahony Euler output is already in the same Z-up family as this wrapper
+        // Keep Mahony Euler outputs as-is for diagnostics.
         s.euler_nautical_deg = Vector3f(filter_.rollDeg(),
                                         filter_.pitchDeg(),
                                         filter_.yawDeg());
 
-        // Not comparable to true injected sensor bias in this heave-only observer.
-        // This observer's optional bias state is a slow vertical correction term,
-        // not a full body-frame sensor bias estimator.
+        // This observer does not estimate full sensor biases.
         s.acc_bias_est_ned    = Vector3f::Zero();
         s.gyro_bias_est_ned   = Vector3f::Zero();
         s.mag_bias_est_ned_uT = Vector3f::Zero();
 
-        // Map observer diagnostics into the generic snapshot fields.
-        const float r = obs.r;
-        const float tau_eff = (r > 1e-6f) ? (1.0f / r) : NAN;
-        const float sigma_a = filter_.accelSigma();
-        const float f_hz = filter_.accelFrequencyHz();
-        const float omega = (f_hz > 1e-6f) ? (2.0f * float(M_PI) * f_hz) : NAN;
+        // -----------------------------
+        // Actual adaptation diagnostics
+        // -----------------------------
+        //
+        // obs.r            = active repeated-pole rate actually used
+        // obs.tau_a        = active accel LPF tau actually used
+        // obs.tau_d        = active slow trend tau actually used
+        // obs.kb           = active bias gain actually used
+        //
+        // hs.core.accel_sigma        = raw wrapper sigma estimate
+        // obs.sigma_a_filt           = smoothed sigma actually used by observer adaptation
+        // hs.core.accel_freq_hz      = raw tracker frequency
+        // obs.f_disp_filt_hz         = smoothed frequency actually used by observer adaptation
 
-        s.tau_target = tau_eff;
-        s.sigma_target = sigma_a;
-        s.tuning_target = p0_s_from_sigma_tau(sigma_a, tau_eff);
+        const float r_active      = obs.r;
+        const float tau_a_active  = obs.tau_a;
+        const float tau_d_active  = obs.tau_d;
+        const float kb_active     = obs.kb;
 
-        s.tau_applied = tau_eff;
-        s.sigma_applied = sigma_a;
-        s.tuning_applied = p0_s_from_sigma_tau(sigma_a, tau_eff);
+        const float sigma_raw     = hs.core.accel_sigma;
+        const float sigma_used    = obs.sigma_a_filt;
 
-        s.freq_hz = f_hz;
-        s.period_sec = (f_hz > 1e-6f) ? (1.0f / f_hz) : NAN;
-        s.accel_variance = sigma_a * sigma_a;
+        const float f_raw_hz      = hs.core.accel_freq_hz;
+        const float f_used_hz     = (obs.f_disp_filt_hz > 1e-6f) ? obs.f_disp_filt_hz : f_raw_hz;
+        const float omega_used    = (f_used_hz > 1e-6f) ? (2.0f * float(M_PI) * f_used_hz) : NAN;
 
-        // Rough diagnostic scales from sigma_a and tracked frequency
-        if (std::isfinite(omega) && omega > 1e-6f) {
-            s.displacement_scale_m = sigma_a / (omega * omega);
-            s.velocity_scale_mps   = sigma_a / omega;
+        // We reuse generic fields, but now they contain real observer parameters:
+        //
+        //   tau_target    -> active tau_d
+        //   sigma_target  -> raw sigma estimate
+        //   tuning_target -> active kb
+        //
+        //   tau_applied    -> active tau_a
+        //   sigma_applied  -> smoothed sigma actually used
+        //   tuning_applied -> active r
+        s.tau_target     = tau_d_active;
+        s.sigma_target   = sigma_raw;
+        s.tuning_target  = kb_active;
+
+        s.tau_applied    = tau_a_active;
+        s.sigma_applied  = sigma_used;
+        s.tuning_applied = r_active;
+
+        // Keep freq_hz history as RAW tracker frequency so you can see tracker behavior.
+        s.freq_hz = f_raw_hz;
+
+        // Store USED scheduling period here.
+        s.period_sec = (f_used_hz > 1e-6f) ? (1.0f / f_used_hz) : NAN;
+
+        // Keep this as raw variance estimate from the wrapper.
+        s.accel_variance = hs.core.accel_var;
+
+        // Diagnostic scales based on actually used scheduled values.
+        if (std::isfinite(omega_used) && omega_used > 1e-6f &&
+            std::isfinite(sigma_used) && sigma_used >= 0.0f) {
+            s.displacement_scale_m = sigma_used / (omega_used * omega_used);
+            s.velocity_scale_mps   = sigma_used / omega_used;
         } else {
             s.displacement_scale_m = NAN;
             s.velocity_scale_mps   = NAN;
@@ -151,7 +183,6 @@ private:
                                             const Vector3f& sigma_m,
                                             const Vector3f& mag_world_a)
     {
-        (void)with_mag;
         (void)sigma_a_init;
         (void)sigma_g;
         (void)sigma_m;
@@ -159,12 +190,14 @@ private:
 
         HeaveFilter::Config cfg{};
 
+        // ----------------
         // Core observer
-        cfg.core.observer.r      = 0.16f;
-        cfg.core.observer.tau_a  = 0.60f;
-        cfg.core.observer.tau_d  = 40.0f;
-        cfg.core.observer.kb     = 1e-4f;
-        cfg.core.observer.lambda_b = 1e-2f;
+        // ----------------
+        cfg.core.observer.r         = 0.16f;
+        cfg.core.observer.tau_a     = 0.60f;
+        cfg.core.observer.tau_d     = 40.0f;
+        cfg.core.observer.kb        = 1e-4f;
+        cfg.core.observer.lambda_b  = 1e-2f;
         cfg.core.observer.bias_limit = 0.25f;
 
         // Safety limits
@@ -174,8 +207,12 @@ private:
         cfg.core.observer.S_limit   = 200.0f;
         cfg.core.observer.d_limit   = 20.0f;
 
+        // ----------------
         // Adaptation
+        // ----------------
         cfg.core.adaptation.enabled = true;
+        cfg.core.adaptation.min_confidence = 0.25f;
+
         cfg.core.adaptation.f_disp_ref_hz = 0.17f;
         cfg.core.adaptation.sigma_a_ref   = 0.30f;
         cfg.core.adaptation.input_smooth_tau = 5.0f;
@@ -205,26 +242,40 @@ private:
         cfg.core.adaptation.kb_min = 0.0f;
         cfg.core.adaptation.kb_max = 1e-2f;
 
-        // Use internal accel-frequency fallback scheduler in simulation
+        // ----------------
+        // Auto fallback scheduling from internal accel-frequency tracker
+        // ----------------
         cfg.core.auto_schedule_from_accel_freq = true;
         cfg.core.auto_schedule_period_s = 0.25f;
+        cfg.core.force_enable_adaptation_when_auto_schedule = true;
 
+        // These are the important fixes for the "it does nothing" feeling.
+        cfg.core.fallback_confidence_floor = 0.35f;
+        cfg.core.fallback_confidence_when_locked = 0.70f;
+
+        // ----------------
         // Internal acceleration-frequency tracker
+        // ----------------
         cfg.core.accel_freq_tracker.f_min_hz = 0.04f;
         cfg.core.accel_freq_tracker.f_max_hz = 0.60f;
         cfg.core.accel_freq_tracker.f_init_hz = 0.17f;
+
         cfg.core.accel_freq_tracker.pre_hp_hz = 0.03f;
         cfg.core.accel_freq_tracker.pre_lp_hz = 0.80f;
         cfg.core.accel_freq_tracker.demod_lp_hz = 0.08f;
+
         cfg.core.accel_freq_tracker.loop_bandwidth_hz = 0.03f;
         cfg.core.accel_freq_tracker.loop_damping = 0.90f;
+
         cfg.core.accel_freq_tracker.output_smooth_tau_s = 1.5f;
         cfg.core.accel_freq_tracker.power_tau_s = 6.0f;
         cfg.core.accel_freq_tracker.confidence_tau_s = 3.0f;
         cfg.core.accel_freq_tracker.lock_rms_min = 0.005f;
         cfg.core.accel_freq_tracker.enable_coarse_assist = true;
 
+        // ----------------
         // Mahony
+        // ----------------
         cfg.mahony_twoKp = twoKpDef;
         cfg.mahony_twoKi = twoKiDef;
         cfg.gravity_mps2 = g_std;
@@ -262,19 +313,39 @@ static void print_vertical_only_summary(const W3dSimulationRunResult& result, fl
 
     std::vector<float> vf(result.freq_hist.begin() + start, result.freq_hist.end());
 
+    const float f_used_last =
+        (std::isfinite(result.final_period_sec) && result.final_period_sec > 1e-6f)
+            ? (1.0f / result.final_period_sec)
+            : NAN;
+
     std::cout << "=== Last 60 s VERTICAL-ONLY summary for " << result.output_name << " ===\n";
     std::cout << "Z RMS (m): " << z_rms << "\n";
     std::cout << "Z RMS (%Hs): " << z_pct << "% (Hs=" << result.wave_params.height << ")\n";
     std::cout << "Angles RMS (deg): Roll=" << rms_roll.rms()
               << " Pitch=" << rms_pitch.rms()
               << " Yaw=" << rms_yaw.rms() << "\n";
-    std::cout << "freq_hz: mean=" << mean_vec(vf)
+
+    std::cout << "f_raw_hz: mean=" << mean_vec(vf)
               << " median=" << median_vec(vf)
               << " p05=" << percentile_vec(vf, 0.05)
               << " p95=" << percentile_vec(vf, 0.95) << "\n";
-    std::cout << "tau_eff=" << result.final_tau_applied
-              << ", sigma_a=" << result.final_sigma_applied
-              << ", tuning=" << result.final_tuning_applied << "\n";
+
+    std::cout << "last raw f_hz=" << result.final_freq_hz
+              << ", last used f_hz=" << f_used_last << "\n";
+
+    std::cout << "active r=" << result.final_tuning_applied
+              << ", active tau_a=" << result.final_tau_applied
+              << ", active tau_d=" << result.final_tau_target
+              << ", active kb=" << result.final_tuning_target << "\n";
+
+    std::cout << "raw sigma_a=" << result.final_sigma_target
+              << ", used sigma_a=" << result.final_sigma_applied
+              << ", raw accel_var=" << result.final_accel_variance << "\n";
+
+    std::cout << "disp_scale_m=" << result.wave_params.height
+              << " reference Hs, est scale=" << result.final_tuning_applied
+              << " (r field shown above)\n";
+
     std::cout << "===========================================================\n\n";
 }
 
@@ -349,7 +420,7 @@ int main(int argc, char* argv[])
             dt,
             with_mag,
             add_noise,
-            25.0f // magnetometer ODR
+            25.0f
         );
         if (!result) continue;
 
