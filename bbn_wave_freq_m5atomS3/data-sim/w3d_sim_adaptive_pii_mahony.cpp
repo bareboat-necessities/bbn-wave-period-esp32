@@ -37,11 +37,9 @@ public:
     }
 
     void updateMag(const Vector3f& mag_body_ned) override {
-        // Runner gives NED body-frame. Convert back to the sim's Z-up body frame,
-        // then remap into the Mahony body convention.
-        //
-        // Magnetometer is a POLAR vector.
-        last_mag_body_mahony_ = simBodyZuToMahonyPolar_(ned_to_zu(mag_body_ned));
+        // Runner gives NED body-frame. Convert back to the original sim Z-up body frame.
+        // Do NOT apply any extra Mahony remap here.
+        last_mag_body_zu_ = ned_to_zu(mag_body_ned);
         have_mag_ = true;
     }
 
@@ -57,26 +55,21 @@ public:
         const Vector3f acc_body_zu = ned_to_zu(acc_meas_ned);
 
         // IMPORTANT:
-        //   accel and mag are POLAR vectors
-        //   gyro is an AXIAL vector
+        // accel, gyro, and mag come from the same IMU body frame in the sim.
+        // After ned_to_zu(...), pass them directly to Mahony in that same frame.
         //
-        // Because the sim-body -> Mahony-body conversion is a handedness flip
-        // (mirror of Y), gyro must NOT use the same mapping as accel/mag.
-        const Vector3f gyr_body_mahony = simBodyZuToMahonyAxial_(gyr_body_zu);
-        const Vector3f acc_body_mahony = simBodyZuToMahonyPolar_(acc_body_zu);
-
-        // Use zero-order-held magnetometer every IMU step once it is available.
+        // Magnetometer is used as zero-order hold between mag ticks.
         if (with_mag_ && have_mag_) {
             filter_.updateIMUMag(
-                gyr_body_mahony.x(), gyr_body_mahony.y(), gyr_body_mahony.z(),
-                acc_body_mahony.x(), acc_body_mahony.y(), acc_body_mahony.z(),
-                last_mag_body_mahony_.x(), last_mag_body_mahony_.y(), last_mag_body_mahony_.z(),
+                gyr_body_zu.x(), gyr_body_zu.y(), gyr_body_zu.z(),
+                acc_body_zu.x(), acc_body_zu.y(), acc_body_zu.z(),
+                last_mag_body_zu_.x(), last_mag_body_zu_.y(), last_mag_body_zu_.z(),
                 dt
             );
         } else {
             filter_.updateIMU(
-                gyr_body_mahony.x(), gyr_body_mahony.y(), gyr_body_mahony.z(),
-                acc_body_mahony.x(), acc_body_mahony.y(), acc_body_mahony.z(),
+                gyr_body_zu.x(), gyr_body_zu.y(), gyr_body_zu.z(),
+                acc_body_zu.x(), acc_body_zu.y(), acc_body_zu.z(),
                 dt
             );
         }
@@ -92,19 +85,12 @@ public:
         s.vel_est_zu  = Vector3f(0.0f, 0.0f, filter_.velocity());
         s.acc_est_zu  = Vector3f(0.0f, 0.0f, filter_.accelFiltered());
 
-        // The internal transport is now consistent, but the raw Mahony Euler output
-        // is still not in the same attitude-reporting convention as the simulator
-        // reference used by W3dSimulationRunner.
-        //
-        // Empirically with the now-correct vector mappings:
-        //   - roll is opposite sign
-        //   - pitch already matches
-        //   - yaw is offset into Mahony heading convention and needs conversion
-        //
-        // Convert ONLY for reporting/comparison here.
+        // Internal transport is now consistent.
+        // Remaining mismatch versus the sim reference is reporting convention:
+        // roll needs sign flip; pitch and yaw are already in the matching convention.
         const float roll_sim_deg  = -filter_.rollDeg();
         const float pitch_sim_deg =  filter_.pitchDeg();
-        const float yaw_sim_deg   =  wrapDeg(90.0f - filter_.yawDeg());
+        const float yaw_sim_deg   =  filter_.yawDeg();
 
         s.euler_nautical_deg = Vector3f(roll_sim_deg,
                                         pitch_sim_deg,
@@ -162,27 +148,6 @@ public:
     }
 
 private:
-    // Sim Z-up body -> Mahony body for POLAR vectors (accel, mag).
-    //
-    // Mirror Y:
-    //   x stays the same
-    //   y flips sign
-    //   z stays the same
-    static Vector3f simBodyZuToMahonyPolar_(const Vector3f& v) {
-        return Vector3f(v.x(), -v.y(), v.z());
-    }
-
-    // Sim Z-up body -> Mahony body for AXIAL vectors (gyro).
-    //
-    // Under a handedness flip:
-    //   w' = det(R) * R * w
-    //
-    // For R = diag(1, -1, 1):
-    //   w' = diag(-1, 1, -1) * w
-    static Vector3f simBodyZuToMahonyAxial_(const Vector3f& v) {
-        return Vector3f(-v.x(), v.y(), -v.z());
-    }
-
     static HeaveFilter::Config make_config_(bool with_mag,
                                             const Vector3f& sigma_a_init,
                                             const Vector3f& sigma_g,
@@ -296,7 +261,7 @@ private:
     bool with_mag_ = true;
     bool have_mag_ = false;
 
-    Vector3f last_mag_body_mahony_ = Vector3f::Zero();
+    Vector3f last_mag_body_zu_ = Vector3f::Zero();
     HeaveFilter filter_;
 };
 
