@@ -324,6 +324,10 @@ private:
             std::max(finite_or_default_(cfg.auto_schedule_period_s, T(0.25)), eps_());
         cfg.default_external_confidence =
             clamp01_(finite_or_default_(cfg.default_external_confidence, T(1)));
+
+        if (cfg.auto_schedule_from_accel_freq) {
+            cfg.adaptation.enabled = true;
+        }
         return cfg;
     }
 
