@@ -367,29 +367,32 @@ private:
         }
     }
 
-    T computeScheduledFrequencyHz_() const {
-        T f_sched = accel_freq_tracker_.getFrequencyHz();
-        if (!(std::isfinite(f_sched) && f_sched > T(0))) {
-            f_sched = accel_freq_tracker_.getRawFrequencyHz();
-        }
+T computeScheduledFrequencyHz_() const {
+    T f_sched = accel_freq_tracker_.getFrequencyHz();
+    if (!(std::isfinite(f_sched) && f_sched > T(0))) {
+        f_sched = accel_freq_tracker_.getRawFrequencyHz();
+    }
 
-        if (accel_freq_tracker_.hasCoarseEstimate()) {
-            const T coarse_hz = accel_freq_tracker_.getCoarseFrequencyHz();
-            if (std::isfinite(coarse_hz) && coarse_hz > T(0)) {
-                T blend = cfg_.coarse_schedule_blend;
-                if (!accel_freq_tracker_.isLocked()) {
-                    blend = std::max(blend, T(0.75) * cfg_.coarse_schedule_blend);
-                }
-                if (!(std::isfinite(f_sched) && f_sched > T(0))) {
-                    f_sched = coarse_hz;
-                } else {
-                    f_sched += blend * (coarse_hz - f_sched);
-                }
+    if (accel_freq_tracker_.hasCoarseEstimate()) {
+        const T coarse_hz = accel_freq_tracker_.getCoarseFrequencyHz();
+        if (std::isfinite(coarse_hz) && coarse_hz > T(0)) {
+            T blend = cfg_.coarse_schedule_blend;
+
+            // Give the coarse estimate more authority before PLL lock.
+            if (!accel_freq_tracker_.isLocked()) {
+                blend = std::max(blend, T(0.75));
+            }
+
+            if (!(std::isfinite(f_sched) && f_sched > T(0))) {
+                f_sched = coarse_hz;
+            } else {
+                f_sched += blend * (coarse_hz - f_sched);
             }
         }
-
-        return f_sched;
     }
+
+    return f_sched;
+}
 
     T computeFallbackConfidence_() const {
         T conf = accel_freq_tracker_.getConfidence();
