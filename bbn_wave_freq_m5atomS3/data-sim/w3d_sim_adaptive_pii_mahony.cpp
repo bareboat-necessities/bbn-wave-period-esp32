@@ -52,9 +52,7 @@ public:
         const Vector3f gyr_body_zu = ned_to_zu(gyr_meas_ned);
         const Vector3f acc_body_zu = ned_to_zu(acc_meas_ned);
 
-        // IMPORTANT:
-        // Use magnetometer only on the IMU step immediately following a fresh
-        // mag sample. Do NOT reuse the same mag sample on every IMU frame.
+        // Use magnetometer correction only when a NEW mag sample arrived.
         if (with_mag_ && have_mag_ && mag_pending_) {
             filter_.updateIMUMag(
                 gyr_body_zu.x(), gyr_body_zu.y(), gyr_body_zu.z(),
@@ -82,10 +80,19 @@ public:
         s.vel_est_zu  = Vector3f(0.0f, 0.0f, filter_.velocity());
         s.acc_est_zu  = Vector3f(0.0f, 0.0f, filter_.accelFiltered());
 
-        // Now these are computed from q_body->world, not q_world->body.
-        s.euler_nautical_deg = Vector3f(filter_.rollDeg(),
-                                        filter_.pitchDeg(),
-                                        filter_.yawDeg());
+        // Mahony wrapper is Z-up and its Euler sign convention does not match
+        // the W3d reference convention directly.
+        //
+        // For comparison against rec.imu.roll_deg / pitch_deg / yaw_deg in the
+        // simulation framework:
+        //   - roll matches
+        //   - pitch needs sign flip
+        //   - yaw needs sign flip and wrapping
+        s.euler_nautical_deg = Vector3f(
+            filter_.rollDeg(),
+            -filter_.pitchDeg(),
+            wrapDeg(-filter_.yawDeg())
+        );
 
         s.acc_bias_est_ned    = Vector3f::Zero();
         s.gyro_bias_est_ned   = Vector3f::Zero();
