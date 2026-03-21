@@ -37,11 +37,24 @@ public:
     }
 
     void updateMag(const Vector3f& mag_body_ned) override {
-        // Runner gives NED body-frame. Convert back to the original sim Z-up body frame.
-        // Do NOT apply any extra Mahony remap here.
-        last_mag_body_zu_ = ned_to_zu(mag_body_ned);
+        // IMPORTANT HEADING FIX:
+        //
+        // Do NOT convert magnetometer back to Z-up here.
+        //
+        // The accel/gyro path in this wrapper is Z-up via ned_to_zu(...), which is
+        // correct for the gravity side of this Mahony variant.
+        //
+        // But the magnetometer correction in this Mahony implementation still behaves
+        // like the original x-io heading convention. Feeding ned_to_zu(mag_body_ned)
+        // produces the classic symptoms you saw:
+        //   - yaw starts offset / needs ad-hoc +/-90 fixes
+        //   - yaw then runs away with tilt instead of staying near reference
+        //
+        // So hold the BODY magnetic sample in the NED-style convention exactly as
+        // produced by the runner.
+        last_mag_body_ned_ = mag_body_ned;
         have_mag_ = true;
-        mag_pending_ = true;   // consume this mag sample exactly once
+        mag_pending_ = true;   // consume each fresh mag sample exactly once
     }
 
     void update(float dt,
@@ -51,23 +64,22 @@ public:
     {
         (void)temperature_c;
 
-        // Runner gives NED body-frame. Convert back to the original sim Z-up body frame.
+        // Runner gives NED body-frame. Convert accel/gyro back to the original sim
+        // Z-up body frame for the gravity/tilt part of Mahony.
         const Vector3f gyr_body_zu = ned_to_zu(gyr_meas_ned);
         const Vector3f acc_body_zu = ned_to_zu(acc_meas_ned);
 
         // IMPORTANT:
-        // accel, gyro, and mag come from the same IMU body frame in the sim.
-        // After ned_to_zu(...), pass them directly to Mahony in that same frame.
+        //  - accel and gyro go in as Z-up body-frame
+        //  - magnetometer goes in using the NED-style heading convention held above
         //
-        // CRITICAL FIX:
-        //   Call updateIMUMag() only on a FRESH magnetometer sample.
-        //   Reusing the same held mag sample every IMU tick over-weights the mag
-        //   correction by roughly IMU_ODR / MAG_ODR and makes yaw drift badly.
+        // Also only use updateIMUMag() on a fresh mag sample. Reusing the same held
+        // mag sample every IMU tick over-weights magnetic correction badly.
         if (with_mag_ && have_mag_ && mag_pending_) {
             filter_.updateIMUMag(
                 gyr_body_zu.x(), gyr_body_zu.y(), gyr_body_zu.z(),
                 acc_body_zu.x(), acc_body_zu.y(), acc_body_zu.z(),
-                last_mag_body_zu_.x(), last_mag_body_zu_.y(), last_mag_body_zu_.z(),
+                last_mag_body_ned_.x(), last_mag_body_ned_.y(), last_mag_body_ned_.z(),
                 dt
             );
             mag_pending_ = false;
@@ -273,7 +285,7 @@ private:
     bool have_mag_ = false;
     bool mag_pending_ = false;
 
-    Vector3f last_mag_body_zu_ = Vector3f::Zero();
+    Vector3f last_mag_body_ned_ = Vector3f::Zero();
     HeaveFilter filter_;
 
     bool  yaw_zero_initialized_ = false;
