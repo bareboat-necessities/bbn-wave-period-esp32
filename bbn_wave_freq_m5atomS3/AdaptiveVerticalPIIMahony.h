@@ -1,21 +1,19 @@
 #pragma once
 
 /*
-  AdaptiveVerticalPIIMahony.h
-  ---------------------------
 
   Wrapper around:
-    - Mahony_AHRS.h
-    - AdaptiveVerticalPII.h
+    - Mahony_AHRS
+    - AdaptiveVerticalPII
 
   Purpose
-  -------
+
   Uses Mahony AHRS to estimate tilt, rotates body-frame accelerometer specific
   force into the Mahony world frame, extracts vertical inertial acceleration
   (Z-up), and feeds that into AdaptiveVerticalPII.
 
   IMPORTANT FRAME NOTE
-  --------------------
+
   The supplied Mahony implementation is NOT NED.
   It is effectively a Z-up auxiliary/world frame.
 
@@ -35,7 +33,7 @@
   That is the exact quantity expected by the vertical observer.
 
   Usage
-  -----
+
       using Heave = marine_obs::AdaptiveVerticalPIIMahony<float, true>;
       Heave::Config cfg;
       Heave filt(cfg);
@@ -47,13 +45,12 @@
       filt.updateAdaptationFromDisplacementFrequency(f_disp_hz, dt_track, confidence);
 
   Inputs
-  ------
+
   gx,gy,gz : gyro [rad/s]
   ax,ay,az : accelerometer specific force [m/s^2]
   dt       : sample period [s]
 
   Notes
-  -----
   - Mahony state is float-only because your Mahony implementation is float-only.
   - The adaptive vertical observer remains templated on T.
   - This wrapper does not remap axes. Feed data in the SAME axis convention
@@ -174,11 +171,8 @@ public:
         cfg_.mahony_twoKi = mahony_.twoKi;
     }
 
-    // ------------------------------------------------------------------------
     // IMU-only update (no magnetometer)
-    //
     // Returns displacement estimate after update.
-    // ------------------------------------------------------------------------
     T updateIMU(T gx_rad_s, T gy_rad_s, T gz_rad_s,
                 T ax_mps2, T ay_mps2, T az_mps2,
                 T dt_s)
@@ -210,11 +204,8 @@ public:
         return core_.update(vertical_world_accel_up_, dt_s);
     }
 
-    // ------------------------------------------------------------------------
     // IMU + magnetometer update
-    //
     // Returns displacement estimate after update.
-    // ------------------------------------------------------------------------
     T updateIMUMag(T gx_rad_s, T gy_rad_s, T gz_rad_s,
                    T ax_mps2, T ay_mps2, T az_mps2,
                    T mx, T my, T mz,
@@ -250,10 +241,8 @@ public:
         return core_.update(vertical_world_accel_up_, dt_s);
     }
 
-    // ------------------------------------------------------------------------
     // Preferred adaptation hook:
     // use externally estimated DISPLACEMENT frequency.
-    // ------------------------------------------------------------------------
     void updateAdaptationFromDisplacementFrequency(T f_disp_hz,
                                                    T dt_est,
                                                    T confidence = std::numeric_limits<T>::quiet_NaN())
@@ -283,9 +272,7 @@ public:
         core_.setAutoSchedulePeriod(period_s);
     }
 
-    // ------------------------------------------------------------------------
     // Accessors
-    // ------------------------------------------------------------------------
     Core& core() { return core_; }
     const Core& core() const { return core_; }
 
@@ -418,9 +405,7 @@ private:
 
 
 /*
-------------------------------------------------------------------------------
 EXAMPLE
-------------------------------------------------------------------------------
 
 #include "AdaptiveVerticalPIIMahony.h"
 
@@ -463,5 +448,4 @@ float a_up = filt.verticalWorldAccelUp();
 float roll = filt.rollDeg();
 float pitch = filt.pitchDeg();
 
-------------------------------------------------------------------------------
 */
