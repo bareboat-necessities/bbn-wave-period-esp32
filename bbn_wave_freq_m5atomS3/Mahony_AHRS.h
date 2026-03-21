@@ -5,29 +5,14 @@
 // Madgwick's implementation of Mahony's AHRS algorithm.
 // See: http://www.x-io.co.uk/node/8#open_source_ahrs_and_imu_algorithms
 //
-// Fixes applied (no algorithm changes, no public API changes):
-//   1) All function definitions marked inline  -> no ODR violation in multi-TU builds
-//   2) invSqrt uses memcpy for type-punning    -> no C++ UB
-//   3) Consistent f-suffix math throughout     -> no hidden double promotion
-//   4) #define macros replaced with constexpr  -> no global namespace pollution
-//   5) Redundant forward declaration removed
-//   6) mahony_AHRS_init documented: gains-only, does NOT reset quaternion/integrals
-//   7) mahony_AHRS_reset() added: full state reset to identity + zero integrals
-//   8) halfvz formula unified between update() and update_mag()
-//   9) Dead commented-out Euler formulas removed
-//  10) #include <math.h> -> <cmath> for C++ correctness
-//
 
 #include <cmath>
 #include <cstdint>
 #include <cstring>
 
-// Use constexpr instead of #define to avoid global namespace pollution.
-// Names are kept identical so all existing call sites continue to compile.
 static constexpr float twoKpDef = 2.0f * 1.0f;   // 2 * proportional gain
 static constexpr float twoKiDef = 2.0f * 0.0f;   // 2 * integral gain
 
-// File-local conversion constant — not a macro.
 static constexpr double kRadToDeg = 57.295779513082320876798154814105;
 
 typedef struct mahony_AHRS_vars {
@@ -42,14 +27,10 @@ typedef struct mahony_AHRS_vars {
     float integralFBz = 0.0f;   // integral error terms scaled by Ki
 } Mahony_AHRS_Vars;
 
-// ---------------------------------------------------------------------------
-// invSqrt
-//
 // Fast inverse square root.
 // Uses memcpy for type-punning — well-defined in both C and C++.
 // Magic constant 0x5f375a86 (Lomont) gives ~0.18% error after one
 // Newton-Raphson step.
-// ---------------------------------------------------------------------------
 inline float invSqrt(float number) {
     float y = number;
     int32_t i;
@@ -60,25 +41,17 @@ inline float invSqrt(float number) {
     return y;
 }
 
-// ---------------------------------------------------------------------------
-// mahony_AHRS_init
-//
 // Sets gains only. Does NOT reset quaternion or integral states.
 // Use this to change gains on a running filter without disturbing attitude.
 // Use mahony_AHRS_reset() for a full state reset.
-// ---------------------------------------------------------------------------
 inline void mahony_AHRS_init(Mahony_AHRS_Vars* m, float twoKp, float twoKi) {
     m->twoKp = twoKp;
     m->twoKi = twoKi;
 }
 
-// ---------------------------------------------------------------------------
-// mahony_AHRS_reset
-//
 // Full state reset: identity quaternion, zero integral accumulators.
 // Gains are preserved unless positive values are passed.
 // Pass twoKp <= 0 to leave gains unchanged.
-// ---------------------------------------------------------------------------
 inline void mahony_AHRS_reset(Mahony_AHRS_Vars* m,
                                float twoKp = -1.0f,
                                float twoKi = -1.0f)
@@ -96,9 +69,7 @@ inline void mahony_AHRS_reset(Mahony_AHRS_Vars* m,
     m->integralFBz = 0.0f;
 }
 
-// ---------------------------------------------------------------------------
 // mahony_AHRS_update  (IMU-only, no magnetometer)
-// ---------------------------------------------------------------------------
 inline void mahony_AHRS_update(Mahony_AHRS_Vars* m,
                                 float gx, float gy, float gz,
                                 float ax, float ay, float az,
@@ -188,9 +159,7 @@ inline void mahony_AHRS_update(Mahony_AHRS_Vars* m,
     *yaw   *= static_cast<float>(kRadToDeg);
 }
 
-// ---------------------------------------------------------------------------
 // mahony_AHRS_update_mag  (IMU + magnetometer)
-// ---------------------------------------------------------------------------
 inline void mahony_AHRS_update_mag(Mahony_AHRS_Vars* m,
                                     float gx, float gy, float gz,
                                     float ax, float ay, float az,
