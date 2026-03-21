@@ -52,7 +52,8 @@ public:
         const Vector3f gyr_body_zu = ned_to_zu(gyr_meas_ned);
         const Vector3f acc_body_zu = ned_to_zu(acc_meas_ned);
 
-        // Use magnetometer correction only when a NEW mag sample arrived.
+        // Use magnetometer only on a fresh mag tick.
+        // Reusing the same mag sample every IMU step makes yaw behave badly.
         if (with_mag_ && have_mag_ && mag_pending_) {
             filter_.updateIMUMag(
                 gyr_body_zu.x(), gyr_body_zu.y(), gyr_body_zu.z(),
@@ -80,19 +81,11 @@ public:
         s.vel_est_zu  = Vector3f(0.0f, 0.0f, filter_.velocity());
         s.acc_est_zu  = Vector3f(0.0f, 0.0f, filter_.accelFiltered());
 
-        // Mahony wrapper is Z-up and its Euler sign convention does not match
-        // the W3d reference convention directly.
-        //
-        // For comparison against rec.imu.roll_deg / pitch_deg / yaw_deg in the
-        // simulation framework:
-        //   - roll matches
-        //   - pitch needs sign flip
-        //   - yaw needs sign flip and wrapping
-        s.euler_nautical_deg = Vector3f(
-            filter_.rollDeg(),
-            -filter_.pitchDeg(),
-            wrapDeg(-filter_.yawDeg())
-        );
+        // These are now computed in the wrapper from q_body->world, so do not
+        // apply extra sign hacks here.
+        s.euler_nautical_deg = Vector3f(filter_.rollDeg(),
+                                        filter_.pitchDeg(),
+                                        filter_.yawDeg());
 
         s.acc_bias_est_ned    = Vector3f::Zero();
         s.gyro_bias_est_ned   = Vector3f::Zero();
@@ -211,6 +204,8 @@ private:
         cfg.core.force_enable_adaptation_when_auto_schedule = true;
         cfg.core.fallback_confidence_floor = 0.45f;
         cfg.core.fallback_confidence_when_locked = 0.75f;
+        cfg.core.coarse_schedule_blend = 0.65f;
+        cfg.core.coarse_schedule_confidence_floor = 0.55f;
 
         cfg.core.accel_freq_tracker.f_min_hz = 0.045f;
         cfg.core.accel_freq_tracker.f_max_hz = 0.35f;
