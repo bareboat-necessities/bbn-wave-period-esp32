@@ -73,6 +73,13 @@ public:
                 dt
             );
         }
+
+        // Report yaw relative to the first valid heading so the run starts at zero.
+        // With magnetometer enabled, wait until at least one mag sample has arrived.
+        if (!yaw_zero_initialized_ && (!with_mag_ || have_mag_)) {
+            yaw_zero_deg_ = filter_.yawDeg();
+            yaw_zero_initialized_ = true;
+        }
     }
 
     FilterSnapshot snapshot() const override {
@@ -85,14 +92,16 @@ public:
         s.vel_est_zu  = Vector3f(0.0f, 0.0f, filter_.velocity());
         s.acc_est_zu  = Vector3f(0.0f, 0.0f, filter_.accelFiltered());
 
-        const float roll_sim_deg  =  filter_.rollDeg();
-        const float pitch_sim_deg =  filter_.pitchDeg();
-        const float yaw_sim_deg   =  wrapDeg(filter_.yawDeg() + 90.0f);
+        const float roll_sim_deg  = filter_.rollDeg();
+        const float pitch_sim_deg = filter_.pitchDeg();
+        const float yaw_sim_deg   = yaw_zero_initialized_
+            ? wrapDeg(filter_.yawDeg() - yaw_zero_deg_)
+            : 0.0f;
 
         s.euler_nautical_deg = Vector3f(roll_sim_deg,
                                         pitch_sim_deg,
                                         yaw_sim_deg);
-        
+
         s.acc_bias_est_ned    = Vector3f::Zero();
         s.gyro_bias_est_ned   = Vector3f::Zero();
         s.mag_bias_est_ned_uT = Vector3f::Zero();
@@ -260,6 +269,9 @@ private:
 
     Vector3f last_mag_body_zu_ = Vector3f::Zero();
     HeaveFilter filter_;
+
+    bool  yaw_zero_initialized_ = false;
+    float yaw_zero_deg_ = 0.0f;
 };
 
 static void print_vertical_only_summary(const W3dSimulationRunResult& result, float dt)
