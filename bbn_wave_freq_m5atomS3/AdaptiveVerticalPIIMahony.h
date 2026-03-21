@@ -32,15 +32,6 @@
 
   That is the exact quantity expected by the vertical observer.
 
-  IMPORTANT EULER NOTE
-
-  Mahony internally stores quaternion as world -> body.
-  For user-facing roll/pitch/yaw diagnostics we must first conjugate it to
-  body -> world, then compute Euler angles from that body -> world quaternion.
-
-  This fixes the sign errors you were seeing from reading Euler directly from
-  the raw world -> body quaternion.
-
   Usage
 
       using Heave = marine_obs::AdaptiveVerticalPIIMahony<float, true>;
@@ -64,6 +55,22 @@
   - The adaptive vertical observer remains templated on T.
   - This wrapper does not remap axes. Feed data in the SAME axis convention
     that your Mahony implementation expects.
+
+  Mahony gain adaptation
+  ----------------------
+  Frequency is intentionally NOT used here.
+
+  Mahony tilt affects the computed world-vertical acceleration, and the
+  vertical acceleration feeds the wave-frequency tracker. Feeding that
+  frequency back into Mahony creates a bad back-loop.
+
+  So Mahony gains are adapted only from accelerometer trust:
+
+      1) norm consistency:  ||a|| close to g
+      2) innovation size:   measured gravity direction agrees with predicted one
+      3) motion intensity:  sigma of vertical acceleration from the core wrapper
+
+  Trust is then mapped into [rough .. calm] Mahony gains.
 */
 
 #include <algorithm>
@@ -99,7 +106,7 @@ public:
         // Underlying adaptive vertical observer
         CoreConfig core{};
 
-        // Mahony gains
+        // Mahony gains used when adaptation is disabled, and as reset/initial values
         T mahony_twoKp = static_cast<T>(Mahony_AHRS<T>::twoKpDef);
         T mahony_twoKi = static_cast<T>(Mahony_AHRS<T>::twoKiDef);
 
@@ -110,24 +117,31 @@ public:
         // If you want magnetometer support, call updateIMUMag().
         bool use_mag = false;
 
-        // Optional slow sea-state scheduling of Mahony gains.
+        // --------------------------------------------------------------------
+        // Optional Mahony sea-state adaptation
+        //
+        // Frequency is intentionally NOT used here.
+        // --------------------------------------------------------------------
         bool adapt_mahony_gains = false;
 
+        // "Calm" = stronger accelerometer correction when accelerometer looks trustworthy.
+        // "Rough" = weaker correction when wave dynamics corrupt the gravity cue.
         T mahony_twoKp_calm  = static_cast<T>(0.90);
         T mahony_twoKp_rough = static_cast<T>(0.18);
 
+        // Integral term should collapse quickly in rough motion.
         T mahony_twoKi_calm  = static_cast<T>(0.020);
         T mahony_twoKi_rough = static_cast<T>(0.000);
 
-        // Reference values for simple sea-state scheduling.
-        T mahony_sigma_ref    = static_cast<T>(0.18);
-        T mahony_freq_ref_hz  = static_cast<T>(0.12);
-        T mahony_norm_err_ref = static_cast<T>(0.08);
+        // Reference scales for trust computation.
+        T mahony_sigma_ref     = static_cast<T>(0.18); // m/s^2
+        T mahony_norm_err_ref  = static_cast<T>(0.08); // relative | |a|-g | / g
+        T mahony_innov_ref     = static_cast<T>(0.12); // unit-vector innovation magnitude
 
-        // Gain smoothing time constant.
+        // Smoothing of the gain schedule.
         T mahony_gain_smooth_tau_s = static_cast<T>(2.0);
 
-        // Minimum accelerometer trust multiplier.
+        // Minimum accelerometer trust; keeps some correction alive.
         T mahony_acc_trust_min = static_cast<T>(0.05);
     };
 
@@ -151,9 +165,9 @@ public:
         T mahony_twoKi = static_cast<T>(Mahony_AHRS<T>::twoKiDef);
         T gravity_mps2 = static_cast<T>(9.80665);
 
-        T mahony_acc_trust = T(1);
-        T mahony_sigma_sched = T(0);
-        T mahony_freq_sched_hz = T(0);
+        T mahony_accel_norm_err = T(0);
+        T mahony_accel_innov_norm = T(0);
+        T mahony_accel_trust = T(1);
     };
 
 public:
@@ -168,16 +182,20 @@ public:
 
         core_.configure(cfg_.core);
 
-        mahony_AHRS_init(&mahony_, cfg_.mahony_twoKp, cfg_.mahony_twoKi);
-
         gravity_mps2_ = cfg_.gravity_mps2;
+
+        mahony_twoKp_active_ = cfg_.mahony_twoKp;
+        mahony_twoKi_active_ = cfg_.mahony_twoKi;
+
+        mahony_AHRS_init(&mahony_, mahony_twoKp_active_, mahony_twoKi_active_);
+
         last_roll_deg_ = last_pitch_deg_ = last_yaw_deg_ = T(0);
         ax_world_ = ay_world_ = az_world_ = T(0);
         vertical_world_accel_up_ = T(0);
 
-        last_acc_trust_ = T(1);
-        last_sigma_sched_ = T(0);
-        last_freq_sched_hz_ = T(0);
+        last_accel_norm_err_ = T(0);
+        last_accel_innov_norm_ = T(0);
+        last_accel_trust_ = T(1);
     }
 
     void reset(T p0 = T(0),
@@ -189,7 +207,10 @@ public:
     {
         // Reset Mahony state
         mahony_ = Mahony_AHRS<T>{};
-        mahony_AHRS_init(&mahony_, cfg_.mahony_twoKp, cfg_.mahony_twoKi);
+
+        mahony_twoKp_active_ = cfg_.mahony_twoKp;
+        mahony_twoKi_active_ = cfg_.mahony_twoKi;
+        mahony_AHRS_init(&mahony_, mahony_twoKp_active_, mahony_twoKi_active_);
 
         last_roll_deg_ = T(0);
         last_pitch_deg_ = T(0);
@@ -198,18 +219,24 @@ public:
         ax_world_ = ay_world_ = az_world_ = T(0);
         vertical_world_accel_up_ = T(0);
 
-        last_acc_trust_ = T(1);
-        last_sigma_sched_ = T(0);
-        last_freq_sched_hz_ = T(0);
+        last_accel_norm_err_ = T(0);
+        last_accel_innov_norm_ = T(0);
+        last_accel_trust_ = T(1);
 
         core_.reset(p0, v0, a_f0, S0, d0, b0);
     }
 
     void setMahonyGains(T twoKp, T twoKi) {
-        if (std::isfinite(twoKp)) mahony_.twoKp = twoKp;
-        if (std::isfinite(twoKi)) mahony_.twoKi = twoKi;
-        cfg_.mahony_twoKp = mahony_.twoKp;
-        cfg_.mahony_twoKi = mahony_.twoKi;
+        if (std::isfinite(twoKp)) {
+            mahony_.twoKp = twoKp;
+            mahony_twoKp_active_ = twoKp;
+            cfg_.mahony_twoKp = twoKp;
+        }
+        if (std::isfinite(twoKi)) {
+            mahony_.twoKi = twoKi;
+            mahony_twoKi_active_ = twoKi;
+            cfg_.mahony_twoKi = twoKi;
+        }
     }
 
     // IMU-only update (no magnetometer)
@@ -222,29 +249,25 @@ public:
             return core_.displacement();
         }
 
-        // Mahony API requires Euler outputs, but we intentionally ignore the raw
-        // Euler it computes from q_world->body. We recompute user-facing Euler
-        // from q_body->world below.
-        T pitch_unused = T(0);
-        T roll_unused  = T(0);
-        T yaw_unused   = T(0);
+        adaptMahonyGains_(ax_mps2, ay_mps2, az_mps2, dt_s);
+
+        T pitch_deg = T(0);
+        T roll_deg  = T(0);
+        T yaw_deg   = T(0);
 
         mahony_AHRS_update(&mahony_,
                            gx_rad_s, gy_rad_s, gz_rad_s,
                            ax_mps2, ay_mps2, az_mps2,
-                           &pitch_unused, &roll_unused, &yaw_unused,
+                           &pitch_deg, &roll_deg, &yaw_deg,
                            dt_s);
 
+        last_pitch_deg_ = pitch_deg;
+        last_roll_deg_  = roll_deg;
+        last_yaw_deg_   = yaw_deg;
+
         computeWorldAccelAndVertical_(ax_mps2, ay_mps2, az_mps2);
-        updateEulerFromBodyToWorld_();
 
-        const T z = core_.update(vertical_world_accel_up_, dt_s);
-
-        if (cfg_.adapt_mahony_gains) {
-            updateMahonyGains_(ax_mps2, ay_mps2, az_mps2, dt_s);
-        }
-
-        return z;
+        return core_.update(vertical_world_accel_up_, dt_s);
     }
 
     // IMU + magnetometer update
@@ -258,27 +281,26 @@ public:
             return core_.displacement();
         }
 
-        T pitch_unused = T(0);
-        T roll_unused  = T(0);
-        T yaw_unused   = T(0);
+        adaptMahonyGains_(ax_mps2, ay_mps2, az_mps2, dt_s);
+
+        T pitch_deg = T(0);
+        T roll_deg  = T(0);
+        T yaw_deg   = T(0);
 
         mahony_AHRS_update_mag(&mahony_,
                                gx_rad_s, gy_rad_s, gz_rad_s,
                                ax_mps2, ay_mps2, az_mps2,
                                mx, my, mz,
-                               &pitch_unused, &roll_unused, &yaw_unused,
+                               &pitch_deg, &roll_deg, &yaw_deg,
                                dt_s);
 
+        last_pitch_deg_ = pitch_deg;
+        last_roll_deg_  = roll_deg;
+        last_yaw_deg_   = yaw_deg;
+
         computeWorldAccelAndVertical_(ax_mps2, ay_mps2, az_mps2);
-        updateEulerFromBodyToWorld_();
 
-        const T z = core_.update(vertical_world_accel_up_, dt_s);
-
-        if (cfg_.adapt_mahony_gains) {
-            updateMahonyGains_(ax_mps2, ay_mps2, az_mps2, dt_s);
-        }
-
-        return z;
+        return core_.update(vertical_world_accel_up_, dt_s);
     }
 
     // Preferred adaptation hook:
@@ -354,6 +376,12 @@ public:
     T accelSigma() const { return core_.accelSigma(); }
     T accelFrequencyHz() const { return core_.accelFrequencyHz(); }
 
+    T mahonyTwoKpActive() const { return mahony_twoKp_active_; }
+    T mahonyTwoKiActive() const { return mahony_twoKi_active_; }
+    T mahonyAccelNormErr() const { return last_accel_norm_err_; }
+    T mahonyAccelInnovNorm() const { return last_accel_innov_norm_; }
+    T mahonyAccelTrust() const { return last_accel_trust_; }
+
     Snapshot snapshot() const {
         Snapshot s;
         s.core = core_.snapshot();
@@ -366,58 +394,65 @@ public:
         s.ay_world = ay_world_;
         s.az_world = az_world_;
         s.vertical_world_accel_up = vertical_world_accel_up_;
-        s.mahony_twoKp = mahony_.twoKp;
-        s.mahony_twoKi = mahony_.twoKi;
+        s.mahony_twoKp = mahony_twoKp_active_;
+        s.mahony_twoKi = mahony_twoKi_active_;
         s.gravity_mps2 = gravity_mps2_;
-        s.mahony_acc_trust = last_acc_trust_;
-        s.mahony_sigma_sched = last_sigma_sched_;
-        s.mahony_freq_sched_hz = last_freq_sched_hz_;
+        s.mahony_accel_norm_err = last_accel_norm_err_;
+        s.mahony_accel_innov_norm = last_accel_innov_norm_;
+        s.mahony_accel_trust = last_accel_trust_;
         return s;
     }
 
 private:
-    static constexpr T kPi_() {
-        return static_cast<T>(3.1415926535897932384626433832795L);
-    }
-
-    static constexpr T kRadToDeg_() {
-        return static_cast<T>(57.295779513082320876798154814105L);
+    static constexpr T eps_() {
+        return T(1e-9);
     }
 
     static T clamp01_(T x) {
         return std::clamp(x, T(0), T(1));
     }
 
-    static T wrapDeg_(T x) {
-        while (x > T(180)) x -= T(360);
-        while (x < T(-180)) x += T(360);
-        return x;
+    static T finite_or_default_(T x, T def) {
+        return std::isfinite(x) ? x : def;
     }
 
-    static T onePoleAlpha_(T dt, T tau) {
+    static T one_pole_alpha_(T dt, T tau) {
         if (!(std::isfinite(dt) && dt > T(0))) return T(0);
         if (!(std::isfinite(tau) && tau > T(0))) return T(1);
         const T a = dt / (tau + dt);
         return std::clamp(a, T(0), T(1));
     }
 
+    static T safe_rsqrt_or_zero_(T x) {
+        if (!(std::isfinite(x) && x > eps_())) return T(0);
+        return T(1) / std::sqrt(x);
+    }
+
     static Config sanitizeConfig_(Config cfg) {
         if (!(std::isfinite(cfg.gravity_mps2) && cfg.gravity_mps2 > T(0))) {
             cfg.gravity_mps2 = static_cast<T>(9.80665);
         }
+
         if (!std::isfinite(cfg.mahony_twoKp)) cfg.mahony_twoKp = static_cast<T>(Mahony_AHRS<T>::twoKpDef);
         if (!std::isfinite(cfg.mahony_twoKi)) cfg.mahony_twoKi = static_cast<T>(Mahony_AHRS<T>::twoKiDef);
+
+        if (!std::isfinite(cfg.mahony_twoKp_calm))  cfg.mahony_twoKp_calm  = cfg.mahony_twoKp;
+        if (!std::isfinite(cfg.mahony_twoKp_rough)) cfg.mahony_twoKp_rough = cfg.mahony_twoKp;
+        if (!std::isfinite(cfg.mahony_twoKi_calm))  cfg.mahony_twoKi_calm  = cfg.mahony_twoKi;
+        if (!std::isfinite(cfg.mahony_twoKi_rough)) cfg.mahony_twoKi_rough = cfg.mahony_twoKi;
 
         cfg.mahony_twoKp_calm  = std::max(cfg.mahony_twoKp_calm,  T(0));
         cfg.mahony_twoKp_rough = std::max(cfg.mahony_twoKp_rough, T(0));
         cfg.mahony_twoKi_calm  = std::max(cfg.mahony_twoKi_calm,  T(0));
         cfg.mahony_twoKi_rough = std::max(cfg.mahony_twoKi_rough, T(0));
 
-        cfg.mahony_sigma_ref = std::max(cfg.mahony_sigma_ref, T(1e-6));
-        cfg.mahony_freq_ref_hz = std::max(cfg.mahony_freq_ref_hz, T(1e-6));
-        cfg.mahony_norm_err_ref = std::max(cfg.mahony_norm_err_ref, T(1e-6));
-        cfg.mahony_gain_smooth_tau_s = std::max(cfg.mahony_gain_smooth_tau_s, T(1e-3));
-        cfg.mahony_acc_trust_min = clamp01_(cfg.mahony_acc_trust_min);
+        cfg.mahony_sigma_ref = std::max(finite_or_default_(cfg.mahony_sigma_ref, T(0.18)), eps_());
+        cfg.mahony_norm_err_ref = std::max(finite_or_default_(cfg.mahony_norm_err_ref, T(0.08)), eps_());
+        cfg.mahony_innov_ref = std::max(finite_or_default_(cfg.mahony_innov_ref, T(0.12)), eps_());
+        cfg.mahony_gain_smooth_tau_s =
+            std::max(finite_or_default_(cfg.mahony_gain_smooth_tau_s, T(2.0)), eps_());
+        cfg.mahony_acc_trust_min =
+            clamp01_(finite_or_default_(cfg.mahony_acc_trust_min, T(0.05)));
 
         return cfg;
     }
@@ -462,60 +497,101 @@ private:
         }
     }
 
-    void updateEulerFromBodyToWorld_() {
-        const QuaternionT q = quaternionBodyToWorld();
+    void computeMahonyAccelMetrics_(T ax_body, T ay_body, T az_body,
+                                    T& norm_err, T& innov_norm) const
+    {
+        norm_err = T(0);
+        innov_norm = T(0);
 
-        const T qw = q.w;
-        const T qx = q.x;
-        const T qy = q.y;
-        const T qz = q.z;
+        const T a2 = ax_body * ax_body + ay_body * ay_body + az_body * az_body;
+        const T inv_a = safe_rsqrt_or_zero_(a2);
+        if (!(inv_a > T(0))) {
+            return;
+        }
 
-        const T sinp = std::clamp(T(2) * (qw * qy - qz * qx), T(-1), T(1));
+        const T ax_n = ax_body * inv_a;
+        const T ay_n = ay_body * inv_a;
+        const T az_n = az_body * inv_a;
 
-        const T roll_rad  = std::atan2(T(2) * (qw * qx + qy * qz),
-                                       T(1) - T(2) * (qx * qx + qy * qy));
-        const T pitch_rad = std::asin(sinp);
-        const T yaw_rad   = std::atan2(T(2) * (qw * qz + qx * qy),
-                                       T(1) - T(2) * (qy * qy + qz * qz));
+        const T a_norm = T(1) / inv_a;
+        norm_err = std::abs(a_norm - gravity_mps2_) / std::max(gravity_mps2_, eps_());
 
-        last_roll_deg_  = roll_rad  * kRadToDeg_();
-        last_pitch_deg_ = pitch_rad * kRadToDeg_();
-        last_yaw_deg_   = wrapDeg_(yaw_rad * kRadToDeg_());
+        const T q0 = mahony_.q0;
+        const T q1 = mahony_.q1;
+        const T q2 = mahony_.q2;
+        const T q3 = mahony_.q3;
+
+        // Predicted +Z "gravity-like" direction in body frame, unit-length form.
+        const T gx_p = T(2) * (q1 * q3 - q0 * q2);
+        const T gy_p = T(2) * (q0 * q1 + q2 * q3);
+        const T gz_p = (q0 * q0 - q1 * q1 - q2 * q2 + q3 * q3);
+
+        // Innovation magnitude = || a_hat x g_hat_pred || in [0, 1].
+        const T ex = ay_n * gz_p - az_n * gy_p;
+        const T ey = az_n * gx_p - ax_n * gz_p;
+        const T ez = ax_n * gy_p - ay_n * gx_p;
+        innov_norm = std::sqrt(ex * ex + ey * ey + ez * ez);
+
+        if (!std::isfinite(norm_err)) norm_err = T(0);
+        if (!std::isfinite(innov_norm)) innov_norm = T(0);
     }
 
-    void updateMahonyGains_(T ax_body, T ay_body, T az_body, T dt_s) {
-        const T acc_norm = std::sqrt(ax_body * ax_body + ay_body * ay_body + az_body * az_body);
-        const T norm_err = std::abs(acc_norm - gravity_mps2_) / std::max(gravity_mps2_, T(1e-6));
+    void adaptMahonyGains_(T ax_body, T ay_body, T az_body, T dt_s)
+    {
+        if (!cfg_.adapt_mahony_gains) {
+            mahony_.init(mahony_twoKp_active_, mahony_twoKi_active_);
+            return;
+        }
 
-        last_acc_trust_ = T(1) - clamp01_(norm_err / cfg_.mahony_norm_err_ref);
-        last_acc_trust_ = std::max(last_acc_trust_, cfg_.mahony_acc_trust_min);
+        T norm_err = T(0);
+        T innov_norm = T(0);
+        computeMahonyAccelMetrics_(ax_body, ay_body, az_body, norm_err, innov_norm);
 
-        last_sigma_sched_ = std::max(core_.accelSigma(), T(1e-6));
-        last_freq_sched_hz_ = std::max(core_.accelFrequencyHz(), T(1e-6));
+        last_accel_norm_err_ = norm_err;
+        last_accel_innov_norm_ = innov_norm;
 
-        const T sigma_ratio = std::clamp(last_sigma_sched_ / cfg_.mahony_sigma_ref, T(0.25), T(4.0));
-        const T freq_ratio  = std::clamp(last_freq_sched_hz_ / cfg_.mahony_freq_ref_hz, T(0.25), T(4.0));
+        T sigma_a = core_.accelSigma();
+        if (!(std::isfinite(sigma_a) && sigma_a > T(0))) {
+            sigma_a = cfg_.mahony_sigma_ref;
+        }
 
-        const T sigma_rough = clamp01_((sigma_ratio - T(1)) / T(1.5));
-        const T freq_rough  = clamp01_((freq_ratio  - T(1)) / T(1.5));
-        const T trust_rough = T(1) - last_acc_trust_;
+        const T n = norm_err / std::max(cfg_.mahony_norm_err_ref, eps_());
+        const T u = innov_norm / std::max(cfg_.mahony_innov_ref, eps_());
+        const T s = sigma_a / std::max(cfg_.mahony_sigma_ref, eps_());
 
-        const T roughness = clamp01_(T(0.55) * sigma_rough +
-                                     T(0.25) * freq_rough +
-                                     T(0.20) * trust_rough);
+        const T rho_n = T(1) / (T(1) + n * n);
+        const T rho_e = T(1) / (T(1) + u * u);
+        const T rho_s = T(1) / (T(1) + s * s);
 
-        const T kp_target = cfg_.mahony_twoKp_calm +
-                            roughness * (cfg_.mahony_twoKp_rough - cfg_.mahony_twoKp_calm);
-        const T ki_target = cfg_.mahony_twoKi_calm +
-                            roughness * (cfg_.mahony_twoKi_rough - cfg_.mahony_twoKi_calm);
+        T trust = rho_n * rho_e * rho_s;
+        if (!std::isfinite(trust)) {
+            trust = cfg_.mahony_acc_trust_min;
+        }
+        trust = std::clamp(trust, cfg_.mahony_acc_trust_min, T(1));
+        last_accel_trust_ = trust;
 
-        const T alpha = onePoleAlpha_(dt_s, cfg_.mahony_gain_smooth_tau_s);
+        const T kp_cmd =
+            cfg_.mahony_twoKp_rough +
+            trust * (cfg_.mahony_twoKp_calm - cfg_.mahony_twoKp_rough);
 
-        mahony_.twoKp += alpha * (kp_target - mahony_.twoKp);
-        mahony_.twoKi += alpha * (ki_target - mahony_.twoKi);
+        const T trust_i = trust * trust;
+        const T ki_cmd =
+            cfg_.mahony_twoKi_rough +
+            trust_i * (cfg_.mahony_twoKi_calm - cfg_.mahony_twoKi_rough);
 
-        if (!std::isfinite(mahony_.twoKp) || mahony_.twoKp < T(0)) mahony_.twoKp = cfg_.mahony_twoKp;
-        if (!std::isfinite(mahony_.twoKi) || mahony_.twoKi < T(0)) mahony_.twoKi = cfg_.mahony_twoKi;
+        const T alpha = one_pole_alpha_(dt_s, cfg_.mahony_gain_smooth_tau_s);
+
+        mahony_twoKp_active_ += alpha * (kp_cmd - mahony_twoKp_active_);
+        mahony_twoKi_active_ += alpha * (ki_cmd - mahony_twoKi_active_);
+
+        if (!(std::isfinite(mahony_twoKp_active_) && mahony_twoKp_active_ >= T(0))) {
+            mahony_twoKp_active_ = cfg_.mahony_twoKp;
+        }
+        if (!(std::isfinite(mahony_twoKi_active_) && mahony_twoKi_active_ >= T(0))) {
+            mahony_twoKi_active_ = cfg_.mahony_twoKi;
+        }
+
+        mahony_.init(mahony_twoKp_active_, mahony_twoKi_active_);
     }
 
 private:
@@ -525,6 +601,9 @@ private:
     Mahony_AHRS<T> mahony_{};
 
     T gravity_mps2_ = static_cast<T>(9.80665);
+
+    T mahony_twoKp_active_ = static_cast<T>(Mahony_AHRS<T>::twoKpDef);
+    T mahony_twoKi_active_ = static_cast<T>(Mahony_AHRS<T>::twoKiDef);
 
     T last_roll_deg_  = T(0);
     T last_pitch_deg_ = T(0);
@@ -536,9 +615,68 @@ private:
 
     T vertical_world_accel_up_ = T(0);
 
-    T last_acc_trust_ = T(1);
-    T last_sigma_sched_ = T(0);
-    T last_freq_sched_hz_ = T(0);
+    T last_accel_norm_err_ = T(0);
+    T last_accel_innov_norm_ = T(0);
+    T last_accel_trust_ = T(1);
 };
 
 } // namespace marine_obs
+
+
+/*
+EXAMPLE
+
+#include "AdaptiveVerticalPIIMahony.h"
+
+using Heave = marine_obs::AdaptiveVerticalPIIMahony<float, true>;
+
+Heave::Config cfg;
+
+// core observer
+cfg.core.observer.r = 0.16f;
+cfg.core.observer.tau_a = 0.60f;
+cfg.core.observer.tau_d = 40.0f;
+cfg.core.observer.kb = 1e-4f;
+cfg.core.observer.lambda_b = 1e-2f;
+
+// adaptation
+cfg.core.adaptation.enabled = true;
+cfg.core.adaptation.f_disp_ref_hz = 0.17f;
+cfg.core.adaptation.sigma_a_ref = 0.30f;
+
+// optional accel-frequency fallback for the vertical observer only
+cfg.core.auto_schedule_from_accel_freq = true;
+
+// Mahony
+cfg.mahony_twoKp = twoKpDef;
+cfg.mahony_twoKi = twoKiDef;
+cfg.gravity_mps2 = 9.80665f;
+
+// optional Mahony gain adaptation (NO frequency here)
+cfg.adapt_mahony_gains = true;
+cfg.mahony_twoKp_calm = 0.90f;
+cfg.mahony_twoKp_rough = 0.18f;
+cfg.mahony_twoKi_calm = 0.020f;
+cfg.mahony_twoKi_rough = 0.000f;
+cfg.mahony_sigma_ref = 0.18f;
+cfg.mahony_norm_err_ref = 0.08f;
+cfg.mahony_innov_ref = 0.12f;
+cfg.mahony_gain_smooth_tau_s = 2.0f;
+cfg.mahony_acc_trust_min = 0.05f;
+
+Heave filt(cfg);
+
+// Every IMU sample:
+float z = filt.updateIMU(gx_rad_s, gy_rad_s, gz_rad_s,
+                         ax_mps2, ay_mps2, az_mps2,
+                         dt_sec);
+
+// Preferred adaptation source:
+filt.updateAdaptationFromDisplacementFrequency(f_disp_hz, dt_track, confidence);
+
+// Diagnostics:
+float a_up = filt.verticalWorldAccelUp();
+float roll = filt.rollDeg();
+float pitch = filt.pitchDeg();
+
+*/
