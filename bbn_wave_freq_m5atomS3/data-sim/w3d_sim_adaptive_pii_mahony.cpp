@@ -37,24 +37,10 @@ public:
     }
 
     void updateMag(const Vector3f& mag_body_ned) override {
-        // IMPORTANT HEADING FIX:
-        //
-        // Do NOT convert magnetometer back to Z-up here.
-        //
-        // The accel/gyro path in this wrapper is Z-up via ned_to_zu(...), which is
-        // correct for the gravity side of this Mahony variant.
-        //
-        // But the magnetometer correction in this Mahony implementation still behaves
-        // like the original x-io heading convention. Feeding ned_to_zu(mag_body_ned)
-        // produces the classic symptoms you saw:
-        //   - yaw starts offset / needs ad-hoc +/-90 fixes
-        //   - yaw then runs away with tilt instead of staying near reference
-        //
-        // So hold the BODY magnetic sample in the NED-style convention exactly as
-        // produced by the runner.
+        // Keep magnetometer in the runner's NED body convention.
+        // This was the heading-convention fix that stopped the huge yaw error.
         last_mag_body_ned_ = mag_body_ned;
         have_mag_ = true;
-        mag_pending_ = true;   // consume each fresh mag sample exactly once
     }
 
     void update(float dt,
@@ -64,25 +50,21 @@ public:
     {
         (void)temperature_c;
 
-        // Runner gives NED body-frame. Convert accel/gyro back to the original sim
-        // Z-up body frame for the gravity/tilt part of Mahony.
+        // Accel and gyro are converted back to the original sim Z-up body frame.
         const Vector3f gyr_body_zu = ned_to_zu(gyr_meas_ned);
         const Vector3f acc_body_zu = ned_to_zu(acc_meas_ned);
 
         // IMPORTANT:
-        //  - accel and gyro go in as Z-up body-frame
-        //  - magnetometer goes in using the NED-style heading convention held above
-        //
-        // Also only use updateIMUMag() on a fresh mag sample. Reusing the same held
-        // mag sample every IMU tick over-weights magnetic correction badly.
-        if (with_mag_ && have_mag_ && mag_pending_) {
+        // Once at least one mag sample exists, use it as zero-order hold
+        // on EVERY IMU tick. Otherwise heading correction is too weak and
+        // yaw slowly drifts.
+        if (with_mag_ && have_mag_) {
             filter_.updateIMUMag(
                 gyr_body_zu.x(), gyr_body_zu.y(), gyr_body_zu.z(),
                 acc_body_zu.x(), acc_body_zu.y(), acc_body_zu.z(),
                 last_mag_body_ned_.x(), last_mag_body_ned_.y(), last_mag_body_ned_.z(),
                 dt
             );
-            mag_pending_ = false;
         } else {
             filter_.updateIMU(
                 gyr_body_zu.x(), gyr_body_zu.y(), gyr_body_zu.z(),
@@ -92,7 +74,6 @@ public:
         }
 
         // Report yaw relative to the first valid heading so the run starts at zero.
-        // With magnetometer enabled, wait until at least one mag sample has arrived.
         if (!yaw_zero_initialized_ && (!with_mag_ || have_mag_)) {
             yaw_zero_deg_ = filter_.yawDeg();
             yaw_zero_initialized_ = true;
@@ -283,7 +264,6 @@ private:
 private:
     bool with_mag_ = true;
     bool have_mag_ = false;
-    bool mag_pending_ = false;
 
     Vector3f last_mag_body_ned_ = Vector3f::Zero();
     HeaveFilter filter_;
