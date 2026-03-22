@@ -6,6 +6,8 @@
 \usepackage{graphicx}
 \usepackage{cite}
 \usepackage{pgf}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
 \usepackage{bm}
 \usepackage{float}
 \usepackage{microtype}
@@ -263,6 +265,32 @@
   \resizebox{\textwidth}{!}{\input{adaptive_wave_detrender_performance.pgf}}
   \caption{AdaptiveWaveDetrender regression on the screenshot-derived wave record. Top: input and learned slow baseline. Middle: detrended output compared with the stored reference. Bottom: absolute regression errors for baseline, detrended wave, and learned dominant frequency.}
   \label{fig:adaptive_wave_detrender_regression}
+\end{figure}
+
+% === AdaptiveWaveDetrender simulated drift correction ===
+
+\begin{figure}[H]\centering
+  \resizebox{\textwidth}{!}{\input{adaptive_wave_detrender_sim_h0_270.pgf}}
+  \caption{AdaptiveWaveDetrender drift-correction simulation for the Sea Fusion PM--Stokes reference displacement with $H_s = 0.27$ m and $T_p = 3.0$ s. The chart compares the drifted signal, the de-trended output, and the reference vertical displacement; the title reports the post-warmup RMS error against the quality gate.}
+  \label{fig:adaptive_wave_detrender_sim_low}
+\end{figure}
+
+\begin{figure}[H]\centering
+  \resizebox{\textwidth}{!}{\input{adaptive_wave_detrender_sim_h1_500.pgf}}
+  \caption{AdaptiveWaveDetrender drift-correction simulation for the Sea Fusion PM--Stokes reference displacement with $H_s = 1.5$ m and $T_p = 5.7$ s. The chart compares the drifted signal, the de-trended output, and the reference vertical displacement; the title reports the post-warmup RMS error against the quality gate.}
+  \label{fig:adaptive_wave_detrender_sim_medium}
+\end{figure}
+
+\begin{figure}[H]\centering
+  \resizebox{\textwidth}{!}{\input{adaptive_wave_detrender_sim_h4_000.pgf}}
+  \caption{AdaptiveWaveDetrender drift-correction simulation for the Sea Fusion PM--Stokes reference displacement with $H_s = 4.0$ m and $T_p = 8.5$ s. The chart compares the drifted signal, the de-trended output, and the reference vertical displacement; the title reports the post-warmup RMS error against the quality gate.}
+  \label{fig:adaptive_wave_detrender_sim_large}
+\end{figure}
+
+\begin{figure}[H]\centering
+  \resizebox{\textwidth}{!}{\input{adaptive_wave_detrender_sim_h8_500.pgf}}
+  \caption{AdaptiveWaveDetrender drift-correction simulation for the Sea Fusion PM--Stokes reference displacement with $H_s = 8.5$ m and $T_p = 11.4$ s. The chart compares the drifted signal, the de-trended output, and the reference vertical displacement; the title reports the post-warmup RMS error against the quality gate.}
+  \label{fig:adaptive_wave_detrender_sim_extreme}
 \end{figure}
 
 % === Kalman Filter Euler Angle Comparisons ===
