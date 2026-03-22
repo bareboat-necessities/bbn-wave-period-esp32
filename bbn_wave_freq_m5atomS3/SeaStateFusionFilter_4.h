@@ -51,10 +51,8 @@
 #include <memory>
 #include <algorithm>
 
-#include "AranovskiyFreqTracker.h"
-#include "KalmANFFreqTracker.h"
-#include "SchmittTriggerZCFreqTracker.h"
 #include "FirstOrderIIRSmoother.h"
+#include "FrequencyTrackerPolicy.h"
 #include "SeaStateAutoTuner.h"
 #include "MagAutoTuner.h"
 #include "Kalman3D_Wave_4.h"
@@ -112,67 +110,6 @@ struct TuneState {
     float sigma_applied = 1e-2f;     // m/s²
     float R_p0_std_applied  = 0.1f;      // m 
     float R_v0_std_applied  = 0.1f;      // m/s
-};
-
-//  Tracker policy traits
-template<TrackerType>
-struct TrackerPolicy;   // primary template (undefined)
-
-// Aranovskiy
-template<>
-struct TrackerPolicy<TrackerType::ARANOVSKIY> {
-    using Tracker = AranovskiyFreqTracker<double>;
-    Tracker t;
-
-    TrackerPolicy() : t() {
-        double omega_up   = (FREQ_GUESS * 2.0) * (2.0 * M_PI);  // upper angular frequency
-        double k_gain     = 20.0;                               // higher = faster, but risk overflow if too high
-        double x1_0       = 0.0;
-        double omega_init = (FREQ_GUESS / 1.5) * 2.0 * M_PI;
-        double theta_0    = -(omega_init * omega_init);
-        double sigma_0    = theta_0;
-        t.setParams(omega_up, k_gain);
-        t.setState(x1_0, theta_0, sigma_0);
-    }
-
-    double run(float a, float dt) {
-        t.update(static_cast<double>(a) / g_std, static_cast<double>(dt));
-        return t.getFrequencyHz();
-    }
-};
-
-// KalmANFFreqTracker
-template<>
-struct TrackerPolicy<TrackerType::KALMANF> {
-    using Tracker = KalmANFFreqTracker<double>;
-    Tracker t = Tracker();
-    double run(float a, float dt) {
-        double e;
-        double freq = t.process(static_cast<double>(a) / g_std, static_cast<double>(dt), &e);
-        return freq;
-    }
-};
-
-// ZeroCross
-#define ZERO_CROSSINGS_HYSTERESIS     0.04f
-#define ZERO_CROSSINGS_PERIODS        1
-
-template<>
-struct TrackerPolicy<TrackerType::ZEROCROSS> {
-    using Tracker = SchmittTriggerZCFreqTracker;
-    Tracker t = Tracker(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
-    double run(float a, float dt) {
-        float f_byZeroCross = t.update(a / g_std,
-                                       ZERO_CROSSINGS_SCALE /* max g */,
-                                       ZERO_CROSSINGS_DEBOUNCE_TIME,
-                                       ZERO_CROSSINGS_STEEPNESS_TIME,
-                                       dt);
-        double freq = (f_byZeroCross == SCHMITT_TRIGGER_FREQ_INIT ||
-                       f_byZeroCross == SCHMITT_TRIGGER_FALLBACK_FREQ)
-                      ? FREQ_GUESS
-                      : static_cast<double>(f_byZeroCross);
-        return freq;
-    }
 };
 
 //  Unified SeaState fusion filter
