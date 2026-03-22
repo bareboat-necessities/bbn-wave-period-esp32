@@ -5,6 +5,7 @@
 #include "WaveFilesSupport.h"
 #include "AranovskiyFreqTracker.h"
 #include "KalmANFFreqTracker.h"
+#include "PLLFreqTracker.h"
 #include "SchmittTriggerZCFreqTracker.h"
 
 #ifndef FREQ_GUESS
@@ -68,6 +69,18 @@ struct TrackerPolicy<TrackerType::KALMANF> {
         double e;
         double freq = t.process(static_cast<double>(a) / g_std, static_cast<double>(dt), &e);
         return freq;
+    }
+};
+
+// PLLFreqTracker
+template<>
+struct TrackerPolicy<TrackerType::PLLFREQTRACKER> {
+    using Tracker = PLLFreqTracker<double>;
+    Tracker t = Tracker();
+
+    double run(float a, float dt) {
+        t.update(static_cast<double>(a) / g_std, static_cast<double>(dt));
+        return t.getFrequencyHz();
     }
 };
 
