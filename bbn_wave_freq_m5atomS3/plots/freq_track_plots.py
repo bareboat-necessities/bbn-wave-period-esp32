@@ -28,18 +28,18 @@ DATA_FOLDER = "./"
 
 # Regex for naming convention with N and B in input CSV
 FNAME_RE = re.compile(
-    r'^freq_track_(?P<tracker>aranovskiy|kalmanf|zerocross|wavefreqtracker)'
+    r'^freq_track_(?P<tracker>aranovskiy|kalmanf|zerocross|pllfreqtracker)'
     r'_(?P<wave>gerstner|jonswap|fenton|pmstokes|cnoidal)'
     r'_H(?P<H>[0-9.]+)_L(?P<L>[0-9.]+)_A(?P<A>[-0-9.]+)_P(?P<P>[-0-9.]+)'
     r'_N(?P<N>[0-9.]+)_B(?P<B>[0-9.]+)\.csv$'
 )
 
-TRACKER_ORDER = ["aranovskiy", "kalmanf", "zerocross", "wavefreqtracker"]
+TRACKER_ORDER = ["aranovskiy", "kalmanf", "zerocross", "pllfreqtracker"]
 TRACKER_LABELS = {
     "aranovskiy": "Aranovskiy",
     "kalmanf": "KalmANFFreqTracker",
     "zerocross": "Zero crossing",
-    "wavefreqtracker": "WaveFrequencyTracker",
+    "pllfreqtracker": "PLLFreqTracker",
 }
 
 # Sampling config

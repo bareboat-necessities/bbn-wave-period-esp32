@@ -25,7 +25,7 @@
 \begin{document}
 \maketitle
 \begin{abstract}
-This note documents the method implemented by \texttt{w3d\_sim\_adaptive\_pii\_mahony.cpp} and the supporting headers \texttt{AdaptiveVerticalPIIMahony.h}, \texttt{AdaptiveVerticalPII.h}, \texttt{WaveFrequencyTracker.h}, \texttt{VerticalPIIObserver.h}, and \texttt{Mahony\_AHRS.h}. The pipeline estimates attitude with a Mahony complementary filter, rotates body-frame specific force into a Z-up world frame, removes gravity to obtain vertical inertial acceleration, and drives an adaptive vertical displacement observer whose gains are scheduled from an internal dominant-wave-frequency tracker and an acceleration-variance estimate.
+This note documents the method implemented by \texttt{w3d\_sim\_adaptive\_pii\_mahony.cpp} and the supporting headers \texttt{AdaptiveVerticalPIIMahony.h}, \texttt{AdaptiveVerticalPII.h}, \texttt{PLLFreqTracker.h}, \texttt{VerticalPIIObserver.h}, and \texttt{Mahony\_AHRS.h}. The pipeline estimates attitude with a Mahony complementary filter, rotates body-frame specific force into a Z-up world frame, removes gravity to obtain vertical inertial acceleration, and drives an adaptive vertical displacement observer whose gains are scheduled from an internal dominant-wave-frequency tracker and an acceleration-variance estimate.
 \end{abstract}
 \section{Signal flow from the simulation driver}
 The simulation entry point instantiates \texttt{AdaptiveVerticalPIIMahony<float,true>} as the heave filter. Gyroscope and accelerometer samples arrive in the runner's NED convention and are remapped back to the original simulator body Z-up convention before the observer is updated. Magnetometer samples are retained in the runner convention and reused with zero-order hold on every IMU tick whenever heading aiding is enabled. The reported displacement, velocity, and filtered acceleration are the scalar vertical states produced by the wrapped adaptive observer, while roll, pitch, and yaw come from the Mahony attitude state.
@@ -163,7 +163,7 @@ The wrapper around \texttt{VerticalPIIObserver} maintains running mean and varia
 This $\sigma_a$ is the sea-state intensity indicator used in both the vertical observer scheduler and the Mahony trust logic.
 
 \subsection{Scheduling law}
-Whenever auto scheduling is enabled and the scheduler timer expires, \texttt{AdaptiveVerticalPII} obtains a dominant acceleration frequency estimate $f_{\mathrm{sched}}$ from \texttt{WaveFrequencyTracker} and calls
+Whenever auto scheduling is enabled and the scheduler timer expires, \texttt{AdaptiveVerticalPII} obtains a dominant acceleration frequency estimate $f_{\mathrm{sched}}$ from \texttt{PLLFreqTracker} and calls
 \begin{equation}
 \texttt{observer.update\_adaptation}(f_{\mathrm{sched}},\sigma_a,c,\Delta t_{\mathrm{sched}}).
 \end{equation}
@@ -194,7 +194,7 @@ The signs of the exponents encode the intended control effect. Higher dominant w
 
 \section{Wave frequency tracker model}
 \subsection{Front-end preprocessing}
-\texttt{WaveFrequencyTracker} is a single-tone dominant-frequency tracker operating on vertical inertial acceleration. Let the input be $x(t)$. The code first removes quasi-DC drift using a one-pole high-pass formed as a low-pass state subtraction,
+\texttt{PLLFreqTracker} is a single-tone dominant-frequency tracker operating on vertical inertial acceleration. Let the input be $x(t)$. The code first removes quasi-DC drift using a one-pole high-pass formed as a low-pass state subtraction,
 \begin{align}
  x_{\mathrm{dc}}^+ &= \operatorname{LP}_{f_{\mathrm{hp}}}(x),\\
  x_{\mathrm{hp}} &= x - x_{\mathrm{dc}},

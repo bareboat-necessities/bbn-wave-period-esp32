@@ -389,8 +389,8 @@ process_wave_file_for_adaptive_pii_mahony(const std::string& filename,
     options.add_noise = add_noise;
     options.mag_odr_hz = mag_odr_hz;
     options.temperature_c = 35.0f;
-    options.output_suffix_with_mag = "_wavefreqtracker_fusion";
-    options.output_suffix_no_mag   = "_wavefreqtracker_fusion_nomag";
+    options.output_suffix_with_mag = "_pllfreqtracker_fusion";
+    options.output_suffix_no_mag   = "_pllfreqtracker_fusion_nomag";
 
     W3dSimulationRunner runner(options, std::move(noise_models), adapter);
     return runner.run(filename);

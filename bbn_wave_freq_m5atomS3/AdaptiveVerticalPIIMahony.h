@@ -79,7 +79,7 @@ namespace marine_obs {
 
 template<typename T = float,
          bool WithBias = true,
-         typename AccelFreqTrackerT = WaveFrequencyTracker<T>>
+         typename AccelFreqTrackerT = PLLFreqTracker<T>>
 class AdaptiveVerticalPIIMahony {
     static_assert(std::is_floating_point<T>::value,
                   "AdaptiveVerticalPIIMahony<T>: T must be a floating-point type.");
