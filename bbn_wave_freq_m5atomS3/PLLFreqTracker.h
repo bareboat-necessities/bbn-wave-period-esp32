@@ -1,5 +1,5 @@
-#ifndef WAVE_FREQUENCY_TRACKER_H
-#define WAVE_FREQUENCY_TRACKER_H
+#ifndef PLL_FREQ_TRACKER_H
+#define PLL_FREQ_TRACKER_H
 
 #include <cmath>
 #include <cstdint>
@@ -35,7 +35,7 @@
     - For best results, combine this with a slower outer spectral estimate.
 
   Usage:
-    WaveFrequencyTracker<float> trk;
+    PLLFreqTracker<float> trk;
     trk.reset(0.12f); // optional initial guess in Hz
     ...
     trk.update(a_world_z, dt);
@@ -60,7 +60,7 @@
 */
 
 template <typename Real = float>
-class WaveFrequencyTracker {
+class PLLFreqTracker {
 public:
   struct Config {
     // Search band for dominant wave frequency.
@@ -120,7 +120,7 @@ public:
     Real coarse_timeout_s       = Real(20.0);
   };
 
-  explicit WaveFrequencyTracker(const Config& cfg = Config()) {
+  explicit PLLFreqTracker(const Config& cfg = Config()) {
     configure(cfg);
     reset(cfg_.f_init_hz);
   }
@@ -614,4 +614,4 @@ private:
   }
 };
 
-#endif // WAVE_FREQUENCY_TRACKER_H
+#endif // PLL_FREQ_TRACKER_H

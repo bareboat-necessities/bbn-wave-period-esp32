@@ -6,11 +6,11 @@
 #include <type_traits>
 
 #include "VerticalPIIObserver.h"
-#include "WaveFrequencyTracker.h"
+#include "PLLFreqTracker.h"
 
 namespace marine_obs {
 
-template<typename T = float, bool WithBias = true, typename AccelFreqTrackerT = WaveFrequencyTracker<T>>
+template<typename T = float, bool WithBias = true, typename AccelFreqTrackerT = PLLFreqTracker<T>>
 class AdaptiveVerticalPII {
     static_assert(std::is_floating_point<T>::value,
                   "AdaptiveVerticalPII<T>: T must be a floating-point type.");
