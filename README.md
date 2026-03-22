@@ -25,8 +25,8 @@ The method for estimating wave height and heave from a moving boat implemented h
 1. Sample MPU6886 3D acceleration and 3D gyroscope (angular velocities) measurements at about 250 Hz.
 2. Estimate attitude and get attitude quaternion using Mahony algorithm. Using acceleration and gyroscope is enough. No magnetometer is required because we are only interested in vertical acceleration for the next steps.
 3. Double integrate vertical acceleration into vertical displacement using specially designed Kalman filter which corrects for integral drift in wave and corrects for the constant accelerometer bias.
-4. Estimate observed heave frequency with Zero Crossing (SchmittTriggerFrequencyDetector.h), Aranovskiy or KalmANF on-line filter (without need for FFT). The correction for accelerometer bias is important for this step.
-5. Smooth frequency produced by Zero Crossing, Aranovskiy or KalmANF filter with Kalman smoother.
+4. Estimate observed heave frequency with Zero Crossing (SchmittTriggerZCFreqTracker.h), Aranovskiy or KalmANFFreqTracker on-line filter (without need for FFT). The correction for accelerometer bias is important for this step.
+5. Smooth frequency produced by Zero Crossing, Aranovskiy or KalmANFFreqTracker filter with Kalman smoother.
 6. Use another specially designed Kalman filter knowing the frequency and fusing model with trochoidal wave model to double integrate vertical acceleration. Assuming convergence of frequency, this method would give real-time phase correction of heave compared to the first Kalman method. Doppler effect due to boat movement in waves has no impact on displacement amplitude.
 
 ### Kalman Filter #1
@@ -159,7 +159,7 @@ $$
 Kalman filter to estimate vertical displacement in wave using accelerometer, 
 correct for accelerometer bias, estimate accelerometer bias. This method
 assumes that displacement follows trochoidal model and the frequency of
-wave is known. Frequency can be estimated using another step with Zero Crossing, Aranovskiy or KalmANF filter.
+wave is known. Frequency can be estimated using another step with Zero Crossing, Aranovskiy or KalmANFFreqTracker filter.
 
 In trochoidal wave model there is simple linear dependency between displacement and 
 acceleration.

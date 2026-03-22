@@ -1,5 +1,5 @@
-#ifndef KALMANF_H
-#define KALMANF_H
+#ifndef KALMANF_FREQ_TRACKER_H
+#define KALMANF_FREQ_TRACKER_H
 
 #include <cmath>
 #include <limits>
@@ -73,7 +73,7 @@
 */
 
 template <typename Real = double>
-class KalmANF {
+class KalmANFFreqTracker {
 private:
   static constexpr Real defaultRho = Real(0.995);
   static constexpr Real default_a  = Real(1.9999);
@@ -196,4 +196,4 @@ public:
   Real get_p_cov() const { return p_cov; }
 };
 
-#endif // KALMANF_H
+#endif // KALMANF_FREQ_TRACKER_H

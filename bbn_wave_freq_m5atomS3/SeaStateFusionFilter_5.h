@@ -35,9 +35,9 @@
 #include <memory>
 #include <algorithm>
 
-#include "AranovskiyFilter.h"
-#include "KalmANF.h"
-#include "SchmittTriggerFrequencyDetector.h"
+#include "AranovskiyFreqTracker.h"
+#include "KalmANFFreqTracker.h"
+#include "SchmittTriggerZCFreqTracker.h"
 #include "FirstOrderIIRSmoother.h"
 #include "SeaStateAutoTuner.h"
 #include "MagAutoTuner.h"
@@ -100,7 +100,7 @@ struct TrackerPolicy;
 // Aranovskiy
 template<>
 struct TrackerPolicy<TrackerType::ARANOVSKIY> {
-    using Tracker = AranovskiyFilter<double>;
+    using Tracker = AranovskiyFreqTracker<double>;
     Tracker t;
 
     TrackerPolicy() : t() {
@@ -120,10 +120,10 @@ struct TrackerPolicy<TrackerType::ARANOVSKIY> {
     }
 };
 
-// KalmANF
+// KalmANFFreqTracker
 template<>
 struct TrackerPolicy<TrackerType::KALMANF> {
-    using Tracker = KalmANF<double>;
+    using Tracker = KalmANFFreqTracker<double>;
     Tracker t = Tracker();
 
     double run(float a, float dt) {
@@ -139,7 +139,7 @@ struct TrackerPolicy<TrackerType::KALMANF> {
 
 template<>
 struct TrackerPolicy<TrackerType::ZEROCROSS> {
-    using Tracker = SchmittTriggerFrequencyDetector;
+    using Tracker = SchmittTriggerZCFreqTracker;
     Tracker t = Tracker(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
 
     double run(float a, float dt) {

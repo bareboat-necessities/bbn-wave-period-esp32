@@ -62,12 +62,12 @@ constexpr float MAX_R_S     = 10 * R_S_DEFAULT * R_S_law_scale(1.50f);
 // Trackers smoothing is handled by your helpers (FrequencySmoother + Kalman smoother) in estimate_freq()
 
 #include "WaveFilesSupport.h"
-#include "AranovskiyFilter.h"
-#include "KalmANF.h"
+#include "AranovskiyFreqTracker.h"
+#include "KalmANFFreqTracker.h"
 #include "FrequencySmoother.h"
 #include "KalmanForWaveBasic.h"
 #include "KalmanWaveNumStableAlt.h"
-#include "SchmittTriggerFrequencyDetector.h"
+#include "SchmittTriggerZCFreqTracker.h"
 #include "KalmanSmoother.h"
 #include "KalmanWaveDirection.h"
 #include "WaveFilters.h"
@@ -123,11 +123,11 @@ int wave_index_from_height(float height) {
 }
 
 // Tracker scaffolding copied from your sea_reg pattern
-AranovskiyFilter<double> arFilter;
-KalmANF<double> kalmANF;
+AranovskiyFreqTracker<double> arFilter;
+KalmANFFreqTracker<double> kalmANF;
 FrequencySmoother<float> freqSmoother;
 KalmanSmootherVars kalman_freq;
-SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
+SchmittTriggerZCFreqTracker freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
 
 
 static bool kalm_smoother_first = true;

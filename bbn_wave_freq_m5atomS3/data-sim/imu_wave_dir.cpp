@@ -38,7 +38,7 @@ constexpr float g_std = 9.80665f;
 
 #include "WaveFilesSupport.h"
 #include "FrameConversions.h"
-#include "SeaStateFusionFilter.h"   // ← uses internal tracker (KalmANF/Aranovskiy/ZC) + dir filter
+#include "SeaStateFusionFilter.h"   // ← uses internal tracker (KalmANFFreqTracker/Aranovskiy/ZC) + dir filter
 
 // CLI & sim flags
 static bool add_noise = true;

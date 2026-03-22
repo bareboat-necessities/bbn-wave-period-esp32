@@ -11,7 +11,7 @@
 \maketitle
 
 \begin{abstract}
-We present a robust zero‐crossing frequency detector employing a Schmitt‐trigger hysteresis, debounce filtering, and cycle‐averaged period estimation.  The method, implemented in \texttt{SchmittTriggerFrequencyDetector} (see \texttt{SchmittTriggerFrequencyDetector.h}), yields instantaneous frequency estimates, phase, and quality metrics (confidence, jitter, amplitude ratio, fallback status).
+We present a robust zero‐crossing frequency detector employing a Schmitt‐trigger hysteresis, debounce filtering, and cycle‐averaged period estimation.  The method, implemented in \texttt{SchmittTriggerZCFreqTracker} (see \texttt{SchmittTriggerZCFreqTracker.h}), yields instantaneous frequency estimates, phase, and quality metrics (confidence, jitter, amplitude ratio, fallback status).
 \end{abstract}
 
 \section{Problem Statement}
@@ -86,7 +86,7 @@ Between crossings, we compute the phase
 \]
 offset by \(\pi\) on downward transitions to ensure continuity.
 
-\section{Implementation in \texttt{SchmittTriggerFrequencyDetector}}
+\section{Implementation in \texttt{SchmittTriggerZCFreqTracker}}
 Key parameters and defaults:
 \begin{itemize}
   \item Hysteresis \(h=0.1\).
@@ -95,7 +95,7 @@ Key parameters and defaults:
   \item Fallback time \(\Delta t_{\mathrm{fb}}=60\,\mathrm{s}\).
   \item History length \(K=10\).
 \end{itemize}
-The class is defined in \texttt{SchmittTriggerFrequencyDetector.h}, with methods:
+The class is defined in \texttt{SchmittTriggerZCFreqTracker.h}, with methods:
 \begin{itemize}
   \item \texttt{float update(…)} — processes each sample, updates state, returns \(\hat f\).
   \item \texttt{float getPhaseEstimate()} — returns \(\phi(t)\).

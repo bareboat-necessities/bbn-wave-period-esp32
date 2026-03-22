@@ -50,12 +50,12 @@ constexpr float MAX_R_S     = 20.0f;
 
 // Your project headers
 #include "WaveFilesSupport.h"
-#include "AranovskiyFilter.h"
-#include "KalmANF.h"
+#include "AranovskiyFreqTracker.h"
+#include "KalmANFFreqTracker.h"
 #include "FrequencySmoother.h"
 #include "KalmanForWaveBasic.h"
 #include "KalmanWaveNumStableAlt.h"
-#include "SchmittTriggerFrequencyDetector.h"
+#include "SchmittTriggerZCFreqTracker.h"
 #include "KalmanSmoother.h"
 #include "KalmanWaveDirection.h"
 #include "WaveFilters.h"
@@ -108,11 +108,11 @@ int wave_index_from_height(float height) {
 }
 
 // Tracker scaffolding
-AranovskiyFilter<double> arFilter;
-KalmANF<double> kalmANF;
+AranovskiyFreqTracker<double> arFilter;
+KalmANFFreqTracker<double> kalmANF;
 FrequencySmoother<float> freqSmoother;
 KalmanSmootherVars kalman_freq;
-SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
+SchmittTriggerZCFreqTracker freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
 static bool kalm_smoother_first = true;
 static double sim_t = 0.0;
 static uint32_t now_us() { return static_cast<uint32_t>(sim_t * 1e6); }

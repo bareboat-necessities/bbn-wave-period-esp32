@@ -5,7 +5,7 @@
 
   See: https://bareboat-necessities.github.io/my-bareboat/bareboat-math.html
 
-  Instead of FFT method for finding main wave frequency we could use Zero Crossing, Aranovskiy or KalmANF 
+  Instead of FFT method for finding main wave frequency we could use Zero Crossing, Aranovskiy or KalmANFFreqTracker 
   frequency estimators which is are simple on-line filters.
 
   Ref:
@@ -18,7 +18,7 @@
 
   2. R. Ali, T. van Waterschoot
 
-  A frequency tracker based on a Kalman filter update of a single parameter adaptive notch filter. KalmANF
+  A frequency tracker based on a Kalman filter update of a single parameter adaptive notch filter. KalmANFFreqTracker
 
   Proceedings of the 26th International Conference on Digital Audio Effects (DAFx23), Copenhagen, Denmark, September 2023
 
@@ -31,9 +31,9 @@
 #define NO_BOSCH_API
 
 #include "AngleAveraging.h"
-#include "AranovskiyFilter.h"
-#include "SchmittTriggerFrequencyDetector.h"
-#include "KalmANF.h"
+#include "AranovskiyFreqTracker.h"
+#include "SchmittTriggerZCFreqTracker.h"
+#include "KalmANFFreqTracker.h"
 #include "KalmanSmoother.h"
 #include "TrochoidalWave.h"
 #include "Mahony_AHRS.h"
@@ -62,10 +62,10 @@ bool kalm_w_first = true, kalm_w_alt_first = true, kalm_smoother_first = true;
 TimeAwareSpikeFilter spikeFilter(ACCEL_SPIKE_FILTER_SIZE, ACCEL_SPIKE_FILTER_THRESHOLD);
 
 // frequency tracking
-SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS /* hysteresis (fractions of signal magnitude) */,
+SchmittTriggerZCFreqTracker freqDetector(ZERO_CROSSINGS_HYSTERESIS /* hysteresis (fractions of signal magnitude) */,
     ZERO_CROSSINGS_PERIODS /* periods to run measures on */);
-AranovskiyFilter<double> arFilter;
-KalmANF<double> kalmANF;
+AranovskiyFreqTracker<double> arFilter;
+KalmANFFreqTracker<double> kalmANF;
 KalmanSmootherVars kalman_freq;
 
 // AHRS

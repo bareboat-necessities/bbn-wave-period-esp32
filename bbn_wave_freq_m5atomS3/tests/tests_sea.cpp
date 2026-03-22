@@ -11,12 +11,12 @@
 
 #define EIGEN_NON_ARDUINO
 
-#include "AranovskiyFilter.h"
-#include "KalmANF.h"
+#include "AranovskiyFreqTracker.h"
+#include "KalmANFFreqTracker.h"
 #include "FrequencySmoother.h"
 #include "KalmanForWaveBasic.h"
 #include "KalmanWaveNumStableAlt.h"
-#include "SchmittTriggerFrequencyDetector.h"
+#include "SchmittTriggerZCFreqTracker.h"
 #include "KalmanWaveDirection.h"
 #include "TrochoidalWave.h"
 #include "KalmanSmoother.h"
@@ -53,10 +53,10 @@ const std::vector<WaveParameters> waveParamsList = {
 };
 
 // Global trackers
-AranovskiyFilter<double> arFilter;
-KalmANF<double> kalmANF;
+AranovskiyFreqTracker<double> arFilter;
+KalmANFFreqTracker<double> kalmANF;
 KalmanSmootherVars kalman_freq;
-SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
+SchmittTriggerZCFreqTracker freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
 
 // Make filename
 static std::string make_filename(TrackerType tr, WaveType wt, float height) {
