@@ -28,11 +28,19 @@ DATA_FOLDER = "./"
 
 # Regex for naming convention with N and B in input CSV
 FNAME_RE = re.compile(
-    r'^freq_track_(?P<tracker>aranovskiy|kalmanf|zerocross)'
+    r'^freq_track_(?P<tracker>aranovskiy|kalmanf|zerocross|wavefreqtracker)'
     r'_(?P<wave>gerstner|jonswap|fenton|pmstokes|cnoidal)'
     r'_H(?P<H>[0-9.]+)_L(?P<L>[0-9.]+)_A(?P<A>[-0-9.]+)_P(?P<P>[-0-9.]+)'
     r'_N(?P<N>[0-9.]+)_B(?P<B>[0-9.]+)\.csv$'
 )
+
+TRACKER_ORDER = ["aranovskiy", "kalmanf", "zerocross", "wavefreqtracker"]
+TRACKER_LABELS = {
+    "aranovskiy": "Aranovskiy",
+    "kalmanf": "KalmANF",
+    "zerocross": "Zero crossing",
+    "wavefreqtracker": "WaveFrequencyTracker",
+}
 
 # Sampling config
 SAMPLE_RATE_HZ = 200
@@ -90,10 +98,13 @@ def plot_scenarios(df):
         ax.set_xlabel("Time (s)")
         ax.set_ylabel("Frequency (Hz)")
 
-        for tracker in group['tracker'].unique():
+        for tracker in TRACKER_ORDER:
+            if tracker not in set(group['tracker']):
+                continue
             subset = group[group['tracker'] == tracker]
-            ax.plot(subset['time'], subset['est_freq'], label=f"{tracker} raw")
-            ax.plot(subset['time'], subset['smooth_freq'], linestyle='--', label=f"{tracker} smooth")
+            label = TRACKER_LABELS.get(tracker, tracker)
+            ax.plot(subset['time'], subset['est_freq'], label=f"{label} raw")
+            ax.plot(subset['time'], subset['smooth_freq'], linestyle='--', label=f"{label} smooth")
 
         ax.legend()
         ax.grid(True)
@@ -114,10 +125,13 @@ def plot_errors(df, wave, H, N, B):
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Frequency Error (Hz)")
 
-    for tracker in subset['tracker'].unique():
+    for tracker in TRACKER_ORDER:
+        if tracker not in set(subset['tracker']):
+            continue
         tr_data = subset[subset['tracker'] == tracker]
-        ax.plot(tr_data['time'], tr_data['error'], label=f"{tracker} raw error")
-        ax.plot(tr_data['time'], tr_data['smooth_error'], linestyle='--', label=f"{tracker} smooth error")
+        label = TRACKER_LABELS.get(tracker, tracker)
+        ax.plot(tr_data['time'], tr_data['error'], label=f"{label} raw error")
+        ax.plot(tr_data['time'], tr_data['smooth_error'], linestyle='--', label=f"{label} smooth error")
 
     ax.legend()
     ax.grid(True)
