@@ -22,6 +22,12 @@ using Eigen::Vector3f;
 
 bool add_noise = true;
 
+static constexpr W3dFailureLimits FAIL_LIMITS{
+    .err_limit_percent_z_jonswap = 15.0f,
+    .err_limit_percent_z_pmstokes = 15.0f,
+    .err_limit_yaw_deg = 4.0f,
+};
+
 class FusionAdapterAdaptivePIIMahony final : public IW3dFusionAdapter {
 public:
     using HeaveFilter = marine_obs::AdaptiveVerticalPIIMahony<float, true>;
@@ -317,6 +323,37 @@ static void print_vertical_only_summary(const W3dSimulationRunResult& result, fl
     std::cout << "===========================================================\n\n";
 }
 
+static void fail_if_vertical_quality_gates_breached(const W3dSimulationRunResult& result, float dt)
+{
+    constexpr float RMS_WINDOW_SEC = 60.0f;
+    const int N_last = static_cast<int>(RMS_WINDOW_SEC / dt);
+    if (result.errs_z.size() <= static_cast<size_t>(N_last)) return;
+
+    const size_t start = result.errs_z.size() - N_last;
+
+    RMSReport rms_z, rms_yaw;
+    for (size_t i = start; i < result.errs_z.size(); ++i) {
+        rms_z.add(result.errs_z[i]);
+        rms_yaw.add(result.errs_yaw[i]);
+    }
+
+    const float z_pct = 100.0f * rms_z.rms() / result.wave_params.height;
+    const float z_limit = (result.wave_type == WaveType::JONSWAP)
+        ? FAIL_LIMITS.err_limit_percent_z_jonswap
+        : FAIL_LIMITS.err_limit_percent_z_pmstokes;
+    if (z_pct > z_limit) {
+        std::cerr << "ERROR: Z RMS above limit (" << z_pct << "% > " << z_limit
+                  << "%). Failing.\n";
+        std::exit(EXIT_FAILURE);
+    }
+
+    if (rms_yaw.rms() > FAIL_LIMITS.err_limit_yaw_deg) {
+        std::cerr << "ERROR: Yaw RMS above limit (" << rms_yaw.rms() << " deg > "
+                  << FAIL_LIMITS.err_limit_yaw_deg << " deg). Failing.\n";
+        std::exit(EXIT_FAILURE);
+    }
+}
+
 static std::optional<W3dSimulationRunResult>
 process_wave_file_for_adaptive_pii_mahony(const std::string& filename,
                                           float dt,
@@ -392,6 +429,7 @@ int main(int argc, char* argv[])
         if (!result) continue;
 
         print_vertical_only_summary(*result, dt);
+        fail_if_vertical_quality_gates_breached(*result, dt);
     }
 
     return 0;
