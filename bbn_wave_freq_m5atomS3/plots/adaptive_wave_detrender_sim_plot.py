@@ -35,7 +35,7 @@ def write_plot(path: Path, rows, case):
     title = (
         rf"$H_s={float(case['height_m']):.2f}\,\mathrm{{m}}$, "
         rf"$T_p={float(case['period_s']):.1f}\,\mathrm{{s}}$, "
-        rf"RMS={float(case['detrended_rms_m']):.3f}\,\mathrm{{m}}$ "
+        rf"$RMS={float(case['detrended_rms_m']):.3f}\,\mathrm{{m}}$ "
         rf"(gate {float(case['gate_rms_m']):.3f} m)"
     )
     content = f"""\\begin{{tikzpicture}}
