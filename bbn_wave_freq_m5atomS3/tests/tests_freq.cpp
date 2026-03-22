@@ -11,12 +11,12 @@
 
 #define EIGEN_NON_ARDUINO
 
-#include "AranovskiyFilter.h"
-#include "KalmANF.h"
+#include "AranovskiyFreqTracker.h"
+#include "KalmANFFreqTracker.h"
 #include "FrequencySmoother.h"
 #include "KalmanForWaveBasic.h"
 #include "KalmanWaveNumStableAlt.h"
-#include "SchmittTriggerFrequencyDetector.h"
+#include "SchmittTriggerZCFreqTracker.h"
 #include "KalmanWaveDirection.h"
 #include "TrochoidalWave.h"
 #include "KalmanSmoother.h"
@@ -70,11 +70,11 @@ const std::vector<WaveParameters> waveParamsList = {
 };
 
 // Trackers
-AranovskiyFilter<double> arFilter;
-KalmANF<double> kalmANF;
+AranovskiyFreqTracker<double> arFilter;
+KalmANFFreqTracker<double> kalmANF;
 FrequencySmoother<float> freqSmoother;
 KalmanSmootherVars kalman_freq; // used for smoothing outputs (per-run reset)
-SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
+SchmittTriggerZCFreqTracker freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
 
 static double sim_t = 0.0;
 static uint32_t now_us() { return static_cast<uint32_t>(sim_t * 1e6); }

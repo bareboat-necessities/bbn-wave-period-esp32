@@ -19,12 +19,12 @@
 const float g_std = 9.80665f; // standard gravity acceleration m/s²
 
 #include "WaveFilesSupport.h"
-#include "AranovskiyFilter.h"
-#include "KalmANF.h"
+#include "AranovskiyFreqTracker.h"
+#include "KalmANFFreqTracker.h"
 #include "FrequencySmoother.h"
 #include "KalmanForWaveBasic.h"
 #include "KalmanWaveNumStableAlt.h"
-#include "SchmittTriggerFrequencyDetector.h"
+#include "SchmittTriggerZCFreqTracker.h"
 #include "KalmanSmoother.h"
 #include "KalmanWaveDirection.h"
 #include "WaveFrequencyTracker.h"
@@ -37,12 +37,12 @@ static constexpr float NOISE_STDDEV   = 0.08f;
 static constexpr float BIAS_MEAN      = 0.10f;
 
 // Trackers
-AranovskiyFilter<double> arFilter;
-KalmANF<double> kalmANF;
+AranovskiyFreqTracker<double> arFilter;
+KalmANFFreqTracker<double> kalmANF;
 WaveFrequencyTracker<double> waveFreqTracker;
 FrequencySmoother<float> freqSmoother;
 KalmanSmootherVars kalman_freq;
-SchmittTriggerFrequencyDetector freqDetector(
+SchmittTriggerZCFreqTracker freqDetector(
     ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
 
 static bool kalm_smoother_first = true;

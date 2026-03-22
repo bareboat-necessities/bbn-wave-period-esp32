@@ -17,14 +17,14 @@
 #include <cmath>
 #include <random>
 
-#include "AranovskiyFilter.h"
-#include "KalmANF.h"
+#include "AranovskiyFreqTracker.h"
+#include "KalmANFFreqTracker.h"
 #include "KalmanSmoother.h"
 #include "TrochoidalWave.h"
 #include "MinMaxLemire.h"
 #include "KalmanForWaveBasic.h"
 #include "KalmanWaveNumStableAlt.h"
-#include "SchmittTriggerFrequencyDetector.h"
+#include "SchmittTriggerZCFreqTracker.h"
 #include "KalmanWaveDirection.h"
 #include "WaveFilters.h"
 #include "TimeAwareSpikeFilter.h"
@@ -43,12 +43,12 @@ enum TestType {
 };
 
 MinMaxLemire min_max_h;
-AranovskiyFilter<double> arFilter;
+AranovskiyFreqTracker<double> arFilter;
 KalmanSmootherVars kalman_freq;
 KalmanForWaveBasicState waveState;
 KalmanWaveNumStableAltState waveAltState;
-KalmANF<double> kalmANF;
-SchmittTriggerFrequencyDetector freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
+KalmANFFreqTracker<double> kalmANF;
+SchmittTriggerZCFreqTracker freqDetector(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
 TimeAwareSpikeFilter spikeFilter(ACCEL_SPIKE_FILTER_SIZE, ACCEL_SPIKE_FILTER_THRESHOLD);
 WaveSurfaceProfile<128> waveProfile;
 

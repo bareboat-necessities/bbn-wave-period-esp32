@@ -13,8 +13,8 @@
     • Quaternion-based attitude and linear motion estimation via Kalman3D_Wave  
 
     • Dominant frequency tracking using one of:
-          – AranovskiyFilter     (frequency estimator)
-          – KalmANF              (adaptive notch / Kalman frequency tracker)
+          – AranovskiyFreqTracker     (frequency estimator)
+          – KalmANFFreqTracker              (adaptive notch / Kalman frequency tracker)
           – SchmittTrigger       (zero-cross event detector)
 
     • Dual-stage frequency smoothing:
@@ -50,9 +50,9 @@
 #include <memory>
 #include <algorithm>
 
-#include "AranovskiyFilter.h"
-#include "KalmANF.h"
-#include "SchmittTriggerFrequencyDetector.h"
+#include "AranovskiyFreqTracker.h"
+#include "KalmANFFreqTracker.h"
+#include "SchmittTriggerZCFreqTracker.h"
 #include "FirstOrderIIRSmoother.h"
 #include "SeaStateAutoTuner.h"
 #include "MagAutoTuner.h"
@@ -117,7 +117,7 @@ struct TrackerPolicy; // primary template (undefined)
 // Aranovskiy
 template<>
 struct TrackerPolicy<TrackerType::ARANOVSKIY> {
-    using Tracker = AranovskiyFilter<double>;
+    using Tracker = AranovskiyFreqTracker<double>;
     Tracker t;
 
     TrackerPolicy() : t() {
@@ -137,10 +137,10 @@ struct TrackerPolicy<TrackerType::ARANOVSKIY> {
     }
 };
 
-// KalmANF
+// KalmANFFreqTracker
 template<>
 struct TrackerPolicy<TrackerType::KALMANF> {
-    using Tracker = KalmANF<double>;
+    using Tracker = KalmANFFreqTracker<double>;
     Tracker t = Tracker();
     double run(float a, float dt) {
         double e;
@@ -155,7 +155,7 @@ struct TrackerPolicy<TrackerType::KALMANF> {
 
 template<>
 struct TrackerPolicy<TrackerType::ZEROCROSS> {
-    using Tracker = SchmittTriggerFrequencyDetector;
+    using Tracker = SchmittTriggerZCFreqTracker;
     Tracker t = Tracker(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
     double run(float a, float dt) {
         float f_byZeroCross = t.update(a / g_std,

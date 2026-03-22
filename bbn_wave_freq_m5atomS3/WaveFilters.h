@@ -28,10 +28,10 @@ enum FrequencyTracker {
     ZeroCrossing
 };
 
-void init_aranovskiy(AranovskiyFilter<double>* ar_filter);
+void init_aranovskiy(AranovskiyFreqTracker<double>* ar_filter);
 void init_smoother(KalmanSmootherVars* kalman_smoother);
-void init_filters(AranovskiyFilter<double>* ar_filter, KalmanSmootherVars* kalman_smoother);
-void init_filters_alt(KalmANF<double>* kalmANF, KalmanSmootherVars* kalman_smoother);
+void init_filters(AranovskiyFreqTracker<double>* ar_filter, KalmanSmootherVars* kalman_smoother);
+void init_filters_alt(KalmANFFreqTracker<double>* kalmANF, KalmanSmootherVars* kalman_smoother);
 void init_wave_filters();
 
 KalmanForWaveBasic wave_filter;
@@ -57,7 +57,7 @@ uint32_t getWindowMicros(double period) {
   return clamp(windowMicros, (uint32_t) 5 * 1000000, (uint32_t) 30 * 1000000);
 }
 
-void init_aranovskiy(AranovskiyFilter<double>* ar_filter) {
+void init_aranovskiy(AranovskiyFreqTracker<double>* ar_filter) {
   /*
     Accelerometer bias creates heave bias and Aranovskiy filter gives
     lower frequency (i. e. higher period).
@@ -89,20 +89,20 @@ void init_wave_filters() {
   wave_dir_kalman.setProcessNoise(1e-6f);
 }
 
-void init_filters(AranovskiyFilter<double>* ar_filter, KalmanSmootherVars* kalman_smoother) {
+void init_filters(AranovskiyFreqTracker<double>* ar_filter, KalmanSmootherVars* kalman_smoother) {
   init_aranovskiy(ar_filter);
   init_smoother(kalman_smoother);
   init_wave_filters();
 }
 
-void init_filters_alt(KalmANF<double>* kalmANF, KalmanSmootherVars* kalman_smoother) {
+void init_filters_alt(KalmANFFreqTracker<double>* kalmANF, KalmanSmootherVars* kalman_smoother) {
   kalmANF->init(0.985f, 1e-6f, 1e+5f, 1.0f, 0.0f, 0.0f, 1.9999f);
   init_smoother(kalman_smoother);
   init_wave_filters();
 }
 
-float estimate_freq(FrequencyTracker tracker, AranovskiyFilter<double>* arFilter, KalmANF<double>* kalmANF,
-                    SchmittTriggerFrequencyDetector* freqDetector, float a_noisy, float a_no_spikes, float delta_t, float t) {
+float estimate_freq(FrequencyTracker tracker, AranovskiyFreqTracker<double>* arFilter, KalmANFFreqTracker<double>* kalmANF,
+                    SchmittTriggerZCFreqTracker* freqDetector, float a_noisy, float a_no_spikes, float delta_t, float t) {
   float freq = FREQ_GUESS;
   if (tracker == Aranovskiy) {
     arFilter->update(a_no_spikes, delta_t);

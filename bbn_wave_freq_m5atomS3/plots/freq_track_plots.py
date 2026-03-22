@@ -37,7 +37,7 @@ FNAME_RE = re.compile(
 TRACKER_ORDER = ["aranovskiy", "kalmanf", "zerocross", "wavefreqtracker"]
 TRACKER_LABELS = {
     "aranovskiy": "Aranovskiy",
-    "kalmanf": "KalmANF",
+    "kalmanf": "KalmANFFreqTracker",
     "zerocross": "Zero crossing",
     "wavefreqtracker": "WaveFrequencyTracker",
 }

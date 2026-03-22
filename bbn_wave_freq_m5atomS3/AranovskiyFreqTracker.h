@@ -1,5 +1,5 @@
-#ifndef ARANOVSKIY_FILTER_H
-#define ARANOVSKIY_FILTER_H
+#ifndef ARANOVSKIY_FREQ_TRACKER_H
+#define ARANOVSKIY_FREQ_TRACKER_H
 
 #include <cmath>
 #include <algorithm>
@@ -18,7 +18,7 @@
 */
 
 template <typename Real = double>
-class AranovskiyFilter {
+class AranovskiyFreqTracker {
 public:
   // Parameters
   Real a     = Real(1);   // Input filter gain
@@ -40,7 +40,7 @@ public:
   static constexpr Real TIME_SCALE = Real(20); // can be tuned (20x faster internal clock)
 
   // Constructor
-  AranovskiyFilter(Real omega_up = Real(0.5) * 2 * M_PI,
+  AranovskiyFreqTracker(Real omega_up = Real(0.5) * 2 * M_PI,
                    Real gain     = Real(8),
                    Real x1_0     = Real(0),
                    Real theta_0  = Real(-0.09),
@@ -137,5 +137,5 @@ private:
   }
 };
 
-#endif // ARANOVSKIY_FILTER_H
+#endif // ARANOVSKIY_FREQ_TRACKER_H
 

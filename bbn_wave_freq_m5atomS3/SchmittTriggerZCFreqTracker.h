@@ -1,5 +1,5 @@
-#ifndef SCHMITT_TRIGGER_FREQ_DETECTOR_H
-#define SCHMITT_TRIGGER_FREQ_DETECTOR_H
+#ifndef SCHMITT_TRIGGER_ZC_FREQ_TRACKER_H
+#define SCHMITT_TRIGGER_ZC_FREQ_TRACKER_H
 
 #include <cmath>
 #include <algorithm>
@@ -15,7 +15,7 @@
 #define SCHMITT_TRIGGER_FALLBACK_FREQ 1e-2f
 #define SCHMITT_TRIGGER_FALLBACK_TIME 60.0f
 
-class SchmittTriggerFrequencyDetector {
+class SchmittTriggerZCFreqTracker {
   public:
     // Quality metrics for frequency estimation
     struct QualityMetrics {
@@ -29,7 +29,7 @@ class SchmittTriggerFrequencyDetector {
     // hysteresis must be positive and typically between 0.01 and 0.5
     // periodsInCycle must be positive integer
     // fallbackToLowFreqTime must be positive time in seconds
-    explicit SchmittTriggerFrequencyDetector(
+    explicit SchmittTriggerZCFreqTracker(
       float hysteresis = 0.1f, unsigned int periodsInCycle = 1, float fallbackToLowFreqTime = SCHMITT_TRIGGER_FALLBACK_TIME)
       : hysteresis(fabs(hysteresis)),
         upperThreshold(hysteresis),
@@ -283,4 +283,4 @@ class SchmittTriggerFrequencyDetector {
     size_t periodHistoryCount;
 };
 
-#endif // SCHMITT_TRIGGER_FREQ_DETECTOR_H
+#endif // SCHMITT_TRIGGER_ZC_FREQ_TRACKER_H
