@@ -9,19 +9,16 @@
   world-frame vertical inertial acceleration input.
 
   Core non-oscillatory model
-  --------------------------
       a_f_dot = (a_meas - a_f) / tau_a
       S_dot   = p
       p_dot   = v
       v_dot   = a_f - b_hat - kv*v - kp*p - ks*S
 
   Optional compile-time very-slow bias-trend channel
-  --------------------------------------------------
       d_dot     = (p - d) / tau_d
       b_hat_dot = kb*d - lambda_b*b_hat
 
   PII core
-  --------
   The base PII core is parameterized by a repeated real pole:
       (s + r)^3 = s^3 + 3r s^2 + 3r^2 s + r^3
 
@@ -31,7 +28,6 @@
       ks = r^3
 
   Adaptation hooks
-  ----------------
   This class includes OPTIONAL runtime hooks to schedule parameters from:
     - displacement-frequency estimate [Hz]
     - acceleration sigma / RMS estimate [same units as acceleration input]
@@ -48,7 +44,6 @@
          observer.update(a_meas, dt_imu);
 
   Important notes on adaptation
-  -----------------------------
   - Adaptation is intentionally conservative and all-real-pole.
   - Displacement frequency is treated as a scheduling HINT, not ground truth.
   - Acceleration sigma moderates aggressiveness:
@@ -58,7 +53,6 @@
     its current parameters.
 
   Embedded-friendliness
-  ---------------------
   - No dynamic allocation.
   - No exceptions.
   - No Eigen / STL containers.
@@ -66,7 +60,6 @@
   - Requires C++17 for if constexpr and std::clamp.
 
   Sign convention
-  ---------------
   - Input acceleration must already be the vertical inertial acceleration in
     your chosen world-frame sign convention.
   - Output displacement / velocity follow the same sign convention.
@@ -100,17 +93,17 @@ class VerticalPIIObserver {
 
 public:
     struct Config {
-        // ---- Base (reference) observer parameters ----
+        // Base (reference) observer parameters
         T r      = T(0.16);  // repeated real pole rate for PII core [1/s]
         T tau_a  = T(0.60);  // acceleration LPF time constant [s]
 
-        // ---- Optional bias-trend channel ----
+        // Optional bias-trend channel
         T tau_d    = T(40.0);   // slow trend extractor time constant [s]
         T kb       = T(1e-4);   // bias adaptation gain
         T lambda_b = T(1e-2);   // bias leak [1/s]
         T bias_limit = T(0.25); // |b_hat| clamp [m/s^2], <=0 disables clamp
 
-        // ---- State clamps for safety; <=0 disables clamp ----
+        // State clamps for safety; <=0 disables clamp
         T a_f_limit = T(50.0);
         T v_limit   = T(100.0);
         T p_limit   = T(1000.0);
@@ -229,10 +222,7 @@ public:
         reset();
     }
 
-    // ------------------------------------------------------------------------
     // Configuration
-    // ------------------------------------------------------------------------
-
     void configure(const Config& cfg) {
         cfg_ = cfg;
 
@@ -302,10 +292,7 @@ public:
         clamp_active_params_();
     }
 
-    // ------------------------------------------------------------------------
     // State reset
-    // ------------------------------------------------------------------------
-
     void reset(T p0 = T(0),
                T v0 = T(0),
                T a_f0 = T(0),
@@ -326,12 +313,9 @@ public:
         clamp_states_();
     }
 
-    // ------------------------------------------------------------------------
     // Base parameter setters
     // These define the REFERENCE values for adaptation, and the active values
     // immediately if adaptation is disabled.
-    // ------------------------------------------------------------------------
-
     void set_motion_pole_rate(T r) {
         base_r_ = std::max(finite_or_default_(r, base_r_), eps_());
         if (!adapt_cfg_.enabled) {
@@ -384,7 +368,6 @@ public:
         clamp_states_();
     }
 
-    // ------------------------------------------------------------------------
     // Adaptation hook
     //
     // Call this whenever your external trackers update.
@@ -403,8 +386,6 @@ public:
     //
     // You do NOT need to call this at IMU rate.
     // Typical tracker/update rates like 2..10 Hz are fine.
-    // ------------------------------------------------------------------------
-
     void update_adaptation(T f_disp_hz, T sigma_a, T confidence, T dt) {
         if (!adapt_cfg_.enabled) return;
         if (!(std::isfinite(dt) && dt > T(0))) return;
@@ -486,11 +467,8 @@ public:
         clamp_active_params_();
     }
 
-    // ------------------------------------------------------------------------
     // Per-sample observer update
     // Returns displacement estimate after update.
-    // ------------------------------------------------------------------------
-
     T update(T a_meas, T dt) {
         if (!(std::isfinite(dt) && dt > T(0))) {
             return p_;
@@ -533,10 +511,7 @@ public:
         return p_;
     }
 
-    // ------------------------------------------------------------------------
     // Accessors
-    // ------------------------------------------------------------------------
-
     // States
     T accel_filtered() const      { return a_f_; }
     T velocity() const            { return v_;   }
@@ -622,9 +597,7 @@ public:
     }
 
 private:
-    // ------------------------------------------------------------------------
     // Helpers
-    // ------------------------------------------------------------------------
 
     static constexpr T eps_() {
         return T(1e-9);
@@ -730,9 +703,7 @@ private:
 
 
 /*
-------------------------------------------------------------------------------
 USAGE EXAMPLE
-------------------------------------------------------------------------------
 
 #include "VerticalPIIObserver.h"
 
@@ -793,5 +764,4 @@ Notes:
   update_adaptation().
 - If you do not want bias estimation at all, instantiate:
     marine_obs::VerticalPIIObserver<float, false>
-------------------------------------------------------------------------------
 */
