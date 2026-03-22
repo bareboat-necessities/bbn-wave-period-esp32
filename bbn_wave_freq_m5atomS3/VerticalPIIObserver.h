@@ -1,13 +1,10 @@
 #pragma once
 
 /*
-  VerticalPIIObserver.h
-  ---------------------
-
   Header-only, embedded-friendly vertical-motion observer.
 
   Purpose
-  -------
+  
   Estimate vertical displacement / velocity from an already gravity-compensated,
   world-frame vertical inertial acceleration input.
 
