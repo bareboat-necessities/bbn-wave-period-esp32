@@ -4,24 +4,150 @@
 #include <cmath>
 #include <limits>
 #include <type_traits>
+#include <utility>
 
 #include "VerticalPIIObserver.h"
-#include "PLLFreqTracker.h"
+#include "FrequencyTrackerPolicy.h"
 
 namespace marine_obs {
+namespace detail {
 
-template<typename T = float, bool WithBias = true, typename AccelFreqTrackerT = PLLFreqTracker<T>>
+template<typename T>
+struct EmptyAccelFreqTrackerConfig {
+    T f_init_hz = T(0.12);
+};
+
+template<typename Tracker, typename T, typename = void>
+struct tracker_config_type {
+    using type = EmptyAccelFreqTrackerConfig<T>;
+};
+
+template<typename Tracker, typename T>
+struct tracker_config_type<Tracker, T, std::void_t<typename Tracker::Config>> {
+    using type = typename Tracker::Config;
+};
+
+template<typename Tracker, typename T>
+using tracker_config_t = typename tracker_config_type<Tracker, T>::type;
+
+template<typename>
+inline constexpr bool always_false_v = false;
+
+template<typename Config, typename T>
+Config make_default_tracker_config() {
+    Config cfg{};
+
+    if constexpr (requires { cfg.f_min_hz; })               cfg.f_min_hz = T(0.045);
+    if constexpr (requires { cfg.f_max_hz; })               cfg.f_max_hz = T(0.35);
+    if constexpr (requires { cfg.f_init_hz; })              cfg.f_init_hz = T(0.12);
+
+    if constexpr (requires { cfg.pre_hp_hz; })              cfg.pre_hp_hz = T(0.015);
+    if constexpr (requires { cfg.pre_lp_hz; })              cfg.pre_lp_hz = T(0.45);
+    if constexpr (requires { cfg.demod_lp_hz; })            cfg.demod_lp_hz = T(0.05);
+    if constexpr (requires { cfg.loop_bandwidth_hz; })      cfg.loop_bandwidth_hz = T(0.018);
+    if constexpr (requires { cfg.loop_damping; })           cfg.loop_damping = T(1.0);
+    if constexpr (requires { cfg.max_dfdt_hz_per_s; })      cfg.max_dfdt_hz_per_s = T(0.04);
+    if constexpr (requires { cfg.recenter_tau_s; })         cfg.recenter_tau_s = T(12.0);
+    if constexpr (requires { cfg.output_smooth_tau_s; })    cfg.output_smooth_tau_s = T(4.0);
+    if constexpr (requires { cfg.power_tau_s; })            cfg.power_tau_s = T(14.0);
+    if constexpr (requires { cfg.confidence_tau_s; })       cfg.confidence_tau_s = T(10.0);
+    if constexpr (requires { cfg.lock_rms_min; })           cfg.lock_rms_min = T(0.012);
+    if constexpr (requires { cfg.enable_coarse_assist; })   cfg.enable_coarse_assist = true;
+    if constexpr (requires { cfg.coarse_hysteresis_frac; }) cfg.coarse_hysteresis_frac = T(0.20);
+    if constexpr (requires { cfg.coarse_smooth_tau_s; })    cfg.coarse_smooth_tau_s = T(4.5);
+    if constexpr (requires { cfg.coarse_pull_tau_s; })      cfg.coarse_pull_tau_s = T(3.5);
+    if constexpr (requires { cfg.coarse_timeout_s; })       cfg.coarse_timeout_s = T(18.0);
+
+    return cfg;
+}
+
+template<typename Config, typename T>
+T tracker_init_frequency_hz(const Config& cfg, T fallback = T(0.12)) {
+    if constexpr (requires { cfg.f_init_hz; }) {
+        return static_cast<T>(cfg.f_init_hz);
+    } else {
+        return fallback;
+    }
+}
+
+template<typename Tracker, typename Config>
+void tracker_configure(Tracker& tracker, const Config& cfg) {
+    if constexpr (requires { tracker.configure(cfg); }) {
+        tracker.configure(cfg);
+    } else {
+        (void)tracker;
+        (void)cfg;
+    }
+}
+
+template<typename Tracker, typename T>
+void tracker_reset(Tracker& tracker, T f_init_hz) {
+    if constexpr (requires { tracker.reset(f_init_hz); }) {
+        tracker.reset(f_init_hz);
+    } else if constexpr (std::is_default_constructible_v<Tracker>) {
+        (void)f_init_hz;
+        tracker = Tracker{};
+    } else {
+        static_assert(always_false_v<Tracker>, "Tracker must provide reset(f_init_hz) or be default-constructible.");
+    }
+}
+
+template<typename Tracker, typename T>
+void tracker_step(Tracker& tracker, T a_meas, T dt) {
+    if constexpr (requires { tracker.update(a_meas, dt); }) {
+        tracker.update(a_meas, dt);
+    } else if constexpr (requires { tracker.run(static_cast<float>(a_meas),
+                                                static_cast<float>(dt)); }) {
+        (void)tracker.run(static_cast<float>(a_meas), static_cast<float>(dt));
+    } else {
+        static_assert(always_false_v<Tracker>, "Tracker must provide update(a, dt) or run(a, dt).");
+    }
+}
+
+template<typename Tracker, typename T>
+T tracker_get_frequency_hz(const Tracker& tracker) {
+    return static_cast<T>(tracker.getFrequencyHz());
+}
+
+template<typename Tracker, typename T>
+T tracker_get_raw_frequency_hz(const Tracker& tracker) {
+    return static_cast<T>(tracker.getRawFrequencyHz());
+}
+
+template<typename Tracker, typename T>
+T tracker_get_confidence(const Tracker& tracker) {
+    return static_cast<T>(tracker.getConfidence());
+}
+
+template<typename Tracker>
+bool tracker_is_locked(const Tracker& tracker) {
+    return tracker.isLocked();
+}
+
+template<typename Tracker>
+bool tracker_has_coarse(const Tracker& tracker) {
+    return tracker.hasCoarseEstimate();
+}
+
+template<typename Tracker, typename T>
+T tracker_get_coarse_frequency_hz(const Tracker& tracker) {
+    return static_cast<T>(tracker.getCoarseFrequencyHz());
+}
+
+} // namespace detail
+
+template<typename T = float, bool WithBias = true, TrackerType TT = TrackerType::PLLFREQTRACKER>
 class AdaptiveVerticalPII {
-    static_assert(std::is_floating_point<T>::value,
-                  "AdaptiveVerticalPII<T>: T must be a floating-point type.");
+    static_assert(std::is_floating_point<T>::value, "AdaptiveVerticalPII<T>: T must be a floating-point type.");
 
 public:
     using Observer = VerticalPIIObserver<T, WithBias>;
     using ObserverConfig = typename Observer::Config;
     using ObserverAdaptConfig = typename Observer::AdaptConfig;
     using ObserverSnapshot = typename Observer::Snapshot;
-    using AccelFreqTracker = AccelFreqTrackerT;
-    using AccelFreqTrackerConfig = typename AccelFreqTracker::Config;
+
+    using AccelFreqTracker = TrackerPolicy<TT>;
+    using AccelFreqTrackerConfig = detail::tracker_config_t<AccelFreqTracker, T>;
 
     struct Config {
         ObserverConfig observer = [] {
@@ -39,6 +165,7 @@ public:
             cfg.d_limit = T(20.0);
             return cfg;
         }();
+
         ObserverAdaptConfig adaptation = [] {
             ObserverAdaptConfig cfg{};
             cfg.enabled = true;
@@ -65,29 +192,8 @@ public:
             cfg.kb_max = T(6e-5);
             return cfg;
         }();
-        AccelFreqTrackerConfig accel_freq_tracker = [] {
-            AccelFreqTrackerConfig cfg{};
-            cfg.f_min_hz = T(0.045);
-            cfg.f_max_hz = T(0.35);
-            cfg.f_init_hz = T(0.12);
-            cfg.pre_hp_hz = T(0.015);
-            cfg.pre_lp_hz = T(0.45);
-            cfg.demod_lp_hz = T(0.05);
-            cfg.loop_bandwidth_hz = T(0.018);
-            cfg.loop_damping = T(1.0);
-            cfg.max_dfdt_hz_per_s = T(0.04);
-            cfg.recenter_tau_s = T(12.0);
-            cfg.output_smooth_tau_s = T(4.0);
-            cfg.power_tau_s = T(14.0);
-            cfg.confidence_tau_s = T(10.0);
-            cfg.lock_rms_min = T(0.012);
-            cfg.enable_coarse_assist = true;
-            cfg.coarse_hysteresis_frac = T(0.20);
-            cfg.coarse_smooth_tau_s = T(4.5);
-            cfg.coarse_pull_tau_s = T(3.5);
-            cfg.coarse_timeout_s = T(18.0);
-            return cfg;
-        }();
+
+        AccelFreqTrackerConfig accel_freq_tracker = detail::make_default_tracker_config<AccelFreqTrackerConfig, T>();
 
         T sigma_mean_tau_s = T(20.0);
         T sigma_var_tau_s  = T(6.0);
@@ -96,29 +202,12 @@ public:
         bool auto_schedule_from_accel_freq = true;
         T auto_schedule_period_s = T(0.50);
 
-        // When auto scheduling is enabled, also force observer adaptation on.
         bool force_enable_adaptation_when_auto_schedule = true;
-
-        // External default confidence for explicit user-provided scheduling calls.
         T default_external_confidence = T(1.0);
 
-        // Fallback confidence shaping for the INTERNAL accel-frequency path.
-        //
-        // Raw tracker confidence can stay too low for too long, which makes the
-        // auto scheduler look "dead" because VerticalPIIObserver holds params
-        // below AdaptConfig::min_confidence.
-        //
-        // So:
-        //   - if coarse estimate exists, raise confidence at least to this floor
-        //   - if the tracker says it is locked, raise confidence at least to this
-        //
-        // These do NOT force bad frequencies into the observer from t=0; they only
-        // help the auto path actually schedule once the tracker has some structure.
         T fallback_confidence_floor = T(0.52);
         T fallback_confidence_when_locked = T(0.82);
 
-        // Blend the PLL-style estimate with the coarse zero-crossing helper while
-        // the tracker is still learning the dominant sea state.
         T coarse_schedule_blend = T(0.48);
         T coarse_schedule_confidence_floor = T(0.62);
     };
@@ -148,8 +237,7 @@ public:
 
 public:
     explicit AdaptiveVerticalPII(const Config& cfg = Config())
-        : observer_(cfg.observer, cfg.adaptation),
-          accel_freq_tracker_(cfg.accel_freq_tracker) {
+        : observer_(cfg.observer, cfg.adaptation), accel_freq_tracker_() {
         configure(cfg);
         reset();
     }
@@ -159,13 +247,12 @@ public:
 
         observer_.configure(cfg_.observer);
         observer_.configure_adaptation(cfg_.adaptation);
-        accel_freq_tracker_.configure(cfg_.accel_freq_tracker);
+        detail::tracker_configure(accel_freq_tracker_, cfg_.accel_freq_tracker);
 
         if (cfg_.auto_schedule_from_accel_freq &&
             cfg_.force_enable_adaptation_when_auto_schedule) {
             observer_.set_adaptation_enabled(true);
         }
-
         resetSchedulerState_();
     }
 
@@ -182,7 +269,10 @@ public:
         accel_var_   = T(0);
         accel_sigma_ = cfg_.sigma_floor;
 
-        accel_freq_tracker_.reset(cfg_.accel_freq_tracker.f_init_hz);
+        detail::tracker_reset(
+            accel_freq_tracker_,
+            detail::tracker_init_frequency_hz(cfg_.accel_freq_tracker, T(0.12))
+        );
 
         resetSchedulerState_();
     }
@@ -193,7 +283,7 @@ public:
         }
 
         updateAccelSigma_(a_meas, dt);
-        accel_freq_tracker_.update(a_meas, dt);
+        detail::tracker_step(accel_freq_tracker_, a_meas, dt);
 
         if (cfg_.auto_schedule_from_accel_freq) {
             sched_accum_s_ += dt;
@@ -212,8 +302,7 @@ public:
         return observer_.update(a_meas, dt);
     }
 
-    void updateAdaptationFromDisplacementFrequency(T f_disp_hz,
-                                                   T dt_est,
+    void updateAdaptationFromDisplacementFrequency(T f_disp_hz, T dt_est,
                                                    T confidence = std::numeric_limits<T>::quiet_NaN())
     {
         if (!std::isfinite(confidence)) {
@@ -232,9 +321,7 @@ public:
         );
     }
 
-    void updateAdaptationExternal(T f_disp_hz,
-                                  T sigma_a,
-                                  T dt_est,
+    void updateAdaptationExternal(T f_disp_hz, T sigma_a, T dt_est,
                                   T confidence = std::numeric_limits<T>::quiet_NaN())
     {
         if (!std::isfinite(confidence)) {
@@ -261,10 +348,12 @@ public:
 
         const T conf_used = computeFallbackConfidence_();
         last_auto_confidence_used_ = conf_used;
-        last_auto_tracker_locked_ = accel_freq_tracker_.isLocked();
-        last_auto_tracker_has_coarse_ = accel_freq_tracker_.hasCoarseEstimate();
+        last_auto_tracker_locked_ = detail::tracker_is_locked(accel_freq_tracker_);
+        last_auto_tracker_has_coarse_ = detail::tracker_has_coarse(accel_freq_tracker_);
         last_auto_sched_freq_hz_ = f_sched_hz;
-        last_auto_coarse_freq_hz_ = accel_freq_tracker_.getCoarseFrequencyHz();
+        last_auto_coarse_freq_hz_ = last_auto_tracker_has_coarse_
+            ? detail::tracker_get_coarse_frequency_hz<AccelFreqTracker, T>(accel_freq_tracker_)
+            : T(0);
 
         observer_.update_adaptation(
             f_sched_hz,
@@ -276,7 +365,6 @@ public:
 
     void setAutoScheduleFromAccelFreq(bool on) {
         cfg_.auto_schedule_from_accel_freq = on;
-
         if (on && cfg_.force_enable_adaptation_when_auto_schedule) {
             observer_.set_adaptation_enabled(true);
         }
@@ -314,8 +402,13 @@ public:
     T accelVar() const   { return accel_var_; }
     T accelSigma() const { return accel_sigma_; }
 
-    T accelFrequencyHz() const { return accel_freq_tracker_.getFrequencyHz(); }
-    T accelFrequencyConfidence() const { return accel_freq_tracker_.getConfidence(); }
+    T accelFrequencyHz() const {
+        return detail::tracker_get_frequency_hz<AccelFreqTracker, T>(accel_freq_tracker_);
+    }
+
+    T accelFrequencyConfidence() const {
+        return detail::tracker_get_confidence<AccelFreqTracker, T>(accel_freq_tracker_);
+    }
 
     T lastSchedulerDt() const { return last_sched_dt_; }
     T autoScheduledConfidenceUsed() const { return last_auto_confidence_used_; }
@@ -334,14 +427,16 @@ public:
         s.auto_schedule_from_accel_freq = cfg_.auto_schedule_from_accel_freq;
         s.observer_adaptation_enabled = observer_.adaptation_enabled();
 
-        s.accel_freq_hz = accel_freq_tracker_.getFrequencyHz();
-        s.accel_freq_confidence_raw = accel_freq_tracker_.getConfidence();
+        s.accel_freq_hz =
+            detail::tracker_get_frequency_hz<AccelFreqTracker, T>(accel_freq_tracker_);
+        s.accel_freq_confidence_raw =
+            detail::tracker_get_confidence<AccelFreqTracker, T>(accel_freq_tracker_);
         s.accel_freq_confidence_used = last_auto_confidence_used_;
         s.accel_freq_sched_hz = last_auto_sched_freq_hz_;
         s.accel_freq_coarse_hz = last_auto_coarse_freq_hz_;
 
-        s.accel_freq_locked = accel_freq_tracker_.isLocked();
-        s.accel_freq_has_coarse = accel_freq_tracker_.hasCoarseEstimate();
+        s.accel_freq_locked = detail::tracker_is_locked(accel_freq_tracker_);
+        s.accel_freq_has_coarse = detail::tracker_has_coarse(accel_freq_tracker_);
         return s;
     }
 
@@ -370,23 +465,12 @@ private:
         cfg.sigma_var_tau_s  = std::max(finite_or_default_(cfg.sigma_var_tau_s,  T(6)),  eps_());
         cfg.sigma_floor      = std::max(finite_or_default_(cfg.sigma_floor, T(1e-4)), T(0));
 
-        cfg.auto_schedule_period_s =
-            std::max(finite_or_default_(cfg.auto_schedule_period_s, T(0.25)), eps_());
-
-        cfg.default_external_confidence =
-            clamp01_(finite_or_default_(cfg.default_external_confidence, T(1)));
-
-        cfg.fallback_confidence_floor =
-            clamp01_(finite_or_default_(cfg.fallback_confidence_floor, T(0.35)));
-
-        cfg.fallback_confidence_when_locked =
-            clamp01_(finite_or_default_(cfg.fallback_confidence_when_locked, T(0.70)));
-
-        cfg.coarse_schedule_blend =
-            clamp01_(finite_or_default_(cfg.coarse_schedule_blend, T(0.50)));
-
-        cfg.coarse_schedule_confidence_floor =
-            clamp01_(finite_or_default_(cfg.coarse_schedule_confidence_floor, T(0.45)));
+        cfg.auto_schedule_period_s =  std::max(finite_or_default_(cfg.auto_schedule_period_s, T(0.25)), eps_());
+        cfg.default_external_confidence = clamp01_(finite_or_default_(cfg.default_external_confidence, T(1)));
+        cfg.fallback_confidence_floor = clamp01_(finite_or_default_(cfg.fallback_confidence_floor, T(0.35)));
+        cfg.fallback_confidence_when_locked = clamp01_(finite_or_default_(cfg.fallback_confidence_when_locked, T(0.70)));
+        cfg.coarse_schedule_blend = clamp01_(finite_or_default_(cfg.coarse_schedule_blend, T(0.50)));
+        cfg.coarse_schedule_confidence_floor = clamp01_(finite_or_default_(cfg.coarse_schedule_confidence_floor, T(0.45)));
 
         if (cfg.auto_schedule_from_accel_freq &&
             cfg.force_enable_adaptation_when_auto_schedule) {
@@ -428,47 +512,50 @@ private:
         }
     }
 
-T computeScheduledFrequencyHz_() const {
-    T f_sched = accel_freq_tracker_.getFrequencyHz();
-    if (!(std::isfinite(f_sched) && f_sched > T(0))) {
-        f_sched = accel_freq_tracker_.getRawFrequencyHz();
-    }
+    T computeScheduledFrequencyHz_() const {
+        T f_sched =
+            detail::tracker_get_frequency_hz<AccelFreqTracker, T>(accel_freq_tracker_);
 
-    if (accel_freq_tracker_.hasCoarseEstimate()) {
-        const T coarse_hz = accel_freq_tracker_.getCoarseFrequencyHz();
-        if (std::isfinite(coarse_hz) && coarse_hz > T(0)) {
-            T blend = cfg_.coarse_schedule_blend;
+        if (!(std::isfinite(f_sched) && f_sched > T(0))) {
+            f_sched =
+                detail::tracker_get_raw_frequency_hz<AccelFreqTracker, T>(accel_freq_tracker_);
+        }
 
-            // Give the coarse estimate more authority before PLL lock.
-            if (!accel_freq_tracker_.isLocked()) {
-                blend = std::max(blend, T(0.75));
-            }
+        if (detail::tracker_has_coarse(accel_freq_tracker_)) {
+            const T coarse_hz =
+                detail::tracker_get_coarse_frequency_hz<AccelFreqTracker, T>(accel_freq_tracker_);
 
-            if (!(std::isfinite(f_sched) && f_sched > T(0))) {
-                f_sched = coarse_hz;
-            } else {
-                f_sched += blend * (coarse_hz - f_sched);
+            if (std::isfinite(coarse_hz) && coarse_hz > T(0)) {
+                T blend = cfg_.coarse_schedule_blend;
+
+                if (!detail::tracker_is_locked(accel_freq_tracker_)) {
+                    blend = std::max(blend, T(0.75));
+                }
+
+                if (!(std::isfinite(f_sched) && f_sched > T(0))) {
+                    f_sched = coarse_hz;
+                } else {
+                    f_sched += blend * (coarse_hz - f_sched);
+                }
             }
         }
+
+        return f_sched;
     }
 
-    return f_sched;
-}
-
     T computeFallbackConfidence_() const {
-        T conf = accel_freq_tracker_.getConfidence();
+        T conf =
+            detail::tracker_get_confidence<AccelFreqTracker, T>(accel_freq_tracker_);
+
         if (!std::isfinite(conf)) {
             conf = T(0);
         }
 
-        // If the tracker has at least coarse structure, do not leave the fallback
-        // path stuck forever below the observer's min_confidence gate.
-        if (accel_freq_tracker_.hasCoarseEstimate()) {
-            conf = std::max(conf, std::max(cfg_.fallback_confidence_floor,
-                                           cfg_.coarse_schedule_confidence_floor));
+        if (detail::tracker_has_coarse(accel_freq_tracker_)) {
+            conf = std::max(conf, std::max(cfg_.fallback_confidence_floor, cfg_.coarse_schedule_confidence_floor));
         }
 
-        if (accel_freq_tracker_.isLocked()) {
+        if (detail::tracker_is_locked(accel_freq_tracker_)) {
             conf = std::max(conf, cfg_.fallback_confidence_when_locked);
         }
 
@@ -494,5 +581,17 @@ private:
     bool last_auto_tracker_locked_ = false;
     bool last_auto_tracker_has_coarse_ = false;
 };
+
+template<typename T = float, bool WithBias = true>
+using AdaptiveVerticalPII_PLL = AdaptiveVerticalPII<T, WithBias, TrackerType::PLLFREQTRACKER>;
+
+template<typename T = float, bool WithBias = true>
+using AdaptiveVerticalPII_Aranovskiy = AdaptiveVerticalPII<T, WithBias, TrackerType::ARANOVSKIY>;
+
+template<typename T = float, bool WithBias = true>
+using AdaptiveVerticalPII_KalmANF = AdaptiveVerticalPII<T, WithBias, TrackerType::KALMANF>;
+
+template<typename T = float, bool WithBias = true>
+using AdaptiveVerticalPII_ZeroCross = AdaptiveVerticalPII<T, WithBias, TrackerType::ZEROCROSS>;
 
 } // namespace marine_obs
