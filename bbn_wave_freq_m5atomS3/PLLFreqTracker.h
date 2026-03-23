@@ -64,8 +64,8 @@ class PLLFreqTracker {
 public:
   struct Config {
     // Search band for dominant wave frequency.
-    Real f_min_hz = Real(0.04);
-    Real f_max_hz = Real(0.60);
+    Real f_min_hz = Real(0.045);
+    Real f_max_hz = Real(0.35);
 
     // Initial / nominal frequency used at reset and for recentering when unlocked.
     Real f_init_hz = Real(0.12);
@@ -73,29 +73,29 @@ public:
     // Front-end preprocessing:
     //   HP removes tilt leakage / drift / quasi-DC contamination
     //   LP suppresses higher-frequency noise and non-wave content
-    Real pre_hp_hz = Real(0.03);
-    Real pre_lp_hz = Real(0.80);
+    Real pre_hp_hz = Real(0.015);
+    Real pre_lp_hz = Real(0.45);
 
     // Baseband LP for demodulated I/Q terms.
     // Should usually be smaller than the wave band, but not too tiny.
-    Real demod_lp_hz = Real(0.08);
+    Real demod_lp_hz = Real(0.05);
 
     // PLL natural bandwidth and damping.
     // Lower bandwidth -> less jitter, more lag.
     // Higher bandwidth -> faster tracking, more noise sensitivity.
-    Real loop_bandwidth_hz = Real(0.03);
-    Real loop_damping      = Real(0.90);
+    Real loop_bandwidth_hz = Real(0.018);
+    Real loop_damping      = Real(1.0);
 
     // Output frequency smoothing.
-    Real output_smooth_tau_s = Real(1.5);
+    Real output_smooth_tau_s = Real(4.0);
 
     // Power / confidence smoothing.
-    Real power_tau_s      = Real(6.0);
-    Real confidence_tau_s = Real(3.0);
+    Real power_tau_s      = Real(14.0);
+    Real confidence_tau_s = Real(10.0);
 
     // Minimum RMS of the prefiltered signal required for reliable tracking.
     // Units are the same as the input units.
-    Real lock_rms_min = Real(0.005);
+    Real lock_rms_min = Real(0.012);
 
     // Coherence thresholds.
     // coherence = 1 means "very sinusoidal / strongly dominant single tone"
@@ -103,10 +103,10 @@ public:
     Real unlock_coherence_min = Real(0.25);
 
     // Frequency slew limit for stability.
-    Real max_dfdt_hz_per_s = Real(0.08);
+    Real max_dfdt_hz_per_s = Real(0.04);
 
     // When confidence is poor, slowly drift frequency back toward f_init_hz.
-    Real recenter_tau_s = Real(20.0);
+    Real recenter_tau_s = Real(12.0);
 
     // Internal substep size.
     // Larger dt is split into smaller stable substeps.
@@ -114,10 +114,10 @@ public:
 
     // Optional coarse acquisition assist from thresholded period detection.
     bool enable_coarse_assist = true;
-    Real coarse_hysteresis_frac = Real(0.30); // threshold = frac * RMS
-    Real coarse_smooth_tau_s    = Real(6.0);
-    Real coarse_pull_tau_s      = Real(4.0);
-    Real coarse_timeout_s       = Real(20.0);
+    Real coarse_hysteresis_frac = Real(0.20); // threshold = frac * RMS
+    Real coarse_smooth_tau_s    = Real(4.5);
+    Real coarse_pull_tau_s      = Real(3.5);
+    Real coarse_timeout_s       = Real(18.0);
   };
 
   explicit PLLFreqTracker(const Config& cfg = Config()) {

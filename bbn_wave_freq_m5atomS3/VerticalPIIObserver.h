@@ -94,28 +94,28 @@ class VerticalPIIObserver {
 public:
     struct Config {
         // Base (reference) observer parameters
-        T r      = T(0.16);  // repeated real pole rate for PII core [1/s]
-        T tau_a  = T(0.60);  // acceleration LPF time constant [s]
+        T r      = T(0.150); // repeated real pole rate for PII core [1/s]
+        T tau_a  = T(0.68);  // acceleration LPF time constant [s]
 
         // Optional bias-trend channel
-        T tau_d    = T(40.0);   // slow trend extractor time constant [s]
-        T kb       = T(1e-4);   // bias adaptation gain
-        T lambda_b = T(1e-2);   // bias leak [1/s]
-        T bias_limit = T(0.25); // |b_hat| clamp [m/s^2], <=0 disables clamp
+        T tau_d    = T(49.0);   // slow trend extractor time constant [s]
+        T kb       = T(2.5e-5); // bias adaptation gain
+        T lambda_b = T(3.0e-3); // bias leak [1/s]
+        T bias_limit = T(0.12); // |b_hat| clamp [m/s^2], <=0 disables clamp
 
         // State clamps for safety; <=0 disables clamp
         T a_f_limit = T(50.0);
-        T v_limit   = T(100.0);
-        T p_limit   = T(1000.0);
-        T S_limit   = T(10000.0);
-        T d_limit   = T(1000.0); // only used when WithBias=true
+        T v_limit   = T(50.0);
+        T p_limit   = T(20.0);
+        T S_limit   = T(200.0);
+        T d_limit   = T(20.0);  // only used when WithBias=true
     };
 
     struct AdaptConfig {
-        bool enabled = false;
+        bool enabled = true;
 
         // If confidence < min_confidence, update_adaptation() holds parameters.
-        T min_confidence = T(0.25);
+        T min_confidence = T(0.22);
 
         // Valid input ranges for scheduling signals.
         T f_disp_min_hz = T(0.02);
@@ -127,12 +127,12 @@ public:
         // Reference values for normalized scheduling.
         // These should reflect a "typical" sea state for which Config::r and
         // Config::tau_a are already reasonable.
-        T f_disp_ref_hz = T(0.17);
-        T sigma_a_ref   = T(0.30);
+        T f_disp_ref_hz = T(0.12);
+        T sigma_a_ref   = T(0.95);
 
         // Smoothing of tracker inputs and scheduled parameters.
-        T input_smooth_tau = T(5.0);   // [s] smoothing for f_disp and sigma_a
-        T param_smooth_tau = T(10.0);  // [s] smoothing for scheduled params
+        T input_smooth_tau = T(4.5);  // [s] smoothing for f_disp and sigma_a
+        T param_smooth_tau = T(7.5);   // [s] smoothing for scheduled params
 
         // Frequency and sigma influence on the PII pole rate:
         //
@@ -143,8 +143,8 @@ public:
         // Recommended interpretation:
         //   r_freq_exp  > 0 : faster displacement waves allow a somewhat faster PII core
         //   r_sigma_exp > 0 : higher accel sigma reduces restoring aggressiveness
-        T r_freq_exp  = T(0.50);
-        T r_sigma_exp = T(0.50);
+        T r_freq_exp  = T(0.28);
+        T r_sigma_exp = T(0.02);
 
         // Frequency and sigma influence on acceleration LPF time constant:
         //
@@ -155,31 +155,31 @@ public:
         // With defaults:
         //   faster displacement waves -> smaller tau_a (faster LPF)
         //   larger sigma              -> larger tau_a (more smoothing)
-        T tau_a_freq_exp  = T(-0.75);
-        T tau_a_sigma_exp = T(-0.50);
+        T tau_a_freq_exp  = T(-0.40);
+        T tau_a_sigma_exp = T(-0.03);
 
         // Optional scheduling of bias-trend channel.
         // Conservative defaults:
         //   - tau_d becomes larger when sigma is high
         //   - kb becomes smaller when sigma is high
-        T tau_d_freq_exp  = T(0.0);
-        T tau_d_sigma_exp = T(-0.50);
+        T tau_d_freq_exp  = T(-0.03);
+        T tau_d_sigma_exp = T(-0.01);
 
-        T kb_freq_exp     = T(0.0);
-        T kb_sigma_exp    = T(1.00);
+        T kb_freq_exp     = T(0.02);
+        T kb_sigma_exp    = T(0.08);
 
         // Hard bounds on scheduled parameters.
-        T r_min     = T(0.05);
-        T r_max     = T(0.30);
+        T r_min     = T(0.145);
+        T r_max     = T(0.225);
 
-        T tau_a_min = T(0.10);
-        T tau_a_max = T(2.00);
+        T tau_a_min = T(0.50);
+        T tau_a_max = T(0.90);
 
-        T tau_d_min = T(5.0);
-        T tau_d_max = T(120.0);
+        T tau_d_min = T(44.0);
+        T tau_d_max = T(58.0);
 
-        T kb_min    = T(0.0);
-        T kb_max    = T(1e-2);
+        T kb_min    = T(5e-6);
+        T kb_max    = T(6e-5);
     };
 
     struct Snapshot {
@@ -226,11 +226,11 @@ public:
     void configure(const Config& cfg) {
         cfg_ = cfg;
 
-        base_r_     = std::max(finite_or_default_(cfg.r, T(0.16)), eps_());
-        base_tau_a_ = std::max(finite_or_default_(cfg.tau_a, T(0.60)), eps_());
+        base_r_     = std::max(finite_or_default_(cfg.r, T(0.150)), eps_());
+        base_tau_a_ = std::max(finite_or_default_(cfg.tau_a, T(0.68)), eps_());
 
         if constexpr (WithBias) {
-            base_tau_d_ = std::max(finite_or_default_(cfg.tau_d, T(40.0)), eps_());
+            base_tau_d_ = std::max(finite_or_default_(cfg.tau_d, T(49.0)), eps_());
             base_kb_    = std::max(finite_or_zero_(cfg.kb), T(0));
             lambda_b_   = std::max(finite_or_zero_(cfg.lambda_b), T(0));
         } else {

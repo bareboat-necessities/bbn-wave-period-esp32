@@ -98,30 +98,92 @@ public:
 
     struct Config {
         // Underlying adaptive vertical observer
-        CoreConfig core{};
+        CoreConfig core = [] {
+            CoreConfig cfg{};
+            cfg.observer.r = T(0.150);
+            cfg.observer.tau_a = T(0.68);
+            cfg.observer.tau_d = T(49.0);
+            cfg.observer.kb = T(2.5e-5);
+            cfg.observer.lambda_b = T(3.0e-3);
+            cfg.observer.bias_limit = T(0.12);
+            cfg.observer.a_f_limit = T(50.0);
+            cfg.observer.v_limit = T(50.0);
+            cfg.observer.p_limit = T(20.0);
+            cfg.observer.S_limit = T(200.0);
+            cfg.observer.d_limit = T(20.0);
+            cfg.adaptation.enabled = true;
+            cfg.adaptation.min_confidence = T(0.22);
+            cfg.adaptation.f_disp_ref_hz = T(0.12);
+            cfg.adaptation.sigma_a_ref = T(0.95);
+            cfg.adaptation.input_smooth_tau = T(4.5);
+            cfg.adaptation.param_smooth_tau = T(7.5);
+            cfg.adaptation.r_freq_exp = T(0.28);
+            cfg.adaptation.r_sigma_exp = T(0.02);
+            cfg.adaptation.tau_a_freq_exp = T(-0.40);
+            cfg.adaptation.tau_a_sigma_exp = T(-0.03);
+            cfg.adaptation.tau_d_freq_exp = T(-0.03);
+            cfg.adaptation.tau_d_sigma_exp = T(-0.01);
+            cfg.adaptation.kb_freq_exp = T(0.02);
+            cfg.adaptation.kb_sigma_exp = T(0.08);
+            cfg.adaptation.r_min = T(0.145);
+            cfg.adaptation.r_max = T(0.225);
+            cfg.adaptation.tau_a_min = T(0.50);
+            cfg.adaptation.tau_a_max = T(0.90);
+            cfg.adaptation.tau_d_min = T(44.0);
+            cfg.adaptation.tau_d_max = T(58.0);
+            cfg.adaptation.kb_min = T(5e-6);
+            cfg.adaptation.kb_max = T(6e-5);
+            cfg.auto_schedule_from_accel_freq = true;
+            cfg.auto_schedule_period_s = T(0.50);
+            cfg.force_enable_adaptation_when_auto_schedule = true;
+            cfg.fallback_confidence_floor = T(0.52);
+            cfg.fallback_confidence_when_locked = T(0.82);
+            cfg.coarse_schedule_blend = T(0.48);
+            cfg.coarse_schedule_confidence_floor = T(0.62);
+            cfg.accel_freq_tracker.f_min_hz = T(0.045);
+            cfg.accel_freq_tracker.f_max_hz = T(0.35);
+            cfg.accel_freq_tracker.f_init_hz = T(0.12);
+            cfg.accel_freq_tracker.pre_hp_hz = T(0.015);
+            cfg.accel_freq_tracker.pre_lp_hz = T(0.45);
+            cfg.accel_freq_tracker.demod_lp_hz = T(0.05);
+            cfg.accel_freq_tracker.loop_bandwidth_hz = T(0.018);
+            cfg.accel_freq_tracker.loop_damping = T(1.0);
+            cfg.accel_freq_tracker.max_dfdt_hz_per_s = T(0.04);
+            cfg.accel_freq_tracker.recenter_tau_s = T(12.0);
+            cfg.accel_freq_tracker.output_smooth_tau_s = T(4.0);
+            cfg.accel_freq_tracker.power_tau_s = T(14.0);
+            cfg.accel_freq_tracker.confidence_tau_s = T(10.0);
+            cfg.accel_freq_tracker.lock_rms_min = T(0.012);
+            cfg.accel_freq_tracker.enable_coarse_assist = true;
+            cfg.accel_freq_tracker.coarse_hysteresis_frac = T(0.20);
+            cfg.accel_freq_tracker.coarse_smooth_tau_s = T(4.5);
+            cfg.accel_freq_tracker.coarse_pull_tau_s = T(3.5);
+            cfg.accel_freq_tracker.coarse_timeout_s = T(18.0);
+            return cfg;
+        }();
 
         // Mahony gains used when adaptation is disabled, and as reset/initial values
-        T mahony_twoKp = static_cast<T>(Mahony_AHRS<T>::twoKpDef);
-        T mahony_twoKi = static_cast<T>(Mahony_AHRS<T>::twoKiDef);
+        T mahony_twoKp = static_cast<T>(0.45);
+        T mahony_twoKi = static_cast<T>(0.015);
 
         // Gravity magnitude used to convert specific force -> inertial accel
         T gravity_mps2 = static_cast<T>(9.80665);
 
         // If true, updateIMU() will call magless Mahony update only.
         // If you want magnetometer support, call updateIMUMag().
-        bool use_mag = false;
+        bool use_mag = true;
 
         // Optional Mahony sea-state adaptation
-        bool adapt_mahony_gains = false;
+        bool adapt_mahony_gains = true;
 
         // "Calm" = stronger accelerometer correction when accelerometer looks trustworthy.
         // "Rough" = weaker correction when wave dynamics corrupt the gravity cue.
         T mahony_twoKp_calm  = static_cast<T>(0.90);
-        T mahony_twoKp_rough = static_cast<T>(0.18);
+        T mahony_twoKp_rough = static_cast<T>(0.35);
 
         // Integral term should collapse quickly in rough motion.
-        T mahony_twoKi_calm  = static_cast<T>(0.020);
-        T mahony_twoKi_rough = static_cast<T>(0.000);
+        T mahony_twoKi_calm  = static_cast<T>(0.025);
+        T mahony_twoKi_rough = static_cast<T>(0.010);
 
         // Reference scales for trust computation.
         T mahony_sigma_ref     = static_cast<T>(0.18); // m/s^2
@@ -151,8 +213,8 @@ public:
 
         T vertical_world_accel_up = T(0);
 
-        T mahony_twoKp = static_cast<T>(Mahony_AHRS<T>::twoKpDef);
-        T mahony_twoKi = static_cast<T>(Mahony_AHRS<T>::twoKiDef);
+        T mahony_twoKp = static_cast<T>(0.45);
+        T mahony_twoKi = static_cast<T>(0.015);
         T gravity_mps2 = static_cast<T>(9.80665);
 
         T mahony_accel_norm_err = T(0);

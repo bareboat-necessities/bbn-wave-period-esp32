@@ -24,16 +24,77 @@ public:
     using AccelFreqTrackerConfig = typename AccelFreqTracker::Config;
 
     struct Config {
-        ObserverConfig observer{};
-        ObserverAdaptConfig adaptation{};
-        AccelFreqTrackerConfig accel_freq_tracker{};
+        ObserverConfig observer = [] {
+            ObserverConfig cfg{};
+            cfg.r = T(0.150);
+            cfg.tau_a = T(0.68);
+            cfg.tau_d = T(49.0);
+            cfg.kb = T(2.5e-5);
+            cfg.lambda_b = T(3.0e-3);
+            cfg.bias_limit = T(0.12);
+            cfg.a_f_limit = T(50.0);
+            cfg.v_limit = T(50.0);
+            cfg.p_limit = T(20.0);
+            cfg.S_limit = T(200.0);
+            cfg.d_limit = T(20.0);
+            return cfg;
+        }();
+        ObserverAdaptConfig adaptation = [] {
+            ObserverAdaptConfig cfg{};
+            cfg.enabled = true;
+            cfg.min_confidence = T(0.22);
+            cfg.f_disp_ref_hz = T(0.12);
+            cfg.sigma_a_ref = T(0.95);
+            cfg.input_smooth_tau = T(4.5);
+            cfg.param_smooth_tau = T(7.5);
+            cfg.r_freq_exp = T(0.28);
+            cfg.r_sigma_exp = T(0.02);
+            cfg.tau_a_freq_exp = T(-0.40);
+            cfg.tau_a_sigma_exp = T(-0.03);
+            cfg.tau_d_freq_exp = T(-0.03);
+            cfg.tau_d_sigma_exp = T(-0.01);
+            cfg.kb_freq_exp = T(0.02);
+            cfg.kb_sigma_exp = T(0.08);
+            cfg.r_min = T(0.145);
+            cfg.r_max = T(0.225);
+            cfg.tau_a_min = T(0.50);
+            cfg.tau_a_max = T(0.90);
+            cfg.tau_d_min = T(44.0);
+            cfg.tau_d_max = T(58.0);
+            cfg.kb_min = T(5e-6);
+            cfg.kb_max = T(6e-5);
+            return cfg;
+        }();
+        AccelFreqTrackerConfig accel_freq_tracker = [] {
+            AccelFreqTrackerConfig cfg{};
+            cfg.f_min_hz = T(0.045);
+            cfg.f_max_hz = T(0.35);
+            cfg.f_init_hz = T(0.12);
+            cfg.pre_hp_hz = T(0.015);
+            cfg.pre_lp_hz = T(0.45);
+            cfg.demod_lp_hz = T(0.05);
+            cfg.loop_bandwidth_hz = T(0.018);
+            cfg.loop_damping = T(1.0);
+            cfg.max_dfdt_hz_per_s = T(0.04);
+            cfg.recenter_tau_s = T(12.0);
+            cfg.output_smooth_tau_s = T(4.0);
+            cfg.power_tau_s = T(14.0);
+            cfg.confidence_tau_s = T(10.0);
+            cfg.lock_rms_min = T(0.012);
+            cfg.enable_coarse_assist = true;
+            cfg.coarse_hysteresis_frac = T(0.20);
+            cfg.coarse_smooth_tau_s = T(4.5);
+            cfg.coarse_pull_tau_s = T(3.5);
+            cfg.coarse_timeout_s = T(18.0);
+            return cfg;
+        }();
 
         T sigma_mean_tau_s = T(20.0);
         T sigma_var_tau_s  = T(6.0);
         T sigma_floor      = T(1e-4);
 
         bool auto_schedule_from_accel_freq = true;
-        T auto_schedule_period_s = T(0.25);
+        T auto_schedule_period_s = T(0.50);
 
         // When auto scheduling is enabled, also force observer adaptation on.
         bool force_enable_adaptation_when_auto_schedule = true;
@@ -53,13 +114,13 @@ public:
         //
         // These do NOT force bad frequencies into the observer from t=0; they only
         // help the auto path actually schedule once the tracker has some structure.
-        T fallback_confidence_floor = T(0.35);
-        T fallback_confidence_when_locked = T(0.70);
+        T fallback_confidence_floor = T(0.52);
+        T fallback_confidence_when_locked = T(0.82);
 
         // Blend the PLL-style estimate with the coarse zero-crossing helper while
         // the tracker is still learning the dominant sea state.
-        T coarse_schedule_blend = T(0.50);
-        T coarse_schedule_confidence_floor = T(0.45);
+        T coarse_schedule_blend = T(0.48);
+        T coarse_schedule_confidence_floor = T(0.62);
     };
 
     struct Snapshot {
