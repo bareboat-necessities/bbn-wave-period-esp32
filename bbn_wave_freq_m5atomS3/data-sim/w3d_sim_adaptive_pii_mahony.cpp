@@ -44,7 +44,7 @@ public:
 
     void updateMag(const Vector3f& mag_body_ned) override {
         // Keep magnetometer in the runner's NED body convention.
-        // This was the heading-convention fix that stopped the huge yaw error.
+        // This matches the current heading convention used by the sim harness.
         last_mag_body_ned_ = mag_body_ned;
         have_mag_ = true;
     }
@@ -79,11 +79,6 @@ public:
             );
         }
 
-        // Report yaw relative to the first valid heading so the run starts at zero.
-        if (!yaw_zero_initialized_ && (!with_mag_ || have_mag_)) {
-            yaw_zero_deg_ = filter_.yawDeg();
-            yaw_zero_initialized_ = true;
-        }
     }
 
     FilterSnapshot snapshot() const override {
@@ -98,9 +93,7 @@ public:
 
         const float roll_sim_deg  = filter_.rollDeg();
         const float pitch_sim_deg = filter_.pitchDeg();
-        const float yaw_sim_deg   = yaw_zero_initialized_
-            ? wrapDeg(filter_.yawDeg() - yaw_zero_deg_)
-            : 0.0f;
+        const float yaw_sim_deg   = filter_.yawDeg();
 
         s.euler_nautical_deg = Vector3f(roll_sim_deg,
                                         pitch_sim_deg,
@@ -256,9 +249,9 @@ private:
         // Mahony sea-state scheduling
         cfg.adapt_mahony_gains = true;
         cfg.mahony_twoKp_calm  = 0.90f;
-        cfg.mahony_twoKp_rough = 0.18f;
-        cfg.mahony_twoKi_calm  = 0.020f;
-        cfg.mahony_twoKi_rough = 0.004f;
+        cfg.mahony_twoKp_rough = 0.35f;
+        cfg.mahony_twoKi_calm  = 0.025f;
+        cfg.mahony_twoKi_rough = 0.010f;
         cfg.mahony_sigma_ref = 0.18f;
         cfg.mahony_norm_err_ref = 0.08f;
         cfg.mahony_gain_smooth_tau_s = 2.0f;
@@ -274,8 +267,6 @@ private:
     Vector3f last_mag_body_ned_ = Vector3f::Zero();
     HeaveFilter filter_;
 
-    bool  yaw_zero_initialized_ = false;
-    float yaw_zero_deg_ = 0.0f;
 };
 
 static void print_vertical_only_summary(const W3dSimulationRunResult& result, float dt)
