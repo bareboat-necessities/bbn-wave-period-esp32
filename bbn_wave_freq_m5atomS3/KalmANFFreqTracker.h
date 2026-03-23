@@ -18,7 +18,7 @@
    (DAFx23), Copenhagen, Denmark, September 2023
 
    Conceptual model
-   ----------------
+
    The algorithm tracks the dominant sinusoidal component of a real-valued signal y[n]
    by adapting the coefficient a in a second-order resonator / notch filter. The
    resonator is parameterized as
@@ -35,7 +35,7 @@
    with K[n] chosen according to a scalar Kalman update.
 
    Parameters (conceptual roles)
-   -----------------------------
+
    • ρ (rho) – pole radius of the resonator, 0 < ρ < 1
        – ρ → 1.0  : high-Q, narrowband, long memory, more selective.
        – smaller ρ: more damping, broader bandwidth, less selective, more robust.
@@ -65,7 +65,7 @@
        – Smaller p → smaller gain K (we believe a is well known).
 
    Mapping back to Hz
-   ------------------
+
    Once the updated a is available, the instantaneous digital frequency is
 
        ω̂_d = arccos(a / 2),
@@ -75,17 +75,6 @@
        f̂ = (ω̂_d / Δt) / (2π),
 
    where Δt is the effective sample period.
-
-   Added uniform tracker API
-   -------------------------
-   This class also exposes:
-
-       getFrequencyHz()
-       getRawFrequencyHz()
-       getConfidence()
-       isLocked()
-       hasCoarseEstimate()
-       getCoarseFrequencyHz()
 
    Notes:
      - Confidence / lock are synthesized heuristics. Native KalmANF does not
