@@ -1,12 +1,8 @@
-model = "gpt-5.4"
-model_provider = "openai"
-personality = "pragmatic"
-
 approval_policy = "on-request"
 sandbox_mode = "workspace-write"
-allow_login_shell = false
+allow_login_shell = true
 
 project_root_markers = [".git"]
 
 [sandbox_workspace_write]
-network_access = false
+network_access = true
