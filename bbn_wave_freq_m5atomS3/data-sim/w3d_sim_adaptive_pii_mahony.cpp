@@ -43,44 +43,44 @@ public:
     {
     }
 
-void updateMag(const Vector3f& mag_body_ned) override {
-    // Store exactly as delivered by the runner: body-frame NED.
-    // Convert back to Mahony's body Z-up frame inside update(), so
-    // accel, gyro, and mag are all in the same frame for updateIMUMag().
-    last_mag_body_ned_ = mag_body_ned;
-    have_mag_ = true;
-}
-
-void update(float dt,
-            const Vector3f& gyr_meas_ned,
-            const Vector3f& acc_meas_ned,
-            float temperature_c) override
-{
-    (void)temperature_c;
-
-    // Convert runner-facing body NED measurements back to Mahony's expected
-    // body Z-up convention.
-    const Vector3f gyr_body_zu = ned_to_zu(gyr_meas_ned);
-    const Vector3f acc_body_zu = ned_to_zu(acc_meas_ned);
-
-    if (with_mag_ && have_mag_) {
-        // IMPORTANT: mag must be in the same body frame as accel and gyro.
-        const Vector3f mag_body_zu = ned_to_zu(last_mag_body_ned_);
-
-        filter_.updateIMUMag(
-            gyr_body_zu.x(), gyr_body_zu.y(), gyr_body_zu.z(),
-            acc_body_zu.x(), acc_body_zu.y(), acc_body_zu.z(),
-            mag_body_zu.x(), mag_body_zu.y(), mag_body_zu.z(),
-            dt
-        );
-    } else {
-        filter_.updateIMU(
-            gyr_body_zu.x(), gyr_body_zu.y(), gyr_body_zu.z(),
-            acc_body_zu.x(), acc_body_zu.y(), acc_body_zu.z(),
-            dt
-        );
+    void updateMag(const Vector3f& mag_body_ned) override {
+        // Runner supplies body-frame NED.
+        last_mag_body_ned_ = mag_body_ned;
+        have_mag_ = true;
     }
-}
+
+    void update(float dt,
+                const Vector3f& gyr_meas_ned,
+                const Vector3f& acc_meas_ned,
+                float temperature_c) override
+    {
+        (void)temperature_c;
+
+        // Runner-facing convention: body NED = (North, East, Down)
+        // Mahony here is used in body NWU = (North, West, Up)
+        // so that:
+        //   - gravity is +Z at rest
+        //   - horizontal north is +X for Mahony's mag update
+        const Vector3f gyr_body_m = ned_to_mahony_body_(gyr_meas_ned);
+        const Vector3f acc_body_m = ned_to_mahony_body_(acc_meas_ned);
+
+        if (with_mag_ && have_mag_) {
+            const Vector3f mag_body_m = ned_to_mahony_body_(last_mag_body_ned_);
+
+            filter_.updateIMUMag(
+                gyr_body_m.x(), gyr_body_m.y(), gyr_body_m.z(),
+                acc_body_m.x(), acc_body_m.y(), acc_body_m.z(),
+                mag_body_m.x(), mag_body_m.y(), mag_body_m.z(),
+                dt
+            );
+        } else {
+            filter_.updateIMU(
+                gyr_body_m.x(), gyr_body_m.y(), gyr_body_m.z(),
+                acc_body_m.x(), acc_body_m.y(), acc_body_m.z(),
+                dt
+            );
+        }
+    }
 
     FilterSnapshot snapshot() const override {
         FilterSnapshot s;
@@ -92,9 +92,20 @@ void update(float dt,
         s.vel_est_zu  = Vector3f(0.0f, 0.0f, filter_.velocity());
         s.acc_est_zu  = Vector3f(0.0f, 0.0f, filter_.accelFiltered());
 
-        const float roll_sim_deg  = filter_.rollDeg();
-        const float pitch_sim_deg = filter_.pitchDeg();
-        const float yaw_sim_deg   = wrapDeg(filter_.yawDeg() + mag_declination_deg_);
+        // Mahony internal Euler here is in its NWU convention.
+        // Convert back to the sim's nautical convention for RMS comparison.
+        //
+        // Derived mapping:
+        //   roll_nautical  =  pitch_mahony
+        //   pitch_nautical = -roll_mahony
+        //   yaw_nautical   = -yaw_mahony (+ declination when mag is used)
+        const float roll_m_deg  = filter_.rollDeg();
+        const float pitch_m_deg = filter_.pitchDeg();
+        const float yaw_m_deg   = filter_.yawDeg();
+
+        const float roll_sim_deg  = pitch_m_deg;
+        const float pitch_sim_deg = -roll_m_deg;
+        const float yaw_sim_deg   = wrapDeg(-yaw_m_deg + (with_mag_ ? mag_declination_deg_ : 0.0f));
 
         s.euler_nautical_deg = Vector3f(roll_sim_deg,
                                         pitch_sim_deg,
@@ -152,6 +163,11 @@ void update(float dt,
     }
 
 private:
+    static Vector3f ned_to_mahony_body_(const Vector3f& v_ned) {
+        // body NED (North, East, Down) -> body NWU (North, West, Up)
+        return Vector3f(v_ned.x(), -v_ned.y(), -v_ned.z());
+    }
+
     static HeaveFilter::Config make_config_(bool with_mag,
                                             const Vector3f& sigma_a_init,
                                             const Vector3f& sigma_g,
@@ -268,7 +284,6 @@ private:
     Vector3f last_mag_body_ned_ = Vector3f::Zero();
     HeaveFilter filter_;
     float mag_declination_deg_ = 0.0f;
-
 };
 
 static void print_vertical_only_summary(const W3dSimulationRunResult& result, float dt)
