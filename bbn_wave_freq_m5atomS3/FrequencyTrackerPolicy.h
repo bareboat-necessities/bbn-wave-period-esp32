@@ -92,10 +92,24 @@ struct TrackerPolicy<TrackerType::KALMANF> {
 template<>
 struct TrackerPolicy<TrackerType::PLLFREQTRACKER> {
     using Tracker = PLLFreqTracker<double>;
+    using Config = typename Tracker::Config;
+
     Tracker t{};
 
-    double run(float a, float dt) {
+    void configure(const Config& cfg) {
+        t.configure(cfg);
+    }
+
+    void reset(double f_init_hz) {
+        t.reset(f_init_hz);
+    }
+
+    void update(float a, float dt) {
         t.update(static_cast<double>(a) / static_cast<double>(g_std), static_cast<double>(dt));
+    }
+
+    double run(float a, float dt) {
+        update(a, dt);
         return getFrequencyHz();
     }
 
