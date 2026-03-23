@@ -7,7 +7,6 @@
  * Copyright 2025, Mikhail Grushinskiy
  *
  * MiniTuningEstimator
- * --------------------
  *
  * Purpose:
  *   Tracks RMS acceleration σₐ and the smoothed acceleration-domain peak frequency ωₚₑₐₖ
