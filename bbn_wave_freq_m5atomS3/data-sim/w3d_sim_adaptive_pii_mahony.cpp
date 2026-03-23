@@ -38,7 +38,8 @@ public:
                                    const Vector3f& sigma_m,
                                    const Vector3f& mag_world_a)
         : with_mag_(with_mag),
-          filter_(make_config_(with_mag, sigma_a_init, sigma_g, sigma_m, mag_world_a))
+          filter_(make_config_(with_mag, sigma_a_init, sigma_g, sigma_m, mag_world_a)),
+          mag_declination_deg_(std::atan2(mag_world_a.y(), mag_world_a.x()) * 180.0f / float(M_PI))
     {
     }
 
@@ -60,10 +61,9 @@ public:
         const Vector3f gyr_body_zu = ned_to_zu(gyr_meas_ned);
         const Vector3f acc_body_zu = ned_to_zu(acc_meas_ned);
 
-        // IMPORTANT:
         // Once at least one mag sample exists, use it as zero-order hold
-        // on EVERY IMU tick. Otherwise heading correction is too weak and
-        // yaw slowly drifts.
+        // on every IMU tick. This keeps Mahony's heading correction active
+        // even though the simulated magnetometer ODR is lower than the IMU ODR.
         if (with_mag_ && have_mag_) {
             filter_.updateIMUMag(
                 gyr_body_zu.x(), gyr_body_zu.y(), gyr_body_zu.z(),
@@ -93,7 +93,7 @@ public:
 
         const float roll_sim_deg  = filter_.rollDeg();
         const float pitch_sim_deg = filter_.pitchDeg();
-        const float yaw_sim_deg   = filter_.yawDeg();
+        const float yaw_sim_deg   = wrapDeg(filter_.yawDeg() + mag_declination_deg_);
 
         s.euler_nautical_deg = Vector3f(roll_sim_deg,
                                         pitch_sim_deg,
@@ -266,6 +266,7 @@ private:
 
     Vector3f last_mag_body_ned_ = Vector3f::Zero();
     HeaveFilter filter_;
+    float mag_declination_deg_ = 0.0f;
 
 };
 
