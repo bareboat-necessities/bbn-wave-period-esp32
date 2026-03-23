@@ -119,7 +119,7 @@ static std::pair<double,double> run_tracker_once(TrackerType tracker,
     } else if (tracker == TrackerType::KALMANF) {
         freq = estimate_freq(Kalm_ANF, &arFilter, &kalmANF,
                              &freqDetector, a_norm, a_norm, dt, now_us());
-    } else if (tracker == TrackerType::PLLFREQTRACKER) {
+    } else if (tracker == TrackerType::PLL) {
         pllFreqTracker.update(static_cast<double>(a_norm), static_cast<double>(dt));
         freq = pllFreqTracker.getRawFrequencyHz();
         smooth_freq = pllFreqTracker.getFrequencyHz();
@@ -147,7 +147,7 @@ static void run_from_csv(TrackerType tracker,
     std::string trackerName =
         (tracker == TrackerType::ARANOVSKIY) ? "aranovskiy" :
         (tracker == TrackerType::KALMANF)   ? "kalmanf" :
-        (tracker == TrackerType::PLLFREQTRACKER) ? "pllfreqtracker" :
+        (tracker == TrackerType::PLL) ? "pll" :
                                                     "zerocross";
 
     // Grab "_H..._L..._A..._P..." tail
@@ -191,7 +191,7 @@ static void run_from_csv(TrackerType tracker,
         const bool updated = !std::isnan(est_freq);
 
         double smooth_freq = std::numeric_limits<double>::quiet_NaN();
-        if (tracker == TrackerType::PLLFREQTRACKER) {
+        if (tracker == TrackerType::PLL) {
             smooth_freq = tracker_smooth_freq;
         } else if (!std::isnan(est_freq) && updated) {
             if (kalm_smoother_first) {
