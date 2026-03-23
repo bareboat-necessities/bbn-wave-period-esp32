@@ -43,63 +43,96 @@ struct TrackerPolicy<TrackerType::ARANOVSKIY> {
     Tracker t;
 
     TrackerPolicy() : t() {
-        double omega_up   = (FREQ_GUESS * 2.0) * (2.0 * M_PI);
-        double k_gain     = 20.0;
-        double x1_0       = 0.0;
-        double omega_init = (FREQ_GUESS / 1.5) * 2.0 * M_PI;
-        double theta_0    = -(omega_init * omega_init);
-        double sigma_0    = theta_0;
+        const double omega_up   = (FREQ_GUESS * 2.0) * (2.0 * M_PI);
+        const double k_gain     = 20.0;
+        const double x1_0       = 0.0;
+        const double omega_init = (FREQ_GUESS / 1.5) * 2.0 * M_PI;
+        const double theta_0    = -(omega_init * omega_init);
+        const double sigma_0    = theta_0;
+
         t.setParams(omega_up, k_gain);
         t.setState(x1_0, theta_0, sigma_0);
     }
 
     double run(float a, float dt) {
-        t.update(static_cast<double>(a) / g_std, static_cast<double>(dt));
-        return t.getFrequencyHz();
+        t.update(static_cast<double>(a) / static_cast<double>(g_std), static_cast<double>(dt));
+        return getFrequencyHz();
     }
+
+    double getFrequencyHz() const { return t.getFrequencyHz(); }
+    double getRawFrequencyHz() const { return t.getRawFrequencyHz(); }
+    double getConfidence() const { return t.getConfidence(); }
+    bool isLocked() const { return t.isLocked(); }
+    bool hasCoarseEstimate() const { return t.hasCoarseEstimate(); }
+    double getCoarseFrequencyHz() const { return t.getCoarseFrequencyHz(); }
 };
 
-// KalmANFFreqTracker
+// KalmANF
 template<>
 struct TrackerPolicy<TrackerType::KALMANF> {
     using Tracker = KalmANFFreqTracker<double>;
-    Tracker t = Tracker();
+    Tracker t{};
 
     double run(float a, float dt) {
-        double e;
-        double freq = t.process(static_cast<double>(a) / g_std, static_cast<double>(dt), &e);
-        return freq;
+        double e = 0.0;
+        t.process(static_cast<double>(a) / static_cast<double>(g_std),
+                  static_cast<double>(dt), &e);
+        return getFrequencyHz();
     }
+
+    double getFrequencyHz() const { return t.getFrequencyHz(); }
+    double getRawFrequencyHz() const { return t.getRawFrequencyHz(); }
+    double getConfidence() const { return t.getConfidence(); }
+    bool isLocked() const { return t.isLocked(); }
+    bool hasCoarseEstimate() const { return t.hasCoarseEstimate(); }
+    double getCoarseFrequencyHz() const { return t.getCoarseFrequencyHz(); }
 };
 
-// PLLFreqTracker
+// PLL
 template<>
 struct TrackerPolicy<TrackerType::PLLFREQTRACKER> {
     using Tracker = PLLFreqTracker<double>;
-    Tracker t = Tracker();
+    Tracker t{};
 
     double run(float a, float dt) {
-        t.update(static_cast<double>(a) / g_std, static_cast<double>(dt));
-        return t.getFrequencyHz();
+        t.update(static_cast<double>(a) / static_cast<double>(g_std), static_cast<double>(dt));
+        return getFrequencyHz();
     }
+
+    double getFrequencyHz() const { return t.getFrequencyHz(); }
+    double getRawFrequencyHz() const { return t.getRawFrequencyHz(); }
+    double getConfidence() const { return t.getConfidence(); }
+    bool isLocked() const { return t.isLocked(); }
+    bool hasCoarseEstimate() const { return t.hasCoarseEstimate(); }
+    double getCoarseFrequencyHz() const { return t.getCoarseFrequencyHz(); }
 };
 
 // ZeroCross
 template<>
 struct TrackerPolicy<TrackerType::ZEROCROSS> {
     using Tracker = SchmittTriggerZCFreqTracker;
-    Tracker t = Tracker(ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
+    Tracker t{ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS};
 
     double run(float a, float dt) {
-        float f_byZeroCross = t.update(a / g_std,
-                                       ZERO_CROSSINGS_SCALE /* max g */,
-                                       ZERO_CROSSINGS_DEBOUNCE_TIME,
-                                       ZERO_CROSSINGS_STEEPNESS_TIME,
-                                       dt);
-        double freq = (f_byZeroCross == SCHMITT_TRIGGER_FREQ_INIT ||
-                       f_byZeroCross == SCHMITT_TRIGGER_FALLBACK_FREQ)
-                      ? FREQ_GUESS
-                      : static_cast<double>(f_byZeroCross);
-        return freq;
+        t.update(a / g_std,
+                 ZERO_CROSSINGS_SCALE /* max g */,
+                 ZERO_CROSSINGS_DEBOUNCE_TIME,
+                 ZERO_CROSSINGS_STEEPNESS_TIME, dt);
+        return getFrequencyHz();
+    }
+
+    double getFrequencyHz() const {
+        const float raw = t.getFrequencyHz();
+        return isZeroCrossFallback_(raw) ? static_cast<double>(FREQ_GUESS) : static_cast<double>(raw);
+    }
+    double getRawFrequencyHz() const { return static_cast<double>(t.getRawFrequencyHz()); }
+    double getConfidence() const { return static_cast<double>(t.getConfidence()); }
+    bool isLocked() const { return t.isLocked(); }
+    bool hasCoarseEstimate() const { return t.hasCoarseEstimate(); }
+    double getCoarseFrequencyHz() const { return static_cast<double>(t.getCoarseFrequencyHz()); }
+
+private:
+    static bool isZeroCrossFallback_(float f) {
+        return (f == SCHMITT_TRIGGER_FREQ_INIT || f == SCHMITT_TRIGGER_FALLBACK_FREQ);
     }
 };
