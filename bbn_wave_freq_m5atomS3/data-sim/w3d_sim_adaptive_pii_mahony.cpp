@@ -43,43 +43,44 @@ public:
     {
     }
 
-    void updateMag(const Vector3f& mag_body_ned) override {
-        // Keep magnetometer in the runner's NED body convention.
-        // This matches the current heading convention used by the sim harness.
-        last_mag_body_ned_ = mag_body_ned;
-        have_mag_ = true;
+void updateMag(const Vector3f& mag_body_ned) override {
+    // Store exactly as delivered by the runner: body-frame NED.
+    // Convert back to Mahony's body Z-up frame inside update(), so
+    // accel, gyro, and mag are all in the same frame for updateIMUMag().
+    last_mag_body_ned_ = mag_body_ned;
+    have_mag_ = true;
+}
+
+void update(float dt,
+            const Vector3f& gyr_meas_ned,
+            const Vector3f& acc_meas_ned,
+            float temperature_c) override
+{
+    (void)temperature_c;
+
+    // Convert runner-facing body NED measurements back to Mahony's expected
+    // body Z-up convention.
+    const Vector3f gyr_body_zu = ned_to_zu(gyr_meas_ned);
+    const Vector3f acc_body_zu = ned_to_zu(acc_meas_ned);
+
+    if (with_mag_ && have_mag_) {
+        // IMPORTANT: mag must be in the same body frame as accel and gyro.
+        const Vector3f mag_body_zu = ned_to_zu(last_mag_body_ned_);
+
+        filter_.updateIMUMag(
+            gyr_body_zu.x(), gyr_body_zu.y(), gyr_body_zu.z(),
+            acc_body_zu.x(), acc_body_zu.y(), acc_body_zu.z(),
+            mag_body_zu.x(), mag_body_zu.y(), mag_body_zu.z(),
+            dt
+        );
+    } else {
+        filter_.updateIMU(
+            gyr_body_zu.x(), gyr_body_zu.y(), gyr_body_zu.z(),
+            acc_body_zu.x(), acc_body_zu.y(), acc_body_zu.z(),
+            dt
+        );
     }
-
-    void update(float dt,
-                const Vector3f& gyr_meas_ned,
-                const Vector3f& acc_meas_ned,
-                float temperature_c) override
-    {
-        (void)temperature_c;
-
-        // Accel and gyro are converted back to the original sim Z-up body frame.
-        const Vector3f gyr_body_zu = ned_to_zu(gyr_meas_ned);
-        const Vector3f acc_body_zu = ned_to_zu(acc_meas_ned);
-
-        // Once at least one mag sample exists, use it as zero-order hold
-        // on every IMU tick. This keeps Mahony's heading correction active
-        // even though the simulated magnetometer ODR is lower than the IMU ODR.
-        if (with_mag_ && have_mag_) {
-            filter_.updateIMUMag(
-                gyr_body_zu.x(), gyr_body_zu.y(), gyr_body_zu.z(),
-                acc_body_zu.x(), acc_body_zu.y(), acc_body_zu.z(),
-                last_mag_body_ned_.x(), last_mag_body_ned_.y(), last_mag_body_ned_.z(),
-                dt
-            );
-        } else {
-            filter_.updateIMU(
-                gyr_body_zu.x(), gyr_body_zu.y(), gyr_body_zu.z(),
-                acc_body_zu.x(), acc_body_zu.y(), acc_body_zu.z(),
-                dt
-            );
-        }
-
-    }
+}
 
     FilterSnapshot snapshot() const override {
         FilterSnapshot s;
