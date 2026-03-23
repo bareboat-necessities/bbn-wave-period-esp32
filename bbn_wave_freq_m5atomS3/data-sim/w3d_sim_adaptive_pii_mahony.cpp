@@ -167,7 +167,7 @@ private:
         // body NED (North, East, Down) -> body NWU (North, West, Up)
         return Vector3f(v_ned.x(), -v_ned.y(), -v_ned.z());
     }
-
+        
     static HeaveFilter::Config make_config_(bool with_mag,
                                             const Vector3f& sigma_a_init,
                                             const Vector3f& sigma_g,
@@ -182,12 +182,12 @@ private:
         HeaveFilter::Config cfg{};
     
         // Base observer
-        cfg.core.observer.r          = 0.145f;
-        cfg.core.observer.tau_a      = 0.72f;
-        cfg.core.observer.tau_d      = 50.0f;
-        cfg.core.observer.kb         = 3.5e-5f;
-        cfg.core.observer.lambda_b   = 5.0e-3f;
-        cfg.core.observer.bias_limit = 0.15f;
+        cfg.core.observer.r          = 0.150f;
+        cfg.core.observer.tau_a      = 0.62f;
+        cfg.core.observer.tau_d      = 48.0f;
+        cfg.core.observer.kb         = 2.8e-5f;
+        cfg.core.observer.lambda_b   = 3.5e-3f;
+        cfg.core.observer.bias_limit = 0.12f;
     
         cfg.core.observer.a_f_limit = 50.0f;
         cfg.core.observer.v_limit   = 50.0f;
@@ -199,44 +199,45 @@ private:
         cfg.core.adaptation.enabled = true;
         cfg.core.adaptation.min_confidence = 0.22f;
     
-        cfg.core.adaptation.f_disp_ref_hz   = 0.12f;
-        cfg.core.adaptation.sigma_a_ref     = 0.65f;
-        cfg.core.adaptation.input_smooth_tau = 5.0f;
-        cfg.core.adaptation.param_smooth_tau = 8.0f;
+        cfg.core.adaptation.f_disp_ref_hz    = 0.12f;
+        cfg.core.adaptation.sigma_a_ref      = 0.75f;
+        cfg.core.adaptation.input_smooth_tau = 4.5f;
+        cfg.core.adaptation.param_smooth_tau = 7.0f;
     
-        // Flatter schedule than before
-        cfg.core.adaptation.r_freq_exp   = 0.45f;
-        cfg.core.adaptation.r_sigma_exp  = 0.10f;
+        // Keep schedule flatter than the original, but not so flat that tau_a just
+        // sticks at its minimum.
+        cfg.core.adaptation.r_freq_exp   = 0.38f;
+        cfg.core.adaptation.r_sigma_exp  = 0.07f;
     
-        cfg.core.adaptation.tau_a_freq_exp   = -0.55f;
-        cfg.core.adaptation.tau_a_sigma_exp  = -0.10f;
+        cfg.core.adaptation.tau_a_freq_exp   = -0.72f;
+        cfg.core.adaptation.tau_a_sigma_exp  = -0.14f;
     
-        cfg.core.adaptation.tau_d_freq_exp   = -0.08f;
-        cfg.core.adaptation.tau_d_sigma_exp  = -0.04f;
+        cfg.core.adaptation.tau_d_freq_exp   = -0.04f;
+        cfg.core.adaptation.tau_d_sigma_exp  = -0.02f;
     
-        cfg.core.adaptation.kb_freq_exp   = 0.08f;
-        cfg.core.adaptation.kb_sigma_exp  = 0.20f;
+        cfg.core.adaptation.kb_freq_exp   = 0.04f;
+        cfg.core.adaptation.kb_sigma_exp  = 0.12f;
     
-        // Much tighter operating window
-        cfg.core.adaptation.r_min = 0.11f;
-        cfg.core.adaptation.r_max = 0.24f;
+        // Tighter than the old wide schedule, but with some room below 0.5 again.
+        cfg.core.adaptation.r_min = 0.13f;
+        cfg.core.adaptation.r_max = 0.235f;
     
-        cfg.core.adaptation.tau_a_min = 0.50f;
-        cfg.core.adaptation.tau_a_max = 0.95f;
+        cfg.core.adaptation.tau_a_min = 0.42f;
+        cfg.core.adaptation.tau_a_max = 0.88f;
     
-        cfg.core.adaptation.tau_d_min = 35.0f;
-        cfg.core.adaptation.tau_d_max = 75.0f;
+        cfg.core.adaptation.tau_d_min = 40.0f;
+        cfg.core.adaptation.tau_d_max = 62.0f;
     
-        cfg.core.adaptation.kb_min = 8e-6f;
-        cfg.core.adaptation.kb_max = 1.6e-4f;
+        cfg.core.adaptation.kb_min = 6e-6f;
+        cfg.core.adaptation.kb_max = 8e-5f;
     
         cfg.core.auto_schedule_from_accel_freq = true;
         cfg.core.auto_schedule_period_s = 0.50f;
         cfg.core.force_enable_adaptation_when_auto_schedule = true;
-        cfg.core.fallback_confidence_floor = 0.50f;
-        cfg.core.fallback_confidence_when_locked = 0.80f;
-        cfg.core.coarse_schedule_blend = 0.55f;
-        cfg.core.coarse_schedule_confidence_floor = 0.60f;
+        cfg.core.fallback_confidence_floor = 0.52f;
+        cfg.core.fallback_confidence_when_locked = 0.82f;
+        cfg.core.coarse_schedule_blend = 0.50f;
+        cfg.core.coarse_schedule_confidence_floor = 0.62f;
     
         cfg.core.accel_freq_tracker.f_min_hz = 0.045f;
         cfg.core.accel_freq_tracker.f_max_hz = 0.35f;
@@ -251,14 +252,14 @@ private:
         cfg.core.accel_freq_tracker.max_dfdt_hz_per_s = 0.04f;
         cfg.core.accel_freq_tracker.recenter_tau_s = 12.0f;
     
-        cfg.core.accel_freq_tracker.output_smooth_tau_s = 4.5f;
-        cfg.core.accel_freq_tracker.power_tau_s = 15.0f;
+        cfg.core.accel_freq_tracker.output_smooth_tau_s = 4.0f;
+        cfg.core.accel_freq_tracker.power_tau_s = 14.0f;
         cfg.core.accel_freq_tracker.confidence_tau_s = 10.0f;
-        cfg.core.accel_freq_tracker.lock_rms_min = 0.015f;
+        cfg.core.accel_freq_tracker.lock_rms_min = 0.012f;
         cfg.core.accel_freq_tracker.enable_coarse_assist = true;
         cfg.core.accel_freq_tracker.coarse_hysteresis_frac = 0.20f;
-        cfg.core.accel_freq_tracker.coarse_smooth_tau_s = 5.0f;
-        cfg.core.accel_freq_tracker.coarse_pull_tau_s = 4.0f;
+        cfg.core.accel_freq_tracker.coarse_smooth_tau_s = 4.5f;
+        cfg.core.accel_freq_tracker.coarse_pull_tau_s = 3.5f;
         cfg.core.accel_freq_tracker.coarse_timeout_s = 18.0f;
     
         // Mahony base gains
