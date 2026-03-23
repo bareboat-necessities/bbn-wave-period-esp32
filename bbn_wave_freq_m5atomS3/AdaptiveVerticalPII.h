@@ -583,7 +583,7 @@ private:
 };
 
 template<typename T = float, bool WithBias = true>
-using AdaptiveVerticalPII_PLL = AdaptiveVerticalPII<T, WithBias, TrackerType::PLLFREQTRACKER>;
+using AdaptiveVerticalPII_PLL = AdaptiveVerticalPII<T, WithBias, TrackerType::PLL>;
 
 template<typename T = float, bool WithBias = true>
 using AdaptiveVerticalPII_Aranovskiy = AdaptiveVerticalPII<T, WithBias, TrackerType::ARANOVSKIY>;
