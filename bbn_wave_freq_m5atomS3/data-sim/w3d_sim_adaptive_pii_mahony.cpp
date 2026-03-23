@@ -1,6 +1,7 @@
 #include <filesystem>
 #include <iostream>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 /*
@@ -236,28 +237,9 @@ private:
         cfg.core.coarse_schedule_blend = 0.48f;
         cfg.core.coarse_schedule_confidence_floor = 0.62f;
     
-        cfg.core.accel_freq_tracker.f_min_hz = 0.045f;
-        cfg.core.accel_freq_tracker.f_max_hz = 0.35f;
-        cfg.core.accel_freq_tracker.f_init_hz = 0.12f;
-    
-        cfg.core.accel_freq_tracker.pre_hp_hz = 0.015f;
-        cfg.core.accel_freq_tracker.pre_lp_hz = 0.45f;
-        cfg.core.accel_freq_tracker.demod_lp_hz = 0.05f;
-    
-        cfg.core.accel_freq_tracker.loop_bandwidth_hz = 0.018f;
-        cfg.core.accel_freq_tracker.loop_damping = 1.0f;
-        cfg.core.accel_freq_tracker.max_dfdt_hz_per_s = 0.04f;
-        cfg.core.accel_freq_tracker.recenter_tau_s = 12.0f;
-    
-        cfg.core.accel_freq_tracker.output_smooth_tau_s = 4.0f;
-        cfg.core.accel_freq_tracker.power_tau_s = 14.0f;
-        cfg.core.accel_freq_tracker.confidence_tau_s = 10.0f;
-        cfg.core.accel_freq_tracker.lock_rms_min = 0.012f;
-        cfg.core.accel_freq_tracker.enable_coarse_assist = true;
-        cfg.core.accel_freq_tracker.coarse_hysteresis_frac = 0.20f;
-        cfg.core.accel_freq_tracker.coarse_smooth_tau_s = 4.5f;
-        cfg.core.accel_freq_tracker.coarse_pull_tau_s = 3.5f;
-        cfg.core.accel_freq_tracker.coarse_timeout_s = 18.0f;
+        cfg.core.accel_freq_tracker =
+            marine_obs::detail::make_default_tracker_config<
+                std::remove_cvref_t<decltype(cfg.core.accel_freq_tracker)>, float>();
     
         // Mahony base gains
         cfg.mahony_twoKp = 0.45f;

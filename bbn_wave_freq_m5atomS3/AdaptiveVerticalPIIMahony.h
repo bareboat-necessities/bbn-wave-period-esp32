@@ -140,25 +140,8 @@ public:
             cfg.fallback_confidence_when_locked = T(0.82);
             cfg.coarse_schedule_blend = T(0.48);
             cfg.coarse_schedule_confidence_floor = T(0.62);
-            cfg.accel_freq_tracker.f_min_hz = T(0.045);
-            cfg.accel_freq_tracker.f_max_hz = T(0.35);
-            cfg.accel_freq_tracker.f_init_hz = T(0.12);
-            cfg.accel_freq_tracker.pre_hp_hz = T(0.015);
-            cfg.accel_freq_tracker.pre_lp_hz = T(0.45);
-            cfg.accel_freq_tracker.demod_lp_hz = T(0.05);
-            cfg.accel_freq_tracker.loop_bandwidth_hz = T(0.018);
-            cfg.accel_freq_tracker.loop_damping = T(1.0);
-            cfg.accel_freq_tracker.max_dfdt_hz_per_s = T(0.04);
-            cfg.accel_freq_tracker.recenter_tau_s = T(12.0);
-            cfg.accel_freq_tracker.output_smooth_tau_s = T(4.0);
-            cfg.accel_freq_tracker.power_tau_s = T(14.0);
-            cfg.accel_freq_tracker.confidence_tau_s = T(10.0);
-            cfg.accel_freq_tracker.lock_rms_min = T(0.012);
-            cfg.accel_freq_tracker.enable_coarse_assist = true;
-            cfg.accel_freq_tracker.coarse_hysteresis_frac = T(0.20);
-            cfg.accel_freq_tracker.coarse_smooth_tau_s = T(4.5);
-            cfg.accel_freq_tracker.coarse_pull_tau_s = T(3.5);
-            cfg.accel_freq_tracker.coarse_timeout_s = T(18.0);
+            cfg.accel_freq_tracker =
+                detail::make_default_tracker_config<typename Core::AccelFreqTrackerConfig, T>();
             return cfg;
         }();
 
