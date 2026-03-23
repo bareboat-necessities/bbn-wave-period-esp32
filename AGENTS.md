@@ -8,7 +8,7 @@
 
 ## Build and validation
 
-- Build requires data fetched from release of https://github.com/bareboat-necessities/oceanography-waves-lib (Check .github/workflows/build.yaml for instructions how to fetch simulation data)
+- Build requires data fetched from release of https://github.com/bareboat-necessities/oceanography-waves-lib (Check .github/workflows/build.yaml for instructions how to fetch simulation data file sim-data-files.zip)
 - Primary validation command: `make all`
 - After changing any `.c`, `.cc`, `.cpp`, `.h`, `.hpp`, `.mk`, or `Makefile`, run `make all`.
 - If the build fails, report the exact failing command and error.
