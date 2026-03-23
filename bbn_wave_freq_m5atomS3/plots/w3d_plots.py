@@ -52,7 +52,7 @@ pattern = re.compile(
 variant_pattern = re.compile(r"(?:_(?P<variant>[A-Za-z0-9]+))?_fusion\.csv$")
 
 VARIANT_LABELS = {
-    "pllfreqtracker": "PLLFreqTracker adaptive PII/Mahony",
+    "nonkalman": "Adaptive PII/Mahony",
 }
 
 def latex_safe(s: str) -> str:
