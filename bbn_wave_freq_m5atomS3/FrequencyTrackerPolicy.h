@@ -90,7 +90,7 @@ struct TrackerPolicy<TrackerType::KALMANF> {
 
 // PLL
 template<>
-struct TrackerPolicy<TrackerType::PLLFREQTRACKER> {
+struct TrackerPolicy<TrackerType::PLL> {
     using Tracker = PLLFreqTracker<double>;
     using Config = typename Tracker::Config;
 
