@@ -19,13 +19,6 @@
 
   This is a nonlinear adaptive observer that tracks the frequency and phase of a sinusoidal signal.
 
-  Added API:
-    - getConfidence()
-    - isLocked()
-    - getRawFrequencyHz()
-    - hasCoarseEstimate()
-    - getCoarseFrequencyHz()
-
   Notes:
     - Confidence/lock are synthesized heuristics, because the original Aranovskiy
       observer does not natively provide them.
