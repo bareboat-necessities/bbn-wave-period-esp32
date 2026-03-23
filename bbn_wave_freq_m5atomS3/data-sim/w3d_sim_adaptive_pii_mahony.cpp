@@ -43,10 +43,9 @@ public:
     }
 
     void updateMag(const Vector3f& mag_body_ned) override {
-        // Mahony is fed in the simulator's original Z-up body frame, the same
-        // convention used for accel and gyro below. Convert the runner's held
-        // NED magnetometer sample back into that frame before reuse.
-        last_mag_body_zu_ = ned_to_zu(mag_body_ned);
+        // Keep magnetometer in the runner's NED body convention.
+        // This was the heading-convention fix that stopped the huge yaw error.
+        last_mag_body_ned_ = mag_body_ned;
         have_mag_ = true;
     }
 
@@ -69,7 +68,7 @@ public:
             filter_.updateIMUMag(
                 gyr_body_zu.x(), gyr_body_zu.y(), gyr_body_zu.z(),
                 acc_body_zu.x(), acc_body_zu.y(), acc_body_zu.z(),
-                last_mag_body_zu_.x(), last_mag_body_zu_.y(), last_mag_body_zu_.z(),
+                last_mag_body_ned_.x(), last_mag_body_ned_.y(), last_mag_body_ned_.z(),
                 dt
             );
         } else {
@@ -272,7 +271,7 @@ private:
     bool with_mag_ = true;
     bool have_mag_ = false;
 
-    Vector3f last_mag_body_zu_ = Vector3f::Zero();
+    Vector3f last_mag_body_ned_ = Vector3f::Zero();
     HeaveFilter filter_;
 
     bool  yaw_zero_initialized_ = false;
