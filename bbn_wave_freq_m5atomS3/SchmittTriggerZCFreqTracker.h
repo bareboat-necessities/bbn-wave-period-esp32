@@ -3,6 +3,8 @@
 
 #include <cmath>
 #include <algorithm>
+#include <stdexcept>
+#include <cstdlib>
 
 /*
    Copyright 2025, Mikhail Grushinskiy
@@ -30,10 +32,12 @@ class SchmittTriggerZCFreqTracker {
     // periodsInCycle must be positive integer
     // fallbackToLowFreqTime must be positive time in seconds
     explicit SchmittTriggerZCFreqTracker(
-      float hysteresis = 0.1f, unsigned int periodsInCycle = 1, float fallbackToLowFreqTime = SCHMITT_TRIGGER_FALLBACK_TIME)
-      : hysteresis(fabs(hysteresis)),
-        upperThreshold(hysteresis),
-        lowerThreshold(-hysteresis),
+      float hysteresis = 0.1f,
+      unsigned int periodsInCycle = 1,
+      float fallbackToLowFreqTime = SCHMITT_TRIGGER_FALLBACK_TIME)
+      : hysteresis(std::fabs(hysteresis)),
+        upperThreshold(std::fabs(hysteresis)),
+        lowerThreshold(-std::fabs(hysteresis)),
         state(State::WAS_NOT_SET),
         frequency(SCHMITT_TRIGGER_FREQ_INIT),
         fallbackToLowFreqTime(fallbackToLowFreqTime),
@@ -49,7 +53,9 @@ class SchmittTriggerZCFreqTracker {
         beginningCrossingInCycleTime(0.0f),
         crossingsCounter(0),
         periodHistoryIndex(0),
-        periodHistoryCount(0)
+        periodHistoryCount(0),
+        lockConfidenceThreshold(0.60f),
+        lockAmplitudeRatioMin(1.0f)
     {
       for (auto& p : periodHistory) p = 0.0f;
     }
@@ -58,12 +64,19 @@ class SchmittTriggerZCFreqTracker {
     // Returns frequency (Hz).
     // signalMagnitude - must be positive (absolute amplitude of the signal).
     // debounceTime (in seconds) - must be positive.
-    float update(float signalValue, float signalMagnitude, float debounceTime, float steepnessTime, float dt) {
-      if (dt <= 0.0f || fabs(signalMagnitude) <= 0.0f) {
+    float update(float signalValue,
+                 float signalMagnitude,
+                 float debounceTime,
+                 float steepnessTime,
+                 float dt)
+    {
+      if (dt <= 0.0f || std::fabs(signalMagnitude) <= 0.0f) {
         return frequency;
       }
-      const float scaledValue = signalValue / fabs(signalMagnitude);
-      amplitudeRatio = fabs(signalMagnitude) / hysteresis;
+
+      const float scaledValue = signalValue / std::fabs(signalMagnitude);
+      amplitudeRatio = std::fabs(signalMagnitude) / std::max(hysteresis, 1e-12f);
+
       switch (state) {
         case State::WAS_NOT_SET: {
             if (scaledValue > upperThreshold) {
@@ -81,34 +94,46 @@ class SchmittTriggerZCFreqTracker {
           }
           break;
 
-         case State::WAS_LOW: {
+        case State::WAS_LOW: {
             timeInCycle += dt;
             float timeSinceLow = timeInCycle - lastLowTime;
             float thisCrossingTime = timeInCycle - timeSinceLow / 2.0f;
-            if (scaledValue > upperThreshold && (timeSinceLow > steepnessTime)
-                && (crossingsCounter == 0 || (thisCrossingTime - lastCrossingInCycleTime) > debounceTime)) {
+
+            if (scaledValue > upperThreshold &&
+                (timeSinceLow > steepnessTime) &&
+                (crossingsCounter == 0 ||
+                 (thisCrossingTime - lastCrossingInCycleTime) > debounceTime))
+            {
               state = State::WAS_HIGH;
               lastHighTime = timeInCycle;
               lastCrossingInCycleTime = thisCrossingTime;
+
               if (crossingsCounter == 0) {
                 beginningCrossingInCycleTime = thisCrossingTime;
               }
+
               crossingsCounter++;
-              if (crossingsCounter > 1 && (frequency == SCHMITT_TRIGGER_FREQ_INIT || frequency == SCHMITT_TRIGGER_FALLBACK_FREQ)) {
+
+              if (crossingsCounter > 1 &&
+                  (frequency == SCHMITT_TRIGGER_FREQ_INIT ||
+                   frequency == SCHMITT_TRIGGER_FALLBACK_FREQ))
+              {
                 float cycleTime = thisCrossingTime - beginningCrossingInCycleTime;
-                float period = 2.0f * cycleTime / (crossingsCounter - 1);
+                float period = 2.0f * cycleTime / static_cast<float>(crossingsCounter - 1);
                 updatePeriodStatistics(period);
                 frequency = 1.0f / period;
                 isFallback = false;
               }
+
               if (crossingsCounter == (2 * periodsInCycle + 1)) {
                 float cycleTime = thisCrossingTime - beginningCrossingInCycleTime;
-                float period = 2.0f * cycleTime / (crossingsCounter - 1);
+                float period = 2.0f * cycleTime / static_cast<float>(crossingsCounter - 1);
                 updatePeriodStatistics(period);
                 frequency = std::min(1.0f / period, SCHMITT_TRIGGER_FREQ_MAX);
                 isFallback = false;
+
                 crossingsCounter = 1;
-                lastCrossingInCycleTime = - timeSinceLow / 2.0f;
+                lastCrossingInCycleTime = -timeSinceLow / 2.0f;
                 beginningCrossingInCycleTime = lastCrossingInCycleTime;
                 timeInCycle = 0.0f;
                 lastHighTime = timeInCycle;
@@ -116,6 +141,7 @@ class SchmittTriggerZCFreqTracker {
             } else if (scaledValue < lowerThreshold) {
               lastLowTime = timeInCycle;
             }
+
             if ((timeInCycle - lastCrossingInCycleTime) > fallbackToLowFreqTime) {
               frequency = SCHMITT_TRIGGER_FALLBACK_FREQ;
               isFallback = true;
@@ -127,30 +153,42 @@ class SchmittTriggerZCFreqTracker {
             timeInCycle += dt;
             float timeSinceHigh = timeInCycle - lastHighTime;
             float thisCrossingTime = timeInCycle - timeSinceHigh / 2.0f;
-            if (scaledValue < lowerThreshold && (timeSinceHigh > steepnessTime)
-                && (crossingsCounter == 0 || (thisCrossingTime - lastCrossingInCycleTime) > debounceTime)) {
+
+            if (scaledValue < lowerThreshold &&
+                (timeSinceHigh > steepnessTime) &&
+                (crossingsCounter == 0 ||
+                 (thisCrossingTime - lastCrossingInCycleTime) > debounceTime))
+            {
               state = State::WAS_LOW;
               lastLowTime = timeInCycle;
               lastCrossingInCycleTime = thisCrossingTime;
+
               if (crossingsCounter == 0) {
                 beginningCrossingInCycleTime = thisCrossingTime;
               }
+
               crossingsCounter++;
-              if (crossingsCounter > 1 && (frequency == SCHMITT_TRIGGER_FREQ_INIT || frequency == SCHMITT_TRIGGER_FALLBACK_FREQ)) {
+
+              if (crossingsCounter > 1 &&
+                  (frequency == SCHMITT_TRIGGER_FREQ_INIT ||
+                   frequency == SCHMITT_TRIGGER_FALLBACK_FREQ))
+              {
                 float cycleTime = thisCrossingTime - beginningCrossingInCycleTime;
-                float period = 2.0f * cycleTime / (crossingsCounter - 1);
+                float period = 2.0f * cycleTime / static_cast<float>(crossingsCounter - 1);
                 updatePeriodStatistics(period);
                 frequency = 1.0f / period;
                 isFallback = false;
               }
+
               if (crossingsCounter == (2 * periodsInCycle + 1)) {
                 float cycleTime = thisCrossingTime - beginningCrossingInCycleTime;
-                float period = 2.0f * cycleTime / (crossingsCounter - 1);
+                float period = 2.0f * cycleTime / static_cast<float>(crossingsCounter - 1);
                 updatePeriodStatistics(period);
                 frequency = std::min(1.0f / period, SCHMITT_TRIGGER_FREQ_MAX);
                 isFallback = false;
+
                 crossingsCounter = 1;
-                lastCrossingInCycleTime = - timeSinceHigh / 2.0f;
+                lastCrossingInCycleTime = -timeSinceHigh / 2.0f;
                 beginningCrossingInCycleTime = lastCrossingInCycleTime;
                 timeInCycle = 0.0f;
                 lastLowTime = timeInCycle;
@@ -158,6 +196,7 @@ class SchmittTriggerZCFreqTracker {
             } else if (scaledValue > upperThreshold) {
               lastHighTime = timeInCycle;
             }
+
             if ((timeInCycle - lastCrossingInCycleTime) > fallbackToLowFreqTime) {
               frequency = SCHMITT_TRIGGER_FALLBACK_FREQ;
               isFallback = true;
@@ -168,12 +207,52 @@ class SchmittTriggerZCFreqTracker {
         default:
           timeInCycle += dt;
       }
+
       return frequency;
     }
 
     // Get latest computed frequency (Hz)
     float getFrequency() const {
       return frequency;
+    }
+
+    // Uniform tracker API
+    float getFrequencyHz() const {
+      return frequency;
+    }
+
+    float getRawFrequencyHz() const {
+      return frequency;
+    }
+
+    float getConfidence() const {
+      return getQualityMetrics().confidence;
+    }
+
+    bool isLocked() const {
+      const QualityMetrics q = getQualityMetrics();
+      return !q.is_fallback &&
+             periodHistoryCount >= 2 &&
+             q.confidence >= lockConfidenceThreshold &&
+             q.amplitude_ratio >= lockAmplitudeRatioMin;
+    }
+
+    bool hasCoarseEstimate() const {
+      return false;
+    }
+
+    float getCoarseFrequencyHz() const {
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS)
+      throw std::logic_error("SchmittTriggerZCFreqTracker: coarse frequency estimate is not implemented");
+#else
+      std::abort();
+#endif
+    }
+
+    // Optional tuning for synthesized lock logic
+    void setLockParams(float confidenceThreshold, float amplitudeRatioMin = 1.0f) {
+      lockConfidenceThreshold = std::clamp(confidenceThreshold, 0.0f, 1.0f);
+      lockAmplitudeRatioMin = std::max(amplitudeRatioMin, 0.0f);
     }
 
     // Get phase of sine wave in rad
@@ -183,25 +262,40 @@ class SchmittTriggerZCFreqTracker {
       }
       float period = 1.0f / frequency;
       float timeSinceLastCrossing = timeInCycle - lastCrossingInCycleTime;
-      float phase = 2.0f * M_PI * fmodf(timeSinceLastCrossing / period, 1.0f);
+      float phase = 2.0f * static_cast<float>(M_PI) *
+                    std::fmod(timeSinceLastCrossing / period, 1.0f);
       if (state == State::WAS_LOW) {
-        phase = fmodf(phase + M_PI, 2.0f * M_PI);
+        phase = std::fmod(phase + static_cast<float>(M_PI),
+                          2.0f * static_cast<float>(M_PI));
       }
-      if (phase < 0.0f) phase += 2.0f * M_PI;
+      if (phase < 0.0f) phase += 2.0f * static_cast<float>(M_PI);
       return phase;
     }
 
     // Get quality metrics for the current frequency estimate
     QualityMetrics getQualityMetrics() const {
       QualityMetrics metrics;
-      if (periodHistoryCount < 2) {
-        metrics.confidence = 0.1f;
+      if (periodHistoryCount < 2 || lastPeriodEstimate <= 0.0f) {
+        metrics.confidence = isFallback ? 0.0f : 0.1f;
       } else {
-        float stddev = sqrtf(periodVariance);
-        float normalizedStddev = stddev / lastPeriodEstimate;
-        metrics.confidence = std::max(0.0f, std::min(1.0f, 1.0f - normalizedStddev));
+        float stddev = std::sqrt(std::max(periodVariance, 0.0f));
+        float normalizedStddev = stddev / std::max(lastPeriodEstimate, 1e-12f);
+
+        // Base confidence from timing stability.
+        float conf = std::max(0.0f, std::min(1.0f, 1.0f - normalizedStddev));
+
+        // Mild amplitude shaping: if the signal barely clears hysteresis,
+        // confidence should not look "fully locked".
+        const float ampScore = std::max(0.0f, std::min(1.0f, amplitudeRatio / 2.0f));
+        conf *= (0.35f + 0.65f * ampScore);
+
+        if (isFallback) {
+          conf = 0.0f;
+        }
+        metrics.confidence = conf;
       }
-      metrics.jitter = sqrtf(periodVariance);
+
+      metrics.jitter = std::sqrt(std::max(periodVariance, 0.0f));
       metrics.amplitude_ratio = amplitudeRatio;
       metrics.is_fallback = isFallback;
       return metrics;
@@ -248,13 +342,19 @@ class SchmittTriggerZCFreqTracker {
         periodVariance = 0.0f;
         return;
       }
-      float sum = 0.0f, sumSq = 0.0f;
+
+      float sum = 0.0f;
+      float sumSq = 0.0f;
       for (size_t i = 0; i < periodHistoryCount; ++i) {
         sum += periodHistory[i];
         sumSq += periodHistory[i] * periodHistory[i];
       }
-      float mean = sum / periodHistoryCount;
-      periodVariance = (sumSq / periodHistoryCount) - (mean * mean);
+
+      float mean = sum / static_cast<float>(periodHistoryCount);
+      periodVariance = (sumSq / static_cast<float>(periodHistoryCount)) - (mean * mean);
+      if (periodVariance < 0.0f) {
+        periodVariance = 0.0f;
+      }
     }
 
     float hysteresis;                  // Hysteresis threshold
@@ -281,6 +381,10 @@ class SchmittTriggerZCFreqTracker {
     float periodHistory[PERIOD_HISTORY_SIZE];
     size_t periodHistoryIndex;
     size_t periodHistoryCount;
+
+    // Uniform-API lock tuning
+    float lockConfidenceThreshold;
+    float lockAmplitudeRatioMin;
 };
 
 #endif // SCHMITT_TRIGGER_ZC_FREQ_TRACKER_H
