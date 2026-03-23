@@ -183,10 +183,10 @@ private:
     
         // Base observer
         cfg.core.observer.r          = 0.150f;
-        cfg.core.observer.tau_a      = 0.62f;
-        cfg.core.observer.tau_d      = 48.0f;
-        cfg.core.observer.kb         = 2.8e-5f;
-        cfg.core.observer.lambda_b   = 3.5e-3f;
+        cfg.core.observer.tau_a      = 0.68f;
+        cfg.core.observer.tau_d      = 49.0f;
+        cfg.core.observer.kb         = 2.5e-5f;
+        cfg.core.observer.lambda_b   = 3.0e-3f;
         cfg.core.observer.bias_limit = 0.12f;
     
         cfg.core.observer.a_f_limit = 50.0f;
@@ -200,43 +200,40 @@ private:
         cfg.core.adaptation.min_confidence = 0.22f;
     
         cfg.core.adaptation.f_disp_ref_hz    = 0.12f;
-        cfg.core.adaptation.sigma_a_ref      = 0.75f;
+        cfg.core.adaptation.sigma_a_ref      = 0.95f;
         cfg.core.adaptation.input_smooth_tau = 4.5f;
-        cfg.core.adaptation.param_smooth_tau = 7.0f;
+        cfg.core.adaptation.param_smooth_tau = 7.5f;
     
-        // Keep schedule flatter than the original, but not so flat that tau_a just
-        // sticks at its minimum.
-        cfg.core.adaptation.r_freq_exp   = 0.38f;
-        cfg.core.adaptation.r_sigma_exp  = 0.07f;
+        cfg.core.adaptation.r_freq_exp   = 0.28f;
+        cfg.core.adaptation.r_sigma_exp  = 0.02f;
     
-        cfg.core.adaptation.tau_a_freq_exp   = -0.72f;
-        cfg.core.adaptation.tau_a_sigma_exp  = -0.14f;
+        cfg.core.adaptation.tau_a_freq_exp   = -0.40f;
+        cfg.core.adaptation.tau_a_sigma_exp  = -0.03f;
     
-        cfg.core.adaptation.tau_d_freq_exp   = -0.04f;
-        cfg.core.adaptation.tau_d_sigma_exp  = -0.02f;
+        cfg.core.adaptation.tau_d_freq_exp   = -0.03f;
+        cfg.core.adaptation.tau_d_sigma_exp  = -0.01f;
     
-        cfg.core.adaptation.kb_freq_exp   = 0.04f;
-        cfg.core.adaptation.kb_sigma_exp  = 0.12f;
+        cfg.core.adaptation.kb_freq_exp   = 0.02f;
+        cfg.core.adaptation.kb_sigma_exp  = 0.08f;
     
-        // Tighter than the old wide schedule, but with some room below 0.5 again.
-        cfg.core.adaptation.r_min = 0.13f;
-        cfg.core.adaptation.r_max = 0.235f;
+        cfg.core.adaptation.r_min = 0.145f;
+        cfg.core.adaptation.r_max = 0.225f;
     
-        cfg.core.adaptation.tau_a_min = 0.42f;
-        cfg.core.adaptation.tau_a_max = 0.88f;
+        cfg.core.adaptation.tau_a_min = 0.50f;
+        cfg.core.adaptation.tau_a_max = 0.90f;
     
-        cfg.core.adaptation.tau_d_min = 40.0f;
-        cfg.core.adaptation.tau_d_max = 62.0f;
+        cfg.core.adaptation.tau_d_min = 44.0f;
+        cfg.core.adaptation.tau_d_max = 58.0f;
     
-        cfg.core.adaptation.kb_min = 6e-6f;
-        cfg.core.adaptation.kb_max = 8e-5f;
+        cfg.core.adaptation.kb_min = 5e-6f;
+        cfg.core.adaptation.kb_max = 6e-5f;
     
         cfg.core.auto_schedule_from_accel_freq = true;
         cfg.core.auto_schedule_period_s = 0.50f;
         cfg.core.force_enable_adaptation_when_auto_schedule = true;
         cfg.core.fallback_confidence_floor = 0.52f;
         cfg.core.fallback_confidence_when_locked = 0.82f;
-        cfg.core.coarse_schedule_blend = 0.50f;
+        cfg.core.coarse_schedule_blend = 0.48f;
         cfg.core.coarse_schedule_confidence_floor = 0.62f;
     
         cfg.core.accel_freq_tracker.f_min_hz = 0.045f;
