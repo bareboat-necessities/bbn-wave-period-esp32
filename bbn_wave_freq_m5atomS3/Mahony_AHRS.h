@@ -175,24 +175,24 @@ public:
             update(gx, gy, gz, ax, ay, az, pitch, roll, yaw, delta_t_sec);
             return;
         }
-
+    
         T recipNorm;
         T halfex, halfey, halfez;
-
+    
         if (!((ax == T(0)) && (ay == T(0)) && (az == T(0)))) {
-
+    
             // Normalise accelerometer.
             recipNorm = invSqrt(ax * ax + ay * ay + az * az);
             ax *= recipNorm;
             ay *= recipNorm;
             az *= recipNorm;
-
+    
             // Normalise magnetometer.
             recipNorm = invSqrt(mx * mx + my * my + mz * mz);
             mx *= recipNorm;
             my *= recipNorm;
             mz *= recipNorm;
-
+    
             // Precomputed quaternion products.
             const T q0q0 = q0 * q0;
             const T q0q1 = q0 * q1;
@@ -204,8 +204,8 @@ public:
             const T q2q2 = q2 * q2;
             const T q2q3 = q2 * q3;
             const T q3q3 = q3 * q3;
-
-            // Reference direction of Earth's magnetic field.
+    
+            // Rotate measured magnetic field into the auxiliary/world frame.
             const T hx = T(2) * (mx * (T(0.5) - q2q2 - q3q3) +
                                  my * (q1q2 - q0q3) +
                                  mz * (q1q3 + q0q2));
@@ -215,23 +215,27 @@ public:
             const T hz = T(2) * (mx * (q1q3 - q0q2) +
                                  my * (q2q3 + q0q1) +
                                  mz * (T(0.5) - q1q1 - q2q2));
-            const T bx = std::sqrt(hx * hx + hy * hy);
+    
+            // ENU / Z-up auxiliary frame:
+            // horizontal magnetic reference is along +Y (North), not +X.
+            const T by = std::sqrt(hx * hx + hy * hy);
             const T bz = hz;
-
-            // Estimated direction of gravity and magnetic field.
+    
+            // Estimated direction of gravity in body frame.
             const T halfvx = q1q3 - q0q2;
             const T halfvy = q0q1 + q2q3;
             const T halfvz = T(0.5) * (q0q0 - q1q1 - q2q2 + q3q3);
-
-            const T halfwx = bx * (T(0.5) - q2q2 - q3q3) + bz * (q1q3 - q0q2);
-            const T halfwy = bx * (q1q2 - q0q3)           + bz * (q0q1 + q2q3);
-            const T halfwz = bx * (q0q2 + q1q3)           + bz * (T(0.5) - q1q1 - q2q2);
-
+    
+            // Estimated magnetic field in body frame for auxiliary/world ref [0, by, bz].
+            const T halfwx = by * (q1q2 + q0q3)           + bz * (q1q3 - q0q2);
+            const T halfwy = by * (T(0.5) - q1q1 - q3q3) + bz * (q0q1 + q2q3);
+            const T halfwz = by * (q2q3 - q0q1)           + bz * (T(0.5) - q1q1 - q2q2);
+    
             // Error = cross product between estimated and measured field vectors.
             halfex = (ay * halfvz - az * halfvy) + (my * halfwz - mz * halfwy);
             halfey = (az * halfvx - ax * halfvz) + (mz * halfwx - mx * halfwz);
             halfez = (ax * halfvy - ay * halfvx) + (mx * halfwy - my * halfwx);
-
+    
             // Integral feedback.
             if (twoKi > T(0)) {
                 integralFBx += twoKi * halfex * delta_t_sec;
@@ -245,39 +249,39 @@ public:
                 integralFBy = T(0);
                 integralFBz = T(0);
             }
-
+    
             // Proportional feedback.
             gx += twoKp * halfex;
             gy += twoKp * halfey;
             gz += twoKp * halfez;
         }
-
+    
         // Integrate rate of change of quaternion.
         const T half_dt = T(0.5) * delta_t_sec;
         const T q_0 = q0;
         const T q_1 = q1;
         const T q_2 = q2;
         const T q_3 = q3;
-
+    
         q0 += (-q_1 * gx - q_2 * gy - q_3 * gz) * half_dt;
         q1 += ( q_0 * gx + q_2 * gz - q_3 * gy) * half_dt;
         q2 += ( q_0 * gy - q_1 * gz + q_3 * gx) * half_dt;
         q3 += ( q_0 * gz + q_1 * gy - q_2 * gx) * half_dt;
-
+    
         // Normalise quaternion.
         recipNorm = invSqrt(q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3);
         q0 *= recipNorm;
         q1 *= recipNorm;
         q2 *= recipNorm;
         q3 *= recipNorm;
-
+    
         // Euler angles.
         *pitch = std::asin(-T(2) * q1 * q3 + T(2) * q0 * q2);
         *roll  = std::atan2(T(2) * q2 * q3 + T(2) * q0 * q1,
                             -T(2) * q1 * q1 - T(2) * q2 * q2 + T(1));
         *yaw   = std::atan2(T(2) * (q1 * q2 + q0 * q3),
                             q0 * q0 + q1 * q1 - q2 * q2 - q3 * q3);
-
+    
         *pitch *= kRadToDeg;
         *roll  *= kRadToDeg;
         *yaw   *= kRadToDeg;
