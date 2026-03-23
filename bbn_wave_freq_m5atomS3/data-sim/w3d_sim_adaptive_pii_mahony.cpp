@@ -30,7 +30,7 @@ static constexpr W3dFailureLimits FAIL_LIMITS{
 
 class FusionAdapterAdaptivePIIMahony final : public IW3dFusionAdapter {
 public:
-    using HeaveFilter = marine_obs::AdaptiveVerticalPIIMahony<float, true>;
+    using HeaveFilter = marine_obs::AdaptiveVerticalPIIMahony<float, true, TrackerType::KALMANF>;
 
     FusionAdapterAdaptivePIIMahony(bool with_mag,
                                    const Vector3f& sigma_a_init,
