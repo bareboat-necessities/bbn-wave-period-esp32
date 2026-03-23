@@ -79,13 +79,13 @@ namespace marine_obs {
 
 template<typename T = float,
          bool WithBias = true,
-         typename AccelFreqTrackerT = PLLFreqTracker<T>>
+         TrackerType TT = TrackerType::PLLFREQTRACKER>
 class AdaptiveVerticalPIIMahony {
     static_assert(std::is_floating_point<T>::value,
                   "AdaptiveVerticalPIIMahony<T>: T must be a floating-point type.");
 
 public:
-    using Core = AdaptiveVerticalPII<T, WithBias, AccelFreqTrackerT>;
+    using Core = AdaptiveVerticalPII<T, WithBias, TT>;
     using CoreConfig = typename Core::Config;
     using CoreSnapshot = typename Core::Snapshot;
 
