@@ -103,8 +103,8 @@ public:
         const float pitch_m_deg = filter_.pitchDeg();
         const float yaw_m_deg   = filter_.yawDeg();
 
-        const float roll_sim_deg  = pitch_m_deg;
-        const float pitch_sim_deg = -roll_m_deg;
+        const float roll_sim_deg  = -pitch_m_deg;
+        const float pitch_sim_deg = roll_m_deg;
         const float yaw_sim_deg   = wrapDeg(-yaw_m_deg + (with_mag_ ? mag_declination_deg_ : 0.0f));
 
         s.euler_nautical_deg = Vector3f(roll_sim_deg,
