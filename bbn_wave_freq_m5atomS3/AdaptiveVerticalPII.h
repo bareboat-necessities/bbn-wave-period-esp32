@@ -136,7 +136,7 @@ T tracker_get_coarse_frequency_hz(const Tracker& tracker) {
 
 } // namespace detail
 
-template<typename T = float, bool WithBias = true, TrackerType TT = TrackerType::PLLFREQTRACKER>
+template<typename T = float, bool WithBias = true, TrackerType TT = TrackerType::PLL>
 class AdaptiveVerticalPII {
     static_assert(std::is_floating_point<T>::value, "AdaptiveVerticalPII<T>: T must be a floating-point type.");
 
