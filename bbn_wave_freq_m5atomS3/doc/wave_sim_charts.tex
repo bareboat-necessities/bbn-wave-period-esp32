@@ -293,6 +293,14 @@
   \label{fig:adaptive_wave_detrender_sim_extreme}
 \end{figure}
 
+% === IMU Calibration quality-gate charts ===
+
+\begin{figure}[H]\centering
+  \resizebox{\textwidth}{!}{\input{calibrate_imu_quality.pgf}}
+  \caption{Synthetic IMU calibration regression gates for \texttt{CalibrateIMU.h}. Top: accelerometer calibrated norm error against the RMS gate. Middle: magnetometer calibrated field-norm error against the RMS gate. Bottom: gyroscope residual norm after temperature-compensated bias removal, with gate overlay from the calibration regression summary.}
+  \label{fig:calibrate_imu_quality}
+\end{figure}
+
 % === Kalman Filter Euler Angle Comparisons ===
 
 % PM Stokes

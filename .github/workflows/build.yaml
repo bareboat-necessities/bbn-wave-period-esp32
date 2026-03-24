@@ -68,6 +68,7 @@ jobs:
       run: |
         cd "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/tests
         make check
+        make calibrate_imu_check
 
     - name: Download sim data from vTest release
       env:
@@ -105,6 +106,7 @@ jobs:
         cd  "$HOME"/work/bbn-wave-period-esp32/bbn-wave-period-esp32/bbn_wave_freq_m5atomS3/plots
         chmod +x *.sh
         ./draw_plots.sh
+        python3 calibrate_imu_plots.py
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
