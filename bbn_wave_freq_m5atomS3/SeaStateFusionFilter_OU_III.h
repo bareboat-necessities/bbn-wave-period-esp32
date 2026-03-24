@@ -1198,7 +1198,7 @@ private:
 };
 
 template<TrackerType trackerT>
-class SeaStateFusion {
+class SeaStateFusion_OU_III {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 

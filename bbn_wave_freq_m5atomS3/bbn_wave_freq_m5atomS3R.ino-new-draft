@@ -1,8 +1,8 @@
 /*
   Copyright 2026, Mikhail Grushinskiy
 
-  AtomS3R SeaStateFusion (+ optional IMU Calibration Wizard)
-  (SeaStateFusion version: Kalman3D_Wave_OU_III + mag init + yaw correction)
+  AtomS3R SeaStateFusion_OU_III (+ optional IMU Calibration Wizard)
+  (SeaStateFusion_OU_III version: Kalman3D_Wave_OU_III + mag init + yaw correction)
 
   Assumptions:
     - fusion_.raw().mekf().quaternion_boat() returns BODY->WORLD quaternion (q_bw), world frame is NED (+Z down).
@@ -58,7 +58,7 @@ static constexpr uint8_t BMI270_ADDR = 0x68;  // change to 0x69 if your board st
   #define SEA_STATE_NMEA_TALKER "II"
 #endif
 
-// SeaStateFusion requirements
+// SeaStateFusion_OU_III requirements
 constexpr float g_std      = atoms3r_ical::ImuCalCfg::g_std;
 constexpr float FREQ_GUESS = 0.3f;
 
@@ -242,7 +242,7 @@ public:
 
 private:
   using UI = atoms3r_ical::M5Ui;
-  using Fusion = SeaStateFusion_4<TrackerType::KALMANF>;
+  using Fusion = SeaStateFusion_OU_II<TrackerType::KALMANF>;
 
   bool use_graphics_ = (SEA_STATE_UI_DEFAULT_GRAPHICS != 0);
 
@@ -758,7 +758,7 @@ private:
         (wave_hz_ >= z_detrender_.config().min_wave_freq_hz) &&
         (wave_hz_ <= z_detrender_.config().max_wave_freq_hz);
 
-    // Option A: blend in SeaStateFusion frequency estimate
+    // Option A: blend in SeaStateFusion_OU_III frequency estimate
     z_det_out_ = z_detrender_.update(heave_raw_m_, dt_, wave_hz_, ext_freq_valid);
 
     // Option B: let the detrender learn frequency entirely by itself

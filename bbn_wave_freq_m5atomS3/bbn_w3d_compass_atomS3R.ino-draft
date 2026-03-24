@@ -2,7 +2,7 @@
   Copyright 2026, Mikhail Grushinskiy
 
   AtomS3R Tilt-Compensated Compass (+ optional IMU Calibration Wizard)
-  (SeaStateFusion version: Kalman3D_Wave_OU_III + mag init + yaw correction)
+  (SeaStateFusion_OU_III version: Kalman3D_Wave_OU_III + mag init + yaw correction)
 
     - Magnetic heading is computed from MAG + GRAVITY (tilt compensation),
       NOT from fusion yaw and NOT from rotating mag by full q_bw.
@@ -53,7 +53,7 @@
   #define COMPASS_NMEA_TALKER "II"
 #endif
 
-// SeaStateFusion requirements
+// SeaStateFusion_OU_III requirements
 constexpr float g_std      = atoms3r_ical::ImuCalCfg::g_std;
 constexpr float FREQ_GUESS = 0.3f;
 
@@ -160,7 +160,7 @@ public:
     Serial.begin(115200);
     delay(150);
     Serial.println();
-    Serial.printf("[BOOT] AtomS3R Compass (SeaStateFusion) wizard=%d\n", (int)COMPASS_ENABLE_WIZARD);
+    Serial.printf("[BOOT] AtomS3R Compass (SeaStateFusion_OU_III) wizard=%d\n", (int)COMPASS_ENABLE_WIZARD);
     Serial.printf("[BOOT] mag_delay_sec = %.2f\n", (double)MAG_DELAY_SEC);
 
     auto cfg = M5.config();
@@ -283,7 +283,7 @@ private:
   uint32_t last_ui_ms_ = 0;
   uint32_t last_serial_ms_ = 0;
 
-  using Fusion = SeaStateFusion<TrackerType::KALMANF>;
+  using Fusion = SeaStateFusion_OU_III<TrackerType::KALMANF>;
   Fusion fusion_{};
 
   Vector3f a_cal_ = Vector3f::Zero();

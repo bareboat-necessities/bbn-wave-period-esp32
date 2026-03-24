@@ -104,7 +104,7 @@ public:
     }
 
 private:
-    using Fusion = SeaStateFusion_4<TrackerType::KALMANF>;
+    using Fusion = SeaStateFusion_OU_II<TrackerType::KALMANF>;
     mutable Fusion fusion_;
     Fusion::Config cfg_{};
 };
