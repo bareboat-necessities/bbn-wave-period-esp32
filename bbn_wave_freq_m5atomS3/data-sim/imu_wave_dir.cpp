@@ -1,5 +1,5 @@
 /*
-  Wave direction runner using SeaStateFusionFilter
+  Wave direction runner using SeaStateFusionFilter_OU_III
   Copyright (c) 2025
   Mikhail Grushinskiy
 */
@@ -38,7 +38,7 @@ constexpr float g_std = 9.80665f;
 
 #include "WaveFilesSupport.h"
 #include "FrameConversions.h"
-#include "SeaStateFusionFilter.h"   // ← uses internal tracker (KalmANFFreqTracker/Aranovskiy/ZC) + dir filter
+#include "SeaStateFusionFilter_OU_III.h"   // ← uses internal tracker (KalmANFFreqTracker/Aranovskiy/ZC) + dir filter
 
 // CLI & sim flags
 static bool add_noise = true;
@@ -131,7 +131,7 @@ static CircStats circular_stats_180(const std::vector<float>& degs){
     return cs;
 }
 
-// Runtime wrapper over SeaStateFusionFilter<TrackerType>
+// Runtime wrapper over SeaStateFusionFilter_OU_III<TrackerType>
 struct IFusion {
     virtual ~IFusion() = default;
     virtual void  update(float dt, const Vector3f& gyro_body_ned, const Vector3f& acc_body_ned, float tempC=35.0f) = 0;
@@ -150,7 +150,7 @@ struct IFusion {
 
 template<TrackerType T>
 struct FusionWrap : IFusion {
-    SeaStateFusionFilter<T> f;
+    SeaStateFusionFilter_OU_III<T> f;
 
     FusionWrap() {
         // initialize MEKF noise std devs (tweak as needed)
@@ -181,7 +181,7 @@ struct FusionWrap : IFusion {
 };
 
 static std::unique_ptr<IFusion> make_fusion(const std::string& name, bool with_mag=true) {
-    (void)with_mag; // currently unused; SeaStateFusionFilter ctor has with_mag arg if you want it
+    (void)with_mag; // currently unused; SeaStateFusionFilter_OU_III ctor has with_mag arg if you want it
     if (name == "aran") return std::make_unique<FusionWrap<TrackerType::ARANOVSKIY>>();
     if (name == "zc")   return std::make_unique<FusionWrap<TrackerType::ZEROCROSS>>();
     return std::make_unique<FusionWrap<TrackerType::KALMANF>>(); // default

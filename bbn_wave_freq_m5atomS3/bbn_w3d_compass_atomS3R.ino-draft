@@ -62,7 +62,7 @@ constexpr float FREQ_GUESS = 0.3f;
 #define ZERO_CROSSINGS_STEEPNESS_TIME 0.21f
 
 enum class TrackerType { ARANOVSKIY = 0, KALMANF = 1, ZEROCROSS = 2 };
-#include "SeaStateFusionFilter.h"
+#include "SeaStateFusionFilter_OU_III.h"
 
 // Use your baseline MAG_DELAY_SEC if provided by headers; fallback otherwise.
 #ifndef MAG_DELAY_SEC
