@@ -10,7 +10,7 @@
 
   Combines multiple real-time estimators into a cohesive ocean-state tracker:
 
-    • Quaternion-based attitude and linear motion estimation via Kalman3D_Wave_4  
+    • Quaternion-based attitude and linear motion estimation via Kalman3D_Wave_OU_II  
 
     • Dominant frequency tracking using one of:
           – AranovskiyFreqTracker     (frequency estimator)
@@ -55,7 +55,7 @@
 #include "FrequencyTrackerPolicy.h"
 #include "SeaStateAutoTuner.h"
 #include "MagAutoTuner.h"
-#include "Kalman3D_Wave_4.h"
+#include "Kalman3D_Wave_OU_II.h"
 #include "FrameConversions.h"
 #include "KalmanWaveDirection.h"
 #include "WaveDirectionDetector.h"
@@ -147,7 +147,7 @@ public:
                     const Eigen::Vector3f& sigma_g,
                     const Eigen::Vector3f& sigma_m)
     {
-        mekf_ = std::make_unique<Kalman3D_Wave_4<float>>(sigma_a, sigma_g, sigma_m);
+        mekf_ = std::make_unique<Kalman3D_Wave_OU_II<float>>(sigma_a, sigma_g, sigma_m);
         enterCold_();      // applies freeze + warmup Racc + disables linear block
         apply_ou_tune_();
         mekf_->set_exact_att_bias_Qd(true);
@@ -160,7 +160,7 @@ public:
                         float b0, float R_p0_var_init, float R_v0_var_init,
                         float gravity_magnitude) 
     {
-        mekf_ = std::make_unique<Kalman3D_Wave_4<float>>(sigma_a, sigma_g, sigma_m, Pq0, Pb0, b0, R_p0_var_init, R_v0_var_init, gravity_magnitude);
+        mekf_ = std::make_unique<Kalman3D_Wave_OU_II<float>>(sigma_a, sigma_g, sigma_m, Pq0, Pb0, b0, R_p0_var_init, R_v0_var_init, gravity_magnitude);
         enterCold_();      // applies freeze + warmup Racc + disables linear block
         apply_ou_tune_();
         mekf_->set_exact_att_bias_Qd(true);
@@ -404,10 +404,10 @@ public:
     void enableTuner(bool flag = true) {
         enable_tuner_ = flag;
     }
-    // Enable/disable use of the extended linear block [v,p,S,a_w] in Kalman3D_Wave_4.
+    // Enable/disable use of the extended linear block [v,p,S,a_w] in Kalman3D_Wave_OU_II.
     //
     // When flag == false:
-    //   • Kalman3D_Wave_4::set_linear_block_enabled(false) is enforced,
+    //   • Kalman3D_Wave_OU_II::set_linear_block_enabled(false) is enforced,
     //   • startup stages still progress (Cold → TunerWarm → Live),
     //   • tuner still runs and exposes tau/sigma/R_p0/R_v0 targets & metrics,
     //   • but OU / v/p/a_w propagation and pseudo-measurements are never used.
@@ -937,7 +937,7 @@ private:
 
     float speed_env_mult_ = 1.0f;   // v_env ≈ speed_env_mult * ω * z_env
 
-    // Controls whether the extended linear block [v,p,a_w] of Kalman3D_Wave_4
+    // Controls whether the extended linear block [v,p,a_w] of Kalman3D_Wave_OU_II
     // is ever enabled. When false, the underlying filter runs as a pure
     // attitude/bias QMEKF (linear states frozen, no OU, no p/v pseudo-measurements),
     // while all frequency tracking / tuner / direction logic still operates.
@@ -981,7 +981,7 @@ private:
     float tau_coeff_    = 1.5f;
     float sigma_coeff_  = 0.85f;  // Real noise inflates estimated sigma, to get more realistic sigma for OU we reduce it.
 
-    std::unique_ptr<Kalman3D_Wave_4<float>>  mekf_;
+    std::unique_ptr<Kalman3D_Wave_OU_II<float>>  mekf_;
     KalmanWaveDirection                      dir_filter_{2.0f * static_cast<float>(M_PI) * FREQ_GUESS};
 
     FreqInputLPF        freq_input_lpf_;   // LPF used only for tracker input

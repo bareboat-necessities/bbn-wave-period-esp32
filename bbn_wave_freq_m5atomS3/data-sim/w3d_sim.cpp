@@ -25,7 +25,7 @@ float R_S_base_global = 1.9f;   // default
 // RMS window length [s]
 constexpr float RMS_WINDOW_SEC = 60.0f;
 
-#include "Kalman3D_Wave.h"     // Kalman3D_Wave filter
+#include "Kalman3D_Wave_OU_III.h"     // Kalman3D_Wave_OU_III filter
 #include "WaveFilesSupport.h"  // file reader/parser + naming
 #include "FrameConversions.h"  // coordinate & quaternion conversions + MagSim_WMM
 
@@ -146,7 +146,7 @@ void process_wave_file(const std::string &filename, float dt, bool with_mag,
     const Vector3f sigma_a(0.04f, 0.04f, 0.04f);
     const Vector3f sigma_g(0.00134f, 0.00134f, 0.00134f);
     const Vector3f sigma_m(0.3f, 0.3f, 0.3f);
-    Kalman3D_Wave<float, true, true> mekf(sigma_a, sigma_g, sigma_m);
+    Kalman3D_Wave_OU_III<float, true, true> mekf(sigma_a, sigma_g, sigma_m);
 
     // Configure filter using selected tuning parameters
     mekf.set_aw_time_constant(static_cast<float>(tune.tau_eff));

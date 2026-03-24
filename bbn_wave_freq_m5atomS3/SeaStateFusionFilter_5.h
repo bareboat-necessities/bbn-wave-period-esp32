@@ -10,13 +10,13 @@
 
   Combines multiple real-time estimators into a cohesive ocean-state tracker:
 
-    • Quaternion-based attitude and linear motion estimation via Kalman3D_Wave_5
+    • Quaternion-based attitude and linear motion estimation via Kalman3D_Wave_II
     • Dominant frequency tracking
     • Dual-stage frequency smoothing
     • Online sea-state tuning for wrapper tau/sigma/R_p0/R_v0
 
   Wave_5 notes:
-    - Kalman3D_Wave_5 has no latent OU a_w state and no tau_aw in the core filter.
+    - Kalman3D_Wave_II has no latent OU a_w state and no tau_aw in the core filter.
     - Wrapper tau is retained as a tuning / envelope / pseudo-measurement heuristic.
     - Wrapper sigma is retained as a sea-state amplitude parameter.
     - Core filter is tuned through:
@@ -39,7 +39,7 @@
 #include "FrequencyTrackerPolicy.h"
 #include "SeaStateAutoTuner.h"
 #include "MagAutoTuner.h"
-#include "Kalman3D_Wave_5.h"
+#include "Kalman3D_Wave_II.h"
 #include "FrameConversions.h"
 #include "KalmanWaveDirection.h"
 #include "WaveDirectionDetector.h"
@@ -98,7 +98,7 @@ public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
     using TrackingPolicy = TrackerPolicy<trackerT>;
-    using MekfT = Kalman3D_Wave_5<float>;
+    using MekfT = Kalman3D_Wave_II<float>;
 
     enum class StartupStage {
         Cold,

@@ -2,7 +2,7 @@
   Copyright 2026, Mikhail Grushinskiy
 
   AtomS3R Tilt-Compensated Compass (+ optional IMU Calibration Wizard)
-  (SeaStateFusion version: Kalman3D_Wave + mag init + yaw correction)
+  (SeaStateFusion version: Kalman3D_Wave_OU_III + mag init + yaw correction)
 
     - Magnetic heading is computed from MAG + GRAVITY (tilt compensation),
       NOT from fusion yaw and NOT from rotating mag by full q_bw.
@@ -430,7 +430,7 @@ private:
       }
     }
 
-    // Kalman3D_Wave uses physical specific force magnitude in measurement_update_acc_only().
+    // Kalman3D_Wave_OU_III uses physical specific force magnitude in measurement_update_acc_only().
     // Keep calibrated accel as-is (do not normalize to g) to preserve model consistency.
     fusion_.update(dt, w_cal_, a_cal_);
 

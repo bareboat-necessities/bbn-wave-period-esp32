@@ -59,7 +59,7 @@ constexpr float MAX_R_S     = 20.0f;
 #include "KalmanSmoother.h"
 #include "KalmanWaveDirection.h"
 #include "WaveFilters.h"
-#include "Kalman3D_Wave.h"
+#include "Kalman3D_Wave_OU_III.h"
 #include "FrameConversions.h"
 #include "SeaStateAutoTuner.h"   
 
@@ -222,7 +222,7 @@ static void process_wave_file_for_tracker(const std::string &filename,
     const Vector3f sigma_a_init(0.30f, 0.30f, 0.30f);
     const Vector3f sigma_g(0.00134f, 0.00134f, 0.00134f);
     const Vector3f sigma_m(0.3f, 0.3f, 0.3f);
-    Kalman3D_Wave<float, true, true> mekf(sigma_a_init, sigma_g, sigma_m);
+    Kalman3D_Wave_OU_III<float, true, true> mekf(sigma_a_init, sigma_g, sigma_m);
     mekf.set_aw_time_constant(tune.tau_applied);
     mekf.set_aw_stationary_corr_std(Vector3f::Constant(tune.sigma_applied));
     //mekf.set_RS_noise(Vector3f::Constant(tune.RS_applied));

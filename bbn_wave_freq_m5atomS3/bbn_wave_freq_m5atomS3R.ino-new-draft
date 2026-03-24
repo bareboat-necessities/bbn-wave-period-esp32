@@ -2,7 +2,7 @@
   Copyright 2026, Mikhail Grushinskiy
 
   AtomS3R SeaStateFusion (+ optional IMU Calibration Wizard)
-  (SeaStateFusion version: Kalman3D_Wave + mag init + yaw correction)
+  (SeaStateFusion version: Kalman3D_Wave_OU_III + mag init + yaw correction)
 
   Assumptions:
     - fusion_.raw().mekf().quaternion_boat() returns BODY->WORLD quaternion (q_bw), world frame is NED (+Z down).
