@@ -1,7 +1,7 @@
 #pragma once
 
 /*
-  Stable drop-in replacement for Kalman3D_Wave_5.
+  Stable drop-in replacement for Kalman3D_Wave_II.
 
   Design goals:
     - preserve the public API used by SeaStateFusionFilter_5
@@ -100,7 +100,7 @@ static inline void project_psd(Eigen::Matrix<T,N,N>& S,
 }
 
 template <typename T = float, bool with_gyro_bias = true, bool with_accel_bias = true>
-class Kalman3D_Wave_5 {
+class Kalman3D_Wave_II {
     static constexpr int BASE_N = with_gyro_bias ? 6 : 3;
     static constexpr int LIN_N  = 6 + (with_accel_bias ? 3 : 0);
     static constexpr int NX     = BASE_N + LIN_N;
@@ -130,7 +130,7 @@ class Kalman3D_Wave_5 {
     const MeasDiag3& lastAccDiag() const noexcept { return last_acc_diag_; }
     const MeasDiag3& lastMagDiag() const noexcept { return last_mag_diag_; }
 
-    Kalman3D_Wave_5(Vector3 const& sigma_a,
+    Kalman3D_Wave_II(Vector3 const& sigma_a,
                     Vector3 const& sigma_g,
                     Vector3 const& sigma_m,
                     T Pq0 = T(5e-4),
