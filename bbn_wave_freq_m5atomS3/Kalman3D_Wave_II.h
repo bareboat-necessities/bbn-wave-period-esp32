@@ -3,21 +3,14 @@
 /*
   Stable drop-in replacement for Kalman3D_Wave_II.
 
-  Design goals:
-    - preserve the public API used by SeaStateFusionFilter_II
-    - stay numerically stable in float
-    - keep the original frame conventions:
-        * world is NED (+Z down)
-        * internal qref stores WORLD -> BODY'
-        * quaternion() returns BODY' -> WORLD
-        * quaternion_boat() returns physical BODY -> WORLD
-
-  This version is intentionally conservative:
-    - covariance is sanitized aggressively
-    - quaternion corrections are capped
-    - gyro / accel-bias-like states are clamped
-    - long dt spikes are bounded
-    - pseudo-measurement sigmas have floors
+  Key fixes vs. the previous no-OU version:
+    - accel / mag updates can now correct the world-accel-bias-like state b_aw
+      through cross-covariance (v,p still frozen there)
+    - position / velocity pseudo-updates are allowed to correct attitude / gyro bias
+      through cross-covariance instead of freezing the base rows
+    - weak leak on b_aw (especially helpful on Z) so it is not a pure random walk
+    - control acceleration is clamped before integration to prevent one-frame blow-ups
+    - same public API style as your current Kalman3D_Wave_II
 */
 
 #ifdef EIGEN_NON_ARDUINO
@@ -131,14 +124,14 @@ class Kalman3D_Wave_II {
     const MeasDiag3& lastMagDiag() const noexcept { return last_mag_diag_; }
 
     Kalman3D_Wave_II(Vector3 const& sigma_a,
-                    Vector3 const& sigma_g,
-                    Vector3 const& sigma_m,
-                    T Pq0 = T(5e-4),
-                    T Pb0 = T(1e-6),
-                    T b0  = T(1e-11),
-                    T R_p0_noise_var = T(1.5),
-                    T R_v0_noise_var = T(0.3),
-                    T gravity_magnitude = T(STD_GRAVITY))
+                     Vector3 const& sigma_g,
+                     Vector3 const& sigma_m,
+                     T Pq0 = T(5e-4),
+                     T Pb0 = T(1e-6),
+                     T b0  = T(1e-11),
+                     T R_p0_noise_var = T(1.5),
+                     T R_v0_noise_var = T(0.3),
+                     T gravity_magnitude = T(STD_GRAVITY))
       : gravity_magnitude_(gravity_magnitude),
         qref(Eigen::Quaternion<T>::Identity()),
         Rmag(sigma_m.array().square().matrix().asDiagonal()),
@@ -168,7 +161,8 @@ class Kalman3D_Wave_II {
                 Matrix3::Identity() * initial_baw_std_(0) * initial_baw_std_(0);
         }
 
-        const T sigma_v0 = T(10.0);
+        // More conservative than the previous 10 m/s initial velocity uncertainty.
+        const T sigma_v0 = T(1.0);
         const T sigma_p0 = T(20.0);
         set_initial_linear_uncertainty(sigma_v0, sigma_p0);
 
@@ -426,42 +420,57 @@ class Kalman3D_Wave_II {
             const Matrix3 Rbw = R_bw();
             const Vector3 g_world(0,0,+gravity_magnitude_);
 
-            const Vector3 u_rot = Rbw * (acc_cmd - lever);
-            const Vector3 u_w   = u_rot + g_world;
+            Vector3 u_rot = Rbw * (acc_cmd - lever);
+            Vector3 u_w   = u_rot + g_world;
             if (!u_rot.allFinite() || !u_w.allFinite()) return;
+
+            // Clamp commanded inertial acceleration to avoid one-frame catastrophic injection.
+            clamp_vec_(u_w, linear_accel_limit_);
 
             Vector3 v = xext.template segment<3>(OFF_V);
             Vector3 p = xext.template segment<3>(OFF_P);
 
             if constexpr (with_accel_bias) {
-                Vector3 b_aw = xext.template segment<3>(OFF_BAW);
-                clamp_vec_(b_aw, T(3.0));
-                const Vector3 a_eff = u_w - b_aw;
+                Vector3 b_aw_prev = xext.template segment<3>(OFF_BAW);
+                clamp_vec_(b_aw_prev, T(3.0));
+
+                Matrix3 Fbb = Matrix3::Identity();
+                for (int i = 0; i < 3; ++i) {
+                    const T tau = std::max(T(1e-3), baw_leak_tau_sec_(i));
+                    const T a = std::exp(-Ts / tau);
+                    b_aw_prev(i) *= a;
+                    Fbb(i,i) = a;
+                }
+
+                xext.template segment<3>(OFF_BAW) = b_aw_prev;
+
+                Vector3 a_eff = u_w - b_aw_prev;
+                clamp_vec_(a_eff, linear_accel_limit_);
 
                 xext.template segment<3>(OFF_V) = v + Ts * a_eff;
                 xext.template segment<3>(OFF_P) = p + Ts * v + (T(0.5) * Ts * Ts) * a_eff;
+
+                Fext.template block<3,3>(OFF_BAW, OFF_BAW) = Fbb;
+                Fext.template block<3,3>(OFF_V, OFF_BAW)   = -(Ts) * Fbb;
+                Fext.template block<3,3>(OFF_P, OFF_BAW)   = -(T(0.5) * Ts * Ts) * Fbb;
             } else {
-                xext.template segment<3>(OFF_V) = v + Ts * u_w;
-                xext.template segment<3>(OFF_P) = p + Ts * v + (T(0.5) * Ts * Ts) * u_w;
+                Vector3 a_eff = u_w;
+                clamp_vec_(a_eff, linear_accel_limit_);
+
+                xext.template segment<3>(OFF_V) = v + Ts * a_eff;
+                xext.template segment<3>(OFF_P) = p + Ts * v + (T(0.5) * Ts * Ts) * a_eff;
             }
 
-            // Keep linear states bounded to avoid catastrophic integrator runaway from one bad frame.
             Vector3 vv = xext.template segment<3>(OFF_V);
             Vector3 pp = xext.template segment<3>(OFF_P);
-            clamp_vec_(vv, T(50.0));
-            clamp_vec_(pp, T(500.0));
+            clamp_vec_(vv, velocity_limit_);
+            clamp_vec_(pp, position_limit_);
             xext.template segment<3>(OFF_V) = vv;
             xext.template segment<3>(OFF_P) = pp;
 
             Fext.template block<3,3>(OFF_V, OFF_V) = Matrix3::Identity();
             Fext.template block<3,3>(OFF_P, OFF_V) = Matrix3::Identity() * Ts;
             Fext.template block<3,3>(OFF_P, OFF_P) = Matrix3::Identity();
-
-            if constexpr (with_accel_bias) {
-                Fext.template block<3,3>(OFF_BAW, OFF_BAW) = Matrix3::Identity();
-                Fext.template block<3,3>(OFF_V, OFF_BAW)   = -Matrix3::Identity() * (Ts);
-                Fext.template block<3,3>(OFF_P, OFF_BAW)   = -Matrix3::Identity() * (T(0.5) * Ts * Ts);
-            }
 
             const Matrix3 J_u_att = skew_symmetric_matrix(u_rot);
             Fext.template block<3,3>(OFF_V, 0) = J_u_att * Ts;
@@ -495,18 +504,18 @@ class Kalman3D_Wave_II {
                     const T q = acc_bias_updates_enabled_ ? Q_baw_rw_(axis, axis) : T(0);
                     const T q_limited = std::min(q, T(1.0));
 
-                    Qext(OFF_V + axis, OFF_V + axis)         += q_limited * dt3 / T(3);
-                    Qext(OFF_V + axis, OFF_P + axis)         += q_limited * dt4 / T(8);
-                    Qext(OFF_P + axis, OFF_V + axis)          = Qext(OFF_V + axis, OFF_P + axis);
-                    Qext(OFF_P + axis, OFF_P + axis)         += q_limited * dt5 / T(20);
+                    Qext(OFF_V + axis, OFF_V + axis)     += q_limited * dt3 / T(3);
+                    Qext(OFF_V + axis, OFF_P + axis)     += q_limited * dt4 / T(8);
+                    Qext(OFF_P + axis, OFF_V + axis)      = Qext(OFF_V + axis, OFF_P + axis);
+                    Qext(OFF_P + axis, OFF_P + axis)     += q_limited * dt5 / T(20);
 
-                    Qext(OFF_V + axis, OFF_BAW + axis)       += -q_limited * dt2 / T(2);
-                    Qext(OFF_BAW + axis, OFF_V + axis)        = Qext(OFF_V + axis, OFF_BAW + axis);
+                    Qext(OFF_V + axis, OFF_BAW + axis)   += -q_limited * dt2 / T(2);
+                    Qext(OFF_BAW + axis, OFF_V + axis)    = Qext(OFF_V + axis, OFF_BAW + axis);
 
-                    Qext(OFF_P + axis, OFF_BAW + axis)       += -q_limited * dt3 / T(6);
-                    Qext(OFF_BAW + axis, OFF_P + axis)        = Qext(OFF_P + axis, OFF_BAW + axis);
+                    Qext(OFF_P + axis, OFF_BAW + axis)   += -q_limited * dt3 / T(6);
+                    Qext(OFF_BAW + axis, OFF_P + axis)    = Qext(OFF_P + axis, OFF_BAW + axis);
 
-                    Qext(OFF_BAW + axis, OFF_BAW + axis)     += q_limited * dt;
+                    Qext(OFF_BAW + axis, OFF_BAW + axis) += q_limited * dt;
                 }
             }
         }
@@ -514,6 +523,7 @@ class Kalman3D_Wave_II {
         Qext = T(0.5) * (Qext + Qext.transpose());
         MatrixNX Pnew = Fext * Pext * Fext.transpose() + Qext;
         Pext = Pnew;
+
         sanitize_and_clamp_state_();
         sanitize_covariance_();
 
@@ -528,69 +538,67 @@ class Kalman3D_Wave_II {
         last_acc_diag_ = MeasDiag3{};
         last_acc_diag_.accepted = false;
         last_acc_body_cached_ = acc_meas_body;
-    
+
         const Vector3 acc_meas = deheel_vector_(acc_meas_body);
         if (!acc_meas.allFinite()) return;
-    
+
         const T anorm = acc_meas.norm();
         if (!(anorm > T(1e-6))) return;
-    
-        // Direction-only accelerometer update:
-        // use accel only as a gravity direction cue, not as a full specific-force fit.
+
+        // Direction-only accelerometer update.
         const Vector3 z_meas = acc_meas / anorm;
-    
+
         const Matrix3 Rwb = R_wb();
         const Vector3 g_body = Rwb * Vector3(T(0), T(0), -gravity_magnitude_);
         const T gnorm = g_body.norm();
         if (!(gnorm > T(1e-6))) return;
-    
+
         const Vector3 zhat = g_body / gnorm;
         const Vector3 innov = z_meas - zhat;
         if (!innov.allFinite()) return;
-    
+
         last_acc_diag_.r = innov;
-    
-        // For normalized vector measurement h = zhat, a robust small-angle Jacobian is enough.
+
         const Matrix3 J_att = -skew_symmetric_matrix(zhat);
-    
-        // Use a full-rank directional noise instead of Nproj * Racc * Nproj^T.
-        // This avoids near-singular S in float.
+
         const T sigma_acc = std::sqrt(std::max(T(1e-12), Racc.trace() / T(3)));
         const T sigma_dir_base =
             std::max(T(1e-3),
             std::min(T(0.25), sigma_acc / std::max(T(1e-3), gravity_magnitude_)));
-    
-        // Inflate when accel magnitude departs from g or angular rate is high.
+
         const T mag_dev = std::abs(anorm - gravity_magnitude_);
         const T dyn_mag = mag_dev / std::max(T(0.25), sigma_acc);
-    
+
         T rate = last_gyr_bias_corrected.norm();
         if (!std::isfinite(rate)) rate = T(0);
-    
+
         const T infl = T(1)
                      + T(0.35) * dyn_mag * dyn_mag
                      + T(0.10) * rate * rate;
-    
+
         const T sigma_dir = std::min(T(0.5), sigma_dir_base * infl);
         const Matrix3 R_dir = Matrix3::Identity() * (sigma_dir * sigma_dir);
-    
+
         Matrix3& S_mat = S_scratch_;
         S_mat = R_dir;
-    
+
         {
             const Matrix3 P_th_th = Pext.template block<3,3>(0,0);
             S_mat.noalias() += J_att * P_th_th * J_att.transpose();
         }
-    
+
         S_mat = T(0.5) * (S_mat + S_mat.transpose());
-    
+
         MatrixNX3& PCt = PCt_scratch_;
         PCt.setZero();
-    
-        // Let cross-covariance update gyro bias if present, but keep linear block frozen.
         PCt.noalias() = Pext.template block<NX,3>(0,0) * J_att.transpose();
-        freeze_linear_rows_(PCt);
-    
+
+        // Freeze only v,p. Allow b_aw to move indirectly via cross-covariance.
+        freeze_vp_rows_(PCt);
+        if constexpr (with_accel_bias) {
+            if (!acc_bias_updates_enabled_) freeze_baw_rows_(PCt);
+        }
+
         Eigen::LDLT<Matrix3> ldlt;
         if (!safe_ldlt3_(S_mat, ldlt, S_mat.norm())) {
             last_acc_diag_.S = S_mat;
@@ -598,24 +606,27 @@ class Kalman3D_Wave_II {
             last_acc_diag_.accepted = false;
             return;
         }
-    
+
         last_acc_diag_.S = S_mat;
         last_acc_diag_.nis = nis3_from_ldlt_(ldlt, innov);
-    
-        // Conservative gate. When dynamics are strong, the inflation already softens the update.
+
         const T nis_gate = T(25);
         if (!std::isfinite(last_acc_diag_.nis) || last_acc_diag_.nis > nis_gate) {
             last_acc_diag_.accepted = false;
             return;
         }
-    
+
         MatrixNX3& K = K_scratch_;
         K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
-        freeze_linear_rows_(K);
-    
+
+        freeze_vp_rows_(K);
+        if constexpr (with_accel_bias) {
+            if (!acc_bias_updates_enabled_) freeze_baw_rows_(K);
+        }
+
         xext.noalias() += K * innov;
         joseph_update3_(K, S_mat, PCt);
-    
+
         applyQuaternionCorrectionFromErrorState();
         last_acc_diag_.accepted = true;
     }
@@ -645,7 +656,12 @@ class Kalman3D_Wave_II {
         MatrixNX3& PCt = PCt_scratch_;
         PCt.setZero();
         PCt.noalias() += Pext.template block<NX,3>(0,0) * J_att.transpose();
-        freeze_linear_rows_(PCt);
+
+        // Freeze only v,p. Allow b_aw indirect correction unless bias updates are disabled.
+        freeze_vp_rows_(PCt);
+        if constexpr (with_accel_bias) {
+            if (!acc_bias_updates_enabled_) freeze_baw_rows_(PCt);
+        }
 
         Eigen::LDLT<Matrix3> ldlt;
         if (!safe_ldlt3_(S_mat, ldlt, Rmag.norm())) {
@@ -660,7 +676,11 @@ class Kalman3D_Wave_II {
 
         MatrixNX3& K = K_scratch_;
         K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
-        freeze_linear_rows_(K);
+
+        freeze_vp_rows_(K);
+        if constexpr (with_accel_bias) {
+            if (!acc_bias_updates_enabled_) freeze_baw_rows_(K);
+        }
 
         xext.noalias() += K * r;
         joseph_update3_(K, S_mat, PCt);
@@ -690,15 +710,11 @@ class Kalman3D_Wave_II {
         MatrixNX3& PCt = PCt_scratch_;
         PCt.noalias() = Pext.template block<NX,3>(0, OFF_P);
 
-        freeze_base_rows_(PCt);
-
         Eigen::LDLT<Matrix3> ldlt;
         if (!safe_ldlt3_(S_mat, ldlt, R_meas.norm())) return;
 
         MatrixNX3& K = K_scratch_;
         K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
-
-        freeze_base_rows_(K);
 
         xext.noalias() += K * r;
         joseph_update3_(K, S_mat, PCt);
@@ -727,15 +743,11 @@ class Kalman3D_Wave_II {
         MatrixNX3& PCt = PCt_scratch_;
         PCt.noalias() = Pext.template block<NX,3>(0, OFF_V);
 
-        freeze_base_rows_(PCt);
-
         Eigen::LDLT<Matrix3> ldlt;
         if (!safe_ldlt3_(S_mat, ldlt, R_meas.norm())) return;
 
         MatrixNX3& K = K_scratch_;
         K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
-
-        freeze_base_rows_(K);
 
         xext.noalias() += K * r;
         joseph_update3_(K, S_mat, PCt);
@@ -759,21 +771,17 @@ class Kalman3D_Wave_II {
         Eigen::Matrix<T, NX, 1> PCt;
         PCt.noalias() = Pext.col(idx_vz);
 
-        freeze_base_rows_(PCt);
-
         Eigen::Matrix<T, NX, 1> K;
         K.noalias() = PCt / S;
-
-        freeze_base_rows_(K);
 
         xext.noalias() += K * r;
 
         Pext.noalias() -= K * PCt.transpose();
         Pext.noalias() -= PCt * K.transpose();
         Pext.noalias() += K * S * K.transpose();
+
         sanitize_and_clamp_state_();
         sanitize_covariance_();
-
         applyQuaternionCorrectionFromErrorState();
     }
 
@@ -799,8 +807,8 @@ class Kalman3D_Wave_II {
         if constexpr (with_accel_bias) return xext.template segment<3>(OFF_BAW);
         return Vector3::Zero();
     }
-    [[nodiscard]] Vector3 get_world_accel_bias() const { return get_acc_bias(); }
 
+    [[nodiscard]] Vector3 get_world_accel_bias() const { return get_acc_bias(); }
     [[nodiscard]] Vector3 get_velocity() const { return xext.template segment<3>(OFF_V); }
     [[nodiscard]] Vector3 get_position() const { return xext.template segment<3>(OFF_P); }
 
@@ -812,6 +820,7 @@ class Kalman3D_Wave_II {
         linear_block_enabled_ = on;
         if (!linear_block_enabled_) auto_zero_pseudo_elapsed_sec_ = T(0);
     }
+
     bool linear_block_enabled() const { return linear_block_enabled_; }
 
     void set_warmup_mode(bool on) {
@@ -923,6 +932,7 @@ class Kalman3D_Wave_II {
         baw_rw_gain_ = gain.cwiseMax(T(0));
         refresh_baw_rw_from_sigma_acc_();
     }
+
     void set_world_accel_bias_rw_floor(const Vector3& floor_std_per_sqrt_s) {
         baw_rw_floor_ = floor_std_per_sqrt_s.cwiseMax(T(0));
         refresh_baw_rw_from_sigma_acc_();
@@ -1123,6 +1133,14 @@ class Kalman3D_Wave_II {
     Vector3 baw_rw_gain_  = Vector3::Constant(T(0.25));
     Vector3 baw_rw_floor_ = Vector3::Constant(T(1e-4));
 
+    // Weak leak on the world accel bias state. Z is shorter by default.
+    Vector3 baw_leak_tau_sec_ = (Vector3() << T(12.0), T(12.0), T(4.0)).finished();
+
+    // Hard safety clamps for catastrophic one-frame spikes.
+    T linear_accel_limit_ = T(30.0);
+    T velocity_limit_     = T(50.0);
+    T position_limit_     = T(500.0);
+
     MatrixNX3    PCt_scratch_;
     MatrixNX3    K_scratch_;
     Matrix3      S_scratch_;
@@ -1308,19 +1326,28 @@ class Kalman3D_Wave_II {
     EIGEN_STRONG_INLINE void freeze_linear_rows_(MatrixNX3& M) const {
         M.template block<LIN_N,3>(OFF_V, 0).setZero();
     }
+
+    // Freeze only v,p. Leave b_aw unfrozen.
+    EIGEN_STRONG_INLINE void freeze_vp_rows_(MatrixNX3& M) const {
+        M.template block<6,3>(OFF_V, 0).setZero();
+    }
+
     EIGEN_STRONG_INLINE void freeze_baw_rows_(MatrixNX3& M) const {
         if constexpr (with_accel_bias) {
             M.template block<3,3>(OFF_BAW, 0).setZero();
         }
     }
+
     EIGEN_STRONG_INLINE void freeze_baw_rows_(Eigen::Matrix<T, NX, 1>& v) const {
         if constexpr (with_accel_bias) {
             v.template segment<3>(OFF_BAW).setZero();
         }
     }
+
     EIGEN_STRONG_INLINE void freeze_base_rows_(MatrixNX3& M) const {
         M.template block<BASE_N,3>(0, 0).setZero();
     }
+
     EIGEN_STRONG_INLINE void freeze_base_rows_(Eigen::Matrix<T, NX, 1>& v) const {
         v.template segment<BASE_N>(0).setZero();
     }
