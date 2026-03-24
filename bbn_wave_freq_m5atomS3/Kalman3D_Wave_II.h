@@ -1164,7 +1164,7 @@ class Kalman3D_Wave_II {
 
     bool auto_zero_position_pseudo_enabled_ = true;
     bool auto_zero_velocity_pseudo_enabled_ = true;
-    T    auto_zero_pseudo_period_sec_       = T(0.005);
+    T    auto_zero_pseudo_period_sec_       = T(0.015);
     T    auto_zero_pseudo_elapsed_sec_      = T(0);
 
     bool linear_block_enabled_ = true;
@@ -1672,11 +1672,11 @@ class Kalman3D_Wave_II {
         if (auto_zero_pseudo_elapsed_sec_ + T(1e-12) < auto_zero_pseudo_period_sec_) return;
         auto_zero_pseudo_elapsed_sec_ = T(0);
 
-        if (auto_zero_position_pseudo_enabled_) {
-            measurement_update_position_pseudo(Vector3::Zero(), get_Rp0_noise_std());
-        }
         if (auto_zero_velocity_pseudo_enabled_) {
             measurement_update_velocity_pseudo(Vector3::Zero(), get_Rv0_noise_std());
+        }
+        if (auto_zero_position_pseudo_enabled_) {
+            measurement_update_position_pseudo(Vector3::Zero(), get_Rp0_noise_std());
         }
     }
 };
