@@ -1109,8 +1109,8 @@ private:
 
     float acc_noise_floor_sigma_ = ACC_NOISE_FLOOR_SIGMA_DEFAULT;
 
-    float R_p0_coeff_   = 4.0f;
-    float R_v0_coeff_   = 8.0f;
+    float R_p0_coeff_   = 16.0f;
+    float R_v0_coeff_   = 32.0f;
     float tau_coeff_    = 1.7f;
     float sigma_coeff_  = 0.85f;
 
