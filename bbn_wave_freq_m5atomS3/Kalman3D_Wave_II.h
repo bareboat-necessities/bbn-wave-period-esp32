@@ -459,10 +459,8 @@ class Kalman3D_Wave_II {
 
             if constexpr (with_accel_bias) {
                 Fext.template block<3,3>(OFF_BAW, OFF_BAW) = Matrix3::Identity();
-                // Conservative bias coupling to prevent runaway.
-                const T bias_cpl = T(0.25);
-                Fext.template block<3,3>(OFF_V, OFF_BAW)   = -Matrix3::Identity() * (bias_cpl * Ts);
-                Fext.template block<3,3>(OFF_P, OFF_BAW)   = -Matrix3::Identity() * (bias_cpl * T(0.5) * Ts * Ts);
+                Fext.template block<3,3>(OFF_V, OFF_BAW)   = -Matrix3::Identity() * (Ts);
+                Fext.template block<3,3>(OFF_P, OFF_BAW)   = -Matrix3::Identity() * (T(0.5) * Ts * Ts);
             }
 
             const Matrix3 J_u_att = skew_symmetric_matrix(u_rot);
