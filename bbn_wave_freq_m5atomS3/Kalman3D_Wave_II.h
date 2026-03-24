@@ -4,7 +4,7 @@
   Stable drop-in replacement for Kalman3D_Wave_II.
 
   Design goals:
-    - preserve the public API used by SeaStateFusionFilter_5
+    - preserve the public API used by SeaStateFusionFilter_II
     - stay numerically stable in float
     - keep the original frame conventions:
         * world is NED (+Z down)

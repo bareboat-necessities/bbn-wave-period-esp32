@@ -14,7 +14,7 @@
 #endif
 
 #include "W3dSimCommon.h"
-#include "SeaStateFusionFilter_4.h"
+#include "SeaStateFusionFilter_OU_II.h"
 
 using Eigen::Vector3f;
 

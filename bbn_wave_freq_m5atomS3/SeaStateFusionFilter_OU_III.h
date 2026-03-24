@@ -4,7 +4,7 @@
   Copyright (c) 2025  Mikhail Grushinskiy  
   Released under the MIT License 
 
-  SeaStateFusionFilter
+  SeaStateFusionFilter_OU_III
   
   Marine Inertial Navigational System (INS) Filter for IMU
 
@@ -99,7 +99,7 @@ constexpr float ADAPT_RS_MULT              = 5.0f;   // dimensionless
 constexpr float ONLINE_TUNE_WARMUP_SEC     = 5.0f;
 constexpr float MAG_DELAY_SEC              = 8.0f;
 
-// Frequency smoother dt (SeaStateFusionFilter is designed for 200 Hz)
+// Frequency smoother dt (SeaStateFusionFilter_OU_III is designed for 200 Hz)
 constexpr float FREQ_SMOOTHER_DT = 1.0f / 200.0f;
 
 struct TuneState {
@@ -110,7 +110,7 @@ struct TuneState {
 
 //  Unified SeaState fusion filter
 template<TrackerType trackerT>
-class SeaStateFusionFilter {
+class SeaStateFusionFilter_OU_III {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
@@ -122,7 +122,7 @@ public:
         Live         // tuner is trusted; full adaptation & extras allowed
     };
 
-    explicit SeaStateFusionFilter(bool with_mag = true)
+    explicit SeaStateFusionFilter_OU_III(bool with_mag = true)
         : with_mag_(with_mag),
           time_(0.0),
           last_adapt_time_sec_(0.0),
@@ -484,7 +484,7 @@ public:
     void setFreezeAccBiasUntilLive(bool en) { freeze_acc_bias_until_live_ = en; }
     void setWarmupRacc(float r) { if (std::isfinite(r) && r > 0.0f) Racc_warmup_ = r; }
 
-    // For SeaStateFusionFilter to restore Racc automatically
+    // For SeaStateFusionFilter_OU_III to restore Racc automatically
     void setNominalRacc(const Eigen::Vector3f& r) { Racc_nominal_ = r; }
 
     //  Exposed getters
@@ -1315,7 +1315,7 @@ public:
 const auto cur_stage = impl_.getStartupStage();
 
 if (cur_stage != last_impl_startup_stage_) {
-    if (cur_stage == SeaStateFusionFilter<trackerT>::StartupStage::Cold) {
+    if (cur_stage == SeaStateFusionFilter_OU_III<trackerT>::StartupStage::Cold) {
         // Entered Cold (startup or non-Live tilt reset): reset mag-init ONCE
         mag_ref_set_ = false;
         mag_auto_.reset();
@@ -1454,7 +1454,7 @@ if (cur_stage != last_impl_startup_stage_) {
     float freqHz() const { return impl_.getFreqHz(); }
     Eigen::Vector3f eulerNauticalDeg() const { return impl_.getEulerNautical(); }
 
-    SeaStateFusionFilter<trackerT>& raw() { return impl_; }
+    SeaStateFusionFilter_OU_III<trackerT>& raw() { return impl_; }
 
 private:
     enum class Stage { Uninitialized, Warming, Live };
@@ -1503,15 +1503,15 @@ private:
 
 private:
     Config cfg_{};
-    SeaStateFusionFilter<trackerT> impl_{false};
+    SeaStateFusionFilter_OU_III<trackerT> impl_{false};
 
     bool begun_ = false;
 
     Stage stage_ = Stage::Uninitialized;
     float t_ = 0.0f;
     float stage_t_ = 0.0f;
-    typename SeaStateFusionFilter<trackerT>::StartupStage last_impl_startup_stage_ =
-             SeaStateFusionFilter<trackerT>::StartupStage::Cold;
+    typename SeaStateFusionFilter_OU_III<trackerT>::StartupStage last_impl_startup_stage_ =
+             SeaStateFusionFilter_OU_III<trackerT>::StartupStage::Cold;
 
     // Mag init state
     bool mag_ref_set_ = false;
