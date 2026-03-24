@@ -736,9 +736,6 @@ class Kalman3D_Wave_II {
         K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
 
         freeze_base_rows_(K);
-        if constexpr (with_accel_bias) {
-            if (!acc_bias_updates_enabled_) freeze_baw_rows_(K);
-        }
 
         xext.noalias() += K * r;
         joseph_update3_(K, S_mat, PCt);
@@ -763,13 +760,11 @@ class Kalman3D_Wave_II {
         PCt.noalias() = Pext.col(idx_vz);
 
         freeze_base_rows_(PCt);
-        freeze_baw_rows_(PCt);
 
         Eigen::Matrix<T, NX, 1> K;
         K.noalias() = PCt / S;
 
         freeze_base_rows_(K);
-        freeze_baw_rows_(K);
 
         xext.noalias() += K * r;
 
