@@ -2,15 +2,6 @@
 
 /*
   Stable drop-in replacement for Kalman3D_Wave_II.
-
-  Key fixes vs. the previous no-OU version:
-    - accel / mag updates can now correct the world-accel-bias-like state b_aw
-      through cross-covariance (v,p still frozen there)
-    - position / velocity pseudo-updates are allowed to correct attitude / gyro bias
-      through cross-covariance instead of freezing the base rows
-    - weak leak on b_aw (especially helpful on Z) so it is not a pure random walk
-    - control acceleration is clamped before integration to prevent one-frame blow-ups
-    - same public API style as your current Kalman3D_Wave_II
 */
 
 #ifdef EIGEN_NON_ARDUINO
