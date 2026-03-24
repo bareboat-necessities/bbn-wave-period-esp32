@@ -1,356 +1,652 @@
-\documentclass[11pt,letterpaper]{article}
-\usepackage{amsmath}
-\usepackage{amssymb}
-\usepackage{amsfonts}
-\usepackage{fullpage}
+\documentclass[conference]{IEEEtran}
+
+% ---------------------------------------------------------------
+% ENCODING AND FONTS
+% ---------------------------------------------------------------
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[utf8]{inputenc}
+  \usepackage[T1]{fontenc}
+\fi
+
+\usepackage{newtxtext,newtxmath}
+\usepackage{textcomp}
+
+% ---------------------------------------------------------------
+% MATH
+% ---------------------------------------------------------------
+\usepackage{amsmath,bm}
+\usepackage{mathtools}
+\usepackage{mathrsfs}
+\interdisplaylinepenalty=2500
+\allowdisplaybreaks
+
+% ---------------------------------------------------------------
+% LAYOUT / TYPOGRAPHY
+% ---------------------------------------------------------------
+\usepackage{microtype}
+\usepackage{balance}
+\usepackage{flafter}
+\usepackage{placeins}
+\usepackage{float}
 \usepackage{graphicx}
-\usepackage{cite}
+\usepackage{xcolor}
 \usepackage{enumitem}
+\usepackage{etoolbox}
 
-\title{Code-Faithful Analysis of the Aranovskiy Frequency Estimator Implementation}
-\author{}
-\date{}
+% ---------------------------------------------------------------
+% TABLES
+% ---------------------------------------------------------------
+\usepackage{array,booktabs,makecell,adjustbox}
 
+% ---------------------------------------------------------------
+% UNITS
+% ---------------------------------------------------------------
+\usepackage{siunitx}
+\sisetup{detect-weight=true, detect-family=true, per-mode=symbol}
+
+% ---------------------------------------------------------------
+% REFERENCES / CROSS-REFERENCES
+% ---------------------------------------------------------------
+\usepackage{cite}
+\usepackage[breaklinks=true,hidelinks]{hyperref}
+\usepackage{bookmark}
+\usepackage[nameinlink,capitalise,noabbrev]{cleveref}
+
+% ---------------------------------------------------------------
+% FLOAT TUNING
+% ---------------------------------------------------------------
+\setcounter{topnumber}{5}
+\setcounter{dbltopnumber}{5}
+\renewcommand{\topfraction}{0.95}
+\renewcommand{\dbltopfraction}{0.95}
+\renewcommand{\textfraction}{0.05}
+\renewcommand{\floatpagefraction}{0.9}
+\renewcommand{\dblfloatpagefraction}{0.9}
+
+% ---------------------------------------------------------------
+% CONVENIENCE MACROS
+% ---------------------------------------------------------------
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\fitcol}[1]{\adjustbox{max width=\columnwidth}{\ensuremath{\displaystyle #1}}}
+
+% ---------------------------------------------------------------
+% DESCRIPTION LIST STYLE
+% ---------------------------------------------------------------
+\setlist[description]{font=\footnotesize\bfseries,
+                      labelsep=0.6em, leftmargin=1.8em}
+
+% ---------------------------------------------------------------
+% EQUATION FONT SIZE
+% ---------------------------------------------------------------
+\AtBeginEnvironment{equation}{\small}
+\AtBeginEnvironment{align}{\small}
+\AtBeginEnvironment{alignat}{\small}
+
+% ---------------------------------------------------------------
+% PDF BOOKMARK SAFETY
+% ---------------------------------------------------------------
+\pdfstringdefDisableCommands{%
+  \def\SI#1#2{#1 #2}%
+  \def\bm#1{#1}%
+  \def\sigma{sigma}%
+  \def\omega{omega}%
+  \def\theta{theta}%
+  \def\phi{phi}%
+  \def\zeta{zeta}%
+  \def\hat#1{#1}%
+  \def\cdot{}%
+  \def\;{ }%
+}
+
+% ---------------------------------------------------------------
+% UNICODE PUNCTUATION  (pdfLaTeX only)
+% ---------------------------------------------------------------
+\ifPDFTeX
+  \DeclareUnicodeCharacter{2013}{\textendash}
+  \DeclareUnicodeCharacter{2014}{\textemdash}
+  \DeclareUnicodeCharacter{2018}{\textquoteleft}
+  \DeclareUnicodeCharacter{2019}{\textquoteright}
+  \DeclareUnicodeCharacter{201C}{\textquotedblleft}
+  \DeclareUnicodeCharacter{201D}{\textquotedblright}
+  \DeclareUnicodeCharacter{2212}{\textminus}
+\fi
+
+\emergencystretch=2em
+
+% ---------------------------------------------------------------
+% TITLE AND AUTHOR
+% ---------------------------------------------------------------
+\title{Analysis of the Aranovskiy Frequency Estimator:\
+Paper-to-Code Correspondence, Theory, and Numerical Considerations}
+
+\author{%
+  \IEEEauthorblockN{Mikhail S.\ Grushinskiy}
+  \IEEEauthorblockA{Independent Researcher, Fair Lawn, NJ, USA\\
+    Bareboat Necessities GitHub Project\\
+    \texttt{mgrouch@users.github.com}}%
+}
+
+% ---------------------------------------------------------------
 \begin{document}
-
 \maketitle
 
-\section{Introduction}
+% ---------------------------------------------------------------
+\begin{abstract}
+This paper documents the Aranovskiy frequency estimator in the original 2013 IFAC paper and in the corresponding C\texttt{++} implementation, making explicit both the paper's convergence argument and the practical code-level modifications. The underlying paper presents a genuine convergence
+argument: it starts from a classical adaptive law for the unknown parameter,
+proves exponential convergence of a first-order observer state by Lemma~1,
+and then reduces the realizable estimator to the classical law up to an
+exponentially decaying observer error. However, the shipped implementation is
+not identical to the bare paper equations: it adds explicit Euler
+integration, internal time scaling, signal-energy normalization, hard
+clipping of the adaptation rate, and heuristic confidence and lock outputs.
 
-This document describes the \emph{implemented} Aranovskiy-style frequency estimator in the provided C\texttt{++} code, rather than an idealized continuous-time observer. The implementation is inspired by the adaptive sinusoidal frequency estimation approach of Bobtsov, Nikolaev, Slita, Borgul, and Aranovskiy~\cite{BobtsovNikolaevSlitaBorgulAranovskiy2013}, but it also includes several practical engineering modifications:
-\begin{itemize}
-  \item a first-order low-pass state rather than a second-order oscillator state,
-  \item explicit forward-Euler discretization,
-  \item internal time scaling for low-frequency numerical conditioning,
-  \item signal-energy normalization of the adaptation law,
-  \item hard clipping of the adaptation rate,
-  \item heuristic confidence and lock outputs.
-\end{itemize}
+The main implementation facts are as follows. The observer part is
+first-order, not second-order: a single low-pass state is integrated, while a
+second dynamic state is the adaptive integrator. The adaptive parameter is
+formed algebraically from an integrator state and an instantaneous
+cross-term. The code uses a one-step-explicit update ordering in which the
+adaptation law uses the stored parameter from the previous sample, while the
+reported frequency uses a freshly recomputed algebraic parameter before the
+integrator is advanced. The estimator is lightweight and practical for
+embedded low-frequency tracking, but sensitivity to DC offsets remains an
+important limitation.
+\end{abstract}
 
-Accordingly, this note aims to match the actual source code line-for-line at the algorithm level.
+\begin{IEEEkeywords}
+frequency estimation, adaptive observer, Aranovskiy estimator,
+nonlinear adaptive control, sinusoidal tracking, embedded signal processing
+\end{IEEEkeywords}
 
-\section{Signal Model and Estimation Objective}
+% ---------------------------------------------------------------
+\section{Introduction and Motivation}\label{sec:intro}
+
+Tracking the frequency of a dominant sinusoid is a standard problem in signal
+processing and control. Classical approaches such as phase-locked loops,
+zero-crossing detectors, and short-time Fourier methods all trade off
+latency, noise sensitivity, or computational cost.
+
+The estimator studied here belongs to the nonlinear adaptive-observer family
+and is associated with the work of Bobtsov, Nikolaev, Slita, Borgul, and
+Aranovskiy~\cite{BobtsovNikolaevSlitaBorgulAranovskiy2013}. It is attractive
+for embedded applications because it operates sample by sample with constant
+cost and without FFT buffers.
+
+A recurring source of confusion is that secondary descriptions often mix
+three different objects:
+\begin{enumerate}[leftmargin=1.5em]
+  \item the ideal adaptive law used for the theoretical argument,
+  \item the realizable continuous-time estimator written in the paper, and
+  \item the practical discrete-time C\texttt{++} implementation.
+\end{enumerate}
+The purpose of this note is to keep those three layers separate and then map
+them carefully onto one another.
+
+% ---------------------------------------------------------------
+\section{Signal Model}\label{sec:signal}
 
 The measured scalar signal is modeled as
-\begin{equation}
-  y(t) = A(t)\,\sin\bigl(\omega(t) t + \phi(t)\bigr) + \nu(t),
+\begin{equation}\label{eq:signal}
+  y(t) = A(t)\,\sin\!\bigl(\omega(t)t + \phi(t)\bigr) + \nu(t),
 \end{equation}
 where
-\begin{itemize}
-  \item $A(t)$ is a possibly slowly varying amplitude,
-  \item $\omega(t)$ is the unknown instantaneous angular frequency,
-  \item $\phi(t)$ is the unknown phase,
-  \item $\nu(t)$ is measurement noise.
-\end{itemize}
+\begin{description}
+  \item[$A(t)$] is the signal amplitude,
+  \item[$\omega(t)$] is the unknown angular frequency,
+  \item[$\phi(t)$] is the phase,
+  \item[$\nu(t)$] is measurement noise or disturbance.
+\end{description}
 
-The implementation does not estimate $A(t)$ explicitly. Instead, it maintains a filtered state $x_1$ and an adaptive scalar parameter $\sigma$, from which an algebraic parameter $\theta$ is formed. The reported physical frequency is obtained from the magnitude of $\theta$.
-
-\section{Implemented Observer State}
-
-\subsection{First-Order Low-Pass Filter State}
-
-The code implements a \textbf{first-order} dynamic state
-\begin{equation}\label{eq:x1_ode}
-  \dot{x}_1 = -a\,x_1 + b\,y,
+The 2013 paper formulates its main result for the simpler constant-frequency,
+constant-amplitude disturbed signal
+\begin{equation}\label{eq:paper_signal}
+  y(t)=\sigma\sin(\omega t+\varphi)+\delta(t),
 \end{equation}
-where $a>0$ and $b>0$ are fixed gains set by the constructor through \texttt{setParams()}. There is no independently integrated second state such as $x_2 = \dot{x}_1$.
+with unknown constants $\sigma$, $\omega$, and $\varphi$, and a bounded smooth
+disturbance $\delta(t)$~\cite{BobtsovNikolaevSlitaBorgulAranovskiy2013}.
 
-Equation~\eqref{eq:x1_ode} is a first-order low-pass filter with time constant $1/a$ and DC gain $b/a$. In the common configuration used by the code, $a=b$, so the DC gain is unity.
+% ---------------------------------------------------------------
+\section{What the Original Paper Actually Proves}\label{sec:paper_theory}
 
-\subsection{Adaptive State and Algebraic Parameter}
+The paper does present a real convergence argument, but it is important to
+state precisely what form that argument takes.
 
-The implementation stores an adaptive integrator state $\sigma$ and forms the algebraic quantity
+\subsection{Ideal Adaptive Law}
+
+For the undisturbed sinusoid, the paper writes the auxiliary model
+\begin{align}
+  \dot{x}_1 &= x_2, \\
+  \dot{x}_2 &= -\omega^2 x_1,
+\end{align}
+and defines
+\begin{equation}
+  \theta = -\omega^2.
+\end{equation}
+It then introduces the ideal adaptive law
+\begin{equation}\label{eq:ideal_theta_hat}
+  \dot{\hat\theta}(t) = k x_1^2\bigl(\theta-\hat\theta(t)\bigr),
+\end{equation}
+which the paper explicitly describes as a classical tuning method ensuring
+asymptotic convergence of $\hat\theta(t)$ to $\theta$ under the cited
+limit-integral nondegeneration conditions from earlier Aranovskiy work
+(corresponding to persistent excitation in modern language)
+~\cite{BobtsovNikolaevSlitaBorgulAranovskiy2013}.
+
+\subsection{Observer Lemma}
+
+Because $x_1$ is not measured directly, the paper constructs the first-order
+observer
+\begin{equation}\label{eq:paper_observer}
+  \dot{\hat{x}}_1 = -a\hat{x}_1 + by,
+\end{equation}
+with $a=k_1/k_2$ and $b=k_2^{-1}$, and proves in Lemma~1 that the estimation
+error $\tilde{x}_1=x_1-\hat{x}_1$ converges exponentially to zero
+~\cite{BobtsovNikolaevSlitaBorgulAranovskiy2013}.
+
+\subsection{Realizable Algorithm in the Paper}
+
+After substituting the observer estimate into the ideal law, eliminating the
+unmeasured derivative by means of an auxiliary variable $\zeta$, and
+neglecting the exponentially decaying observer error, the paper arrives at
+its realizable estimator:
+\begin{align}
+  \dot{\hat{x}}_1 &= -a\hat{x}_1 + by, \label{eq:paper6}\\
+  \dot{\zeta} &= -k\hat{x}_1^2\hat\theta - ka\hat{x}_1\dot{\hat{x}}_1
+                 - kb\dot{\hat{x}}_1 y, \label{eq:paper10}\\
+  \hat\theta &= \zeta + kb\hat{x}_1 y,
+  \qquad
+  \hat\omega = \sqrt{|\hat\theta|}. \label{eq:paper11}
+\end{align}
+The paper then states that \eqref{eq:paper6}, \eqref{eq:paper10}, and
+\eqref{eq:paper11} are equivalent to the classical algorithm up to the
+exponentially decaying observer error and therefore inherit its stability and
+asymptotic convergence properties for the sinusoidal input
+~\cite{BobtsovNikolaevSlitaBorgulAranovskiy2013}.
+
+\subsection{What This Does \emph{Not} Mean}
+
+This short conference paper does \emph{not} package the realizable estimator
+as a long standalone theorem-proof development for the exact final equations.
+Instead, the proof structure is: classical adaptive law $+$ observer lemma
+$+$ equivalence argument. That is still a genuine convergence argument, and
+it should not be described as ``no proof.''
+
+% ---------------------------------------------------------------
+\section{Mapping from Paper Notation to the C\texttt{++} Code}\label{sec:mapping}
+
+The provided implementation follows the same structural estimator as the
+paper, with the following correspondence:
+\begin{align}
+  x_1 &\leftrightarrow \hat{x}_1, \\
+  \sigma &\leftrightarrow \zeta, \\
+  \theta &\leftrightarrow \hat\theta.
+\end{align}
+Thus the code keeps one observer state $x_1$, one adaptive integrator state
+$\sigma$, and forms the algebraic parameter $\theta$ from
 \begin{equation}\label{eq:theta_alg}
-  \theta = \sigma + k b x_1 y,
+  \theta = \sigma + kbx_1y.
 \end{equation}
-where $k>0$ is the adaptation gain.
-
-The code then maps $\theta$ to an internal angular-frequency magnitude through
+The reported internal angular-frequency magnitude is then
 \begin{equation}\label{eq:omega_int}
-  \omega_{\mathrm{int}} = \sqrt{\max\!\bigl(|\theta|,\,10^{-7}\bigr)}.
+  \omega_{\mathrm{int}} = \sqrt{\max\!\bigl(|\theta|,10^{-7}\bigr)}.
 \end{equation}
-Because the square root uses $|\theta|$, the implementation always reports a real frequency magnitude even if $\theta$ changes sign during transients.
 
-\section{Internal Time Scaling}
+Relative to the bare continuous-time paper equations, the code adds:
+\begin{itemize}[leftmargin=1.4em]
+  \item explicit Euler discretization,
+  \item internal time scaling,
+  \item signal-energy weighting of the update,
+  \item hard clipping of the integrator rate,
+  \item heuristic phase, confidence, and lock outputs.
+\end{itemize}
+Therefore, the literature directly supports the underlying estimator
+structure, while the exact source code is a modified discrete-time
+engineering realization.
 
-The implementation introduces a fixed internal time scale
+% ---------------------------------------------------------------
+\section{Implemented Observer Structure}\label{sec:observer}
+
+\subsection{First-Order Low-Pass State}
+
+A common mistake is to call the implemented observer ``second-order.'' The
+observer part is actually \textbf{first-order}:
+\begin{equation}\label{eq:x1_ode}
+  \dot{x}_1 = -a x_1 + b y.
+\end{equation}
+There is no independently integrated state $x_2$ in the code.
+
+At the same time, the \emph{overall estimator} has dynamic order two, because
+it contains the low-pass state $x_1$ and the adaptive integrator state
+$\sigma$. This matches the dynamic-order statement in the paper.
+
+Equation~\eqref{eq:x1_ode} is a first-order low-pass filter with time
+constant $1/a$ and DC gain $b/a$. When $a=b$, the DC gain is unity.
+
+\subsection{Filtered-State Interpretation}
+
+For sinusoidal input $y(t)=A\sin(\omega_0 t)$, the steady-state response of
+\eqref{eq:x1_ode} is
+\begin{equation}\label{eq:x1_sine}
+  x_1(t)=\frac{b}{\sqrt{a^2+\omega_0^2}}A
+  \sin\!\bigl(\omega_0 t - \arctan(\omega_0/a)\bigr).
+\end{equation}
+Hence the phase lag is
+\begin{equation}
+  -\arctan(\omega_0/a).
+\end{equation}
+At $\omega_0=a$ the lag is exactly $-45^{\circ}$, and it approaches
+$-90^{\circ}$ only in the high-frequency limit $\omega_0\gg a$.
+Consequently, $x_1$ is not an exact quadrature signal; it is a filtered,
+phase-lagged proxy for the input.
+
+% ---------------------------------------------------------------
+\section{Internal Time Scaling}\label{sec:timescale}
+
+The implementation introduces a fixed time-scale factor
 \begin{equation}
   S = 20.
 \end{equation}
-This is an engineering modification intended to improve numerical conditioning for very low physical frequencies.
-
-The parameter mapping used in the code is
+If the user-facing parameter is $\omega_{\mathrm{up}}$, the code sets
 \begin{align}
   a &= S\,\omega_{\mathrm{up}}, \\
   b &= S\,\omega_{\mathrm{up}}, \\
-  k &= S\,k_{\mathrm{user}},
+  k &= S\,k_{\mathrm{user}}.
 \end{align}
-where $\omega_{\mathrm{up}}$ and $k_{\mathrm{user}}$ are user-facing constructor inputs.
-
 If the physical sample period is $\Delta t$, the internal Euler step is
 \begin{equation}
   \delta t = \frac{\Delta t}{S}.
 \end{equation}
+Likewise, the user-provided initial values of $\theta$ and $\sigma$ are
+stored internally after multiplication by $S^2$.
 
-Likewise, the initializer rescales the user-supplied initial conditions by $S^2$:
-\begin{equation}
-  \theta_{\mathrm{stored}}(0) = S^2\,\theta_0,
-  \qquad
-  \sigma(0) = S^2\,\sigma_0.
-\end{equation}
-
-The physical output frequency in hertz is not $\omega_{\mathrm{int}}/(2\pi)$ directly; rather, it is
-\begin{equation}\label{eq:physical_freq}
+The physical output frequency in hertz is therefore not
+$\omega_{\mathrm{int}}/(2\pi)$, but rather
+\begin{equation}\label{eq:f_phys}
   f_{\mathrm{phys}} = \frac{\omega_{\mathrm{int}}}{2\pi S}.
 \end{equation}
-This matches the implementation of \texttt{getFrequencyHz()}.
+This matches the source code exactly.
 
-\section{Exact Discrete-Time Update Sequence}
+% ---------------------------------------------------------------
+\section{Exact Discrete-Time Update Order in the Code}\label{sec:discrete}
 
-Let $y_n$ be the current sample, and let $x_{1,n}$, $\sigma_n$, and $\theta^{\mathrm{stored}}_n$ denote the values stored at the beginning of the sample. The implementation performs the following operations in this order.
+Let $y_n$ be the current sample, and let $x_{1,n}$, $\sigma_n$, and
+$\theta_n^{\mathrm{stored}}$ denote the values held at the beginning of the
+sample. The code performs the following steps.
 
-\subsection{Filter Derivative}
+\subsection{Low-Pass Derivative}
 
-First, the code computes the derivative of the low-pass state from the current stored state:
+First, it computes
 \begin{equation}\label{eq:x1dot_n}
-  \dot{x}_{1,n} = -a\,x_{1,n} + b\,y_n.
+  \dot{x}_{1,n} = -a x_{1,n} + b y_n.
 \end{equation}
 
-\subsection{Signal-Energy Weighting}
+\subsection{Signal-Energy Weight}
 
-The implementation then forms an instantaneous signal-energy proxy
-\begin{equation}\label{eq:signal_energy}
-  E_n = x_{1,n}^2 + y_n^2 + 10^{-12},
-\end{equation}
-and a normalization factor
-\begin{equation}\label{eq:gain_scaling}
-  \rho_n = \frac{E_n}{E_n + 10^{-6}}.
-\end{equation}
-This factor suppresses aggressive adaptation when the signal is weak.
+Then it forms
+\begin{align}
+  E_n &= x_{1,n}^2 + y_n^2 + 10^{-12}, \\
+  \rho_n &= \frac{E_n}{E_n + 10^{-6}}.
+\end{align}
+This factor tends to $1$ for strong signals and toward $0$ when the signal
+collapses.
 
-\subsection{Nonlinear Adaptation Term}
+\subsection{Adaptation Error}
 
-The auxiliary quantity
-\begin{equation}
-  \mathrm{tmp}_n = b\,y_n + a\,x_{1,n}
-\end{equation}
-is formed, followed by the nonlinear adaptation signal
-\begin{equation}\label{eq:phi_n}
-  \varphi_n
-  = \dot{x}_{1,n}\,\mathrm{tmp}_n
-    + x_{1,n}^2\,\theta^{\mathrm{stored}}_n.
-\end{equation}
+The code next computes
+\begin{align}
+  \mathrm{tmp}_n &= b y_n + a x_{1,n}, \\
+  \varphi_n &= \dot{x}_{1,n}\,\mathrm{tmp}_n + x_{1,n}^2\theta_n^{\mathrm{stored}}.
+\end{align}
+This matches the paper's realizable law structurally, except for the extra
+weighting factor $\rho_n$ and later clipping.
 
-An important detail is that \eqref{eq:phi_n} uses the \emph{stored} value $\theta^{\mathrm{stored}}_n$ already present at the beginning of the sample. It does not use a freshly recomputed $\theta$ from the current sample before forming $\varphi_n$.
+\subsection{Integrator Rate}
 
-\subsection{Integrator Rate with Clipping}
-
-The integrator rate is then computed as
+The adaptive integrator rate is
 \begin{equation}\label{eq:sigma_dot_n}
-  \dot{\sigma}_n
-  = \mathrm{clip}\!\bigl(-k\,\varphi_n\,\rho_n,\,-10^7,\,10^7\bigr),
+  \dot{\sigma}_n = \mathrm{clip}\!\bigl(-k\varphi_n\rho_n,-10^7,10^7\bigr).
 \end{equation}
-where
-\begin{equation}
-  \mathrm{clip}(u,\ell,h)=\max(\ell,\min(h,u)).
-\end{equation}
-This is a numerical safeguard added by the implementation.
+The clip is a practical numerical safeguard not present in the paper.
 
-\subsection{Fresh Algebraic Frequency Output}
+\subsection{Fresh Algebraic Parameter and Frequency Output}
 
-Before integrating $x_1$ and $\sigma$, the code recomputes the algebraic estimate
+Before integrating the dynamic states, the code recomputes
 \begin{equation}\label{eq:theta_out}
   \theta_n^{\mathrm{out}} = \sigma_n + k b x_{1,n} y_n.
 \end{equation}
-
-The internal angular-frequency magnitude and physical frequency outputs are then
+The output frequency is then obtained from
 \begin{align}
   \omega_{\mathrm{int},n}
-  &= \sqrt{\max\!\bigl(|\theta_n^{\mathrm{out}}|,\,10^{-7}\bigr)}, \\
+  &= \sqrt{\max\!\bigl(|\theta_n^{\mathrm{out}}|,10^{-7}\bigr)}, \\
   f_{\mathrm{phys},n}
   &= \frac{\omega_{\mathrm{int},n}}{2\pi S}.
 \end{align}
 
-Thus, the reported frequency uses the freshly recomputed algebraic parameter~\eqref{eq:theta_out}, but the adaptation signal~\eqref{eq:phi_n} uses the previously stored $\theta^{\mathrm{stored}}_n$.
+A crucial detail is that the adaptation error $\varphi_n$ uses the stored
+parameter $\theta_n^{\mathrm{stored}}$, while the reported frequency uses the
+freshly recomputed algebraic value $\theta_n^{\mathrm{out}}$.
 
-\subsection{Euler Integration of the Dynamic States}
+\subsection{Euler Integration}
 
-The stored dynamic states are then advanced using explicit Euler with step $\delta t = \Delta t/S$:
+The dynamic states are advanced by explicit Euler:
 \begin{align}
   x_{1,n+1} &= x_{1,n} + \dot{x}_{1,n}\,\delta t, \\
   \sigma_{n+1} &= \sigma_n + \dot{\sigma}_n\,\delta t.
 \end{align}
-
-After that, the implementation stores
-\begin{equation}
-  \theta^{\mathrm{stored}}_{n+1} = \theta_n^{\mathrm{out}}.
-\end{equation}
-Therefore, on the next sample, the adaptation law uses the previous sample's algebraic estimate.
+The member variable $\theta$ in the code retains
+$\theta_n^{\mathrm{out}}$ for use in the next sample's adaptation law.
 
 \subsection{Phase Heuristic}
 
-Finally, the code reports a heuristic phase estimate
+Finally, the implementation reports
 \begin{equation}\label{eq:phase_est}
-  \hat{\phi}_n = \operatorname{atan2}(x_{1,n+1},\,y_n).
+  \hat{\phi}_n = \operatorname{atan2}(x_{1,n+1},y_n).
 \end{equation}
-This phase output is not an independently validated analytic-signal phase; it is simply a practical proxy formed from the updated filter state and the current measurement.
+This is a heuristic phase proxy, not an exact analytic-signal phase.
 
-\section{Interpretation of the Filtered State}
+\begin{table}[t]
+  \centering
+  \caption{Main variables in the implementation.}
+  \label{tab:vars}
+  \small
+  \begin{tabular}{@{}llp{3.25cm}@{}}
+    \toprule
+    Symbol & Units & Meaning \\
+    \midrule
+    $x_1$        & signal     & low-pass state \\
+    $\sigma$     & scaled     & adaptive integrator state \\
+    $\theta$     & scaled     & algebraic parameter estimate \\
+    $\varphi$    & scaled     & adaptation error signal \\
+    $\rho$       & $[0,1]$    & signal-energy weight \\
+    $\omega_{\mathrm{int}}$ & rad/s scaled & internal angular-frequency magnitude \\
+    $f_{\mathrm{phys}}$ & Hz & physical output frequency \\
+    $\hat\phi$   & rad        & heuristic phase output \\
+    $S$          & ---        & time-scale factor \\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
-For a sinusoidal input
+% ---------------------------------------------------------------
+\section{Connection Between the Paper and the Code}\label{sec:connection}
+
+If one removes the code-specific modifications
 \begin{equation}
-  y(t)=A\sin(\omega_0 t),
+  \rho_n \to 1,
+  \qquad
+  \mathrm{clip}(u,-10^7,10^7) \to u,
 \end{equation}
-the steady-state response of the first-order filter~\eqref{eq:x1_ode} is
-\begin{equation}\label{eq:x1_sinusoid}
-  x_1(t)
-  =
-  \frac{b}{\sqrt{a^2+\omega_0^2}}\,A\,
-  \sin\!\bigl(\omega_0 t - \arctan(\omega_0/a)\bigr).
-\end{equation}
-Hence the phase lag of $x_1$ relative to $y$ is
-\begin{equation}
-  -\arctan(\omega_0/a).
-\end{equation}
-At the cutoff frequency $\omega_0=a$, this lag is exactly $-45^\circ$. It approaches $-90^\circ$ only in the high-frequency limit $\omega_0\gg a$.
+and ignores the internal time scaling, then the source code reduces to the
+same structural estimator as \eqref{eq:paper6}--\eqref{eq:paper11}. In this
+sense the code is not an unrelated algorithm; it is a practical realization
+of the same observer-plus-adaptation architecture.
 
-Therefore, $x_1$ should not be described as an exact quadrature channel. It is more accurate to say that $x_1$ is a filtered, phase-lagged proxy for the input. The phase estimate~\eqref{eq:phase_est} becomes more interpretable only after the frequency estimate has settled and the operating point lies in a regime where the filter lag is appreciable.
+What changes is the scope of the theory one can cite directly. The paper's
+convergence argument applies to the continuous-time estimator structure.
+The exact C\texttt{++} source code additionally contains discretization,
+weighting, clipping, and heuristics. Those changes are reasonable
+engineering modifications, but they are not themselves proved in the 2013
+paper.
 
-\section{Practical Meaning of the Parameter $\theta$}
+% ---------------------------------------------------------------
+\section{Signal Processing Interpretation}\label{sec:dsp}
 
-In continuous-time Aranovskiy-style observers, the adaptive parameter is commonly related to the squared sinusoidal frequency. The present implementation follows that spirit but uses a practical algebraic estimate with output law~\eqref{eq:omega_int}. For that reason, the code is best understood as tracking the \emph{magnitude} of the squared angular frequency through $|\theta|$, rather than as enforcing a strict sign convention at all times.
+\subsection{Relation to Quadrature and the Hilbert Viewpoint}
 
-A negative initial value such as
-\begin{equation}
-  \theta_0 = \sigma_0 = -\frac{1}{4}\,\omega_{\max}^2
-\end{equation}
-is a sensible engineering initialization because it is consistent with the usual continuous-time target $\theta^\star \approx -\omega^2$. However, in the implementation the reported frequency remains real because of the absolute value and floor inside~\eqref{eq:omega_int}, not because $\theta_0$ is negative.
+The implementation does not compute the Hilbert transform explicitly. Still,
+for a narrowband sinusoid, the filtered state $x_1$ can serve as a useful
+lagged companion signal, which is why \eqref{eq:phase_est} can behave like a
+rough phase estimate after lock. This interpretation is qualitative rather
+than exact.
 
-\section{Sampling and Nyquist Considerations}
+\subsection{Nyquist Requirement}
 
-The estimator runs on discrete samples, so the input must satisfy the usual Nyquist requirement. If the physical sampling interval is $\Delta t$, then the Nyquist frequency is
+As with any sampled-data frequency tracker, the signal of interest must lie
+comfortably below the Nyquist frequency
 \begin{equation}
   f_N = \frac{1}{2\Delta t}.
 \end{equation}
-To avoid aliasing and false convergence, the signal of interest should lie comfortably below $f_N$, and anti-alias filtering should be applied before sampling if the source contains higher-frequency content.
+Any significant energy above $f_N$ aliases into the baseband and can drive
+the estimator toward the wrong frequency. Internal time scaling does not
+remove this requirement.
 
-Because the implementation is intended for low-frequency motion tracking, its internal time scaling improves conditioning, but it does not remove the need for adequate sampling.
+% ---------------------------------------------------------------
+\section{Noise and Bias Sensitivity}\label{sec:noise}
 
-\section{Sensitivity to DC Offsets and Slow Drift}
+\subsection{Zero-Mean Broadband Noise}
 
-The implementation does not contain an explicit bias observer for the scalar input $y$ and does not perform high-pass filtering internally. As a result, DC offsets and very slow drift can bias both the filter state and the adaptation law.
+For zero-mean broadband noise, the adaptive law is typically jittered rather
+than permanently biased. The low-pass state and the adaptive integrator both
+average part of that fluctuation, so the estimator is usually tolerant of
+moderate measurement noise.
 
-This can be seen directly from the algebraic term $k b x_1 y$ in $\theta$ and from the dependence of the adaptation signal on both $x_1$ and $y$. If
+\subsection{DC Offset and Slow Drift}
+
+The estimator is not inherently DC-robust. If the measurement contains a
+constant offset $y_0$, then products such as $x_1 y$ acquire biased terms,
+which can shift the parameter estimate and therefore the frequency output.
+This is one of the most important practical limitations of the method.
+
+The usual mitigation is to apply mean removal, AC coupling, or a gentle
+high-pass filter before frequency estimation.
+
+% ---------------------------------------------------------------
+\section{Confidence and Lock Heuristics}\label{sec:lock}
+
+The original paper contains no lock detector. The implementation therefore
+adds a synthetic diagnostic layer.
+
+\subsection{Signal RMS}
+
+A one-pole smoother tracks the instantaneous power $x_1^2+y^2$ and produces a
+smoothed RMS-like magnitude.
+
+\subsection{Frequency Stability}
+
+A second one-pole smoother tracks the physical frequency estimate. The
+instantaneous deviation between the raw and smoothed frequencies is converted
+into a stability score.
+
+\subsection{Composite Confidence and Lock}
+
+Amplitude sufficiency and frequency stability are combined into a confidence
+score in $[0,1]$, which is then low-pass filtered again. The lock flag is set
+only when the frequency lies in a configured range, the signal RMS exceeds a
+threshold, and the confidence exceeds its own threshold. These outputs are
+helpful engineering indicators, but they are not part of the published
+convergence theory.
+
+% ---------------------------------------------------------------
+\section{Numerical Implementation Notes}\label{sec:numerical}
+
+\subsection{Initial Conditions}
+
+The paper suggests a practical initialization near
+$-\omega_{\mathrm{up}}^2/4$ when an upper bound on frequency is known
+~\cite{BobtsovNikolaevSlitaBorgulAranovskiy2013}. That is a sensible starting
+point for both $\theta$ and $\sigma$.
+
+However, the exact reason the code always reports a real frequency is not the
+sign of the initial condition. It is the output law
 \begin{equation}
-  y(t) = y_0 + \tilde{y}(t)
+  \omega_{\mathrm{int}} = \sqrt{\max(|\theta|,10^{-7})},
 \end{equation}
-with nonzero constant component $y_0$, then products such as $x_1 y$ acquire bias terms that can distort the estimated frequency.
+which uses an absolute value and a positive floor before the square root.
 
-In practice, the estimator behaves best when the input is mean-removed or lightly high-pass filtered before frequency estimation.
+\subsection{Euler Stability}
 
-\section{Numerical Safeguards in the Code}
+For the first-order filter state, explicit Euler is well behaved when the
+internal step satisfies the usual small-step condition relative to the pole
+$a$. In the intended operating regime of the code, the sample rate is much
+higher than the tracked frequency band, so this is normally not restrictive.
 
-The implementation includes several protective measures that are not part of a minimal textbook observer:
-\begin{itemize}
-  \item \textbf{Input validation:} non-finite samples are ignored, and updates with non-positive or non-finite $dt$ are skipped.
-  \item \textbf{Energy weighting:} the factor $\rho_n$ reduces adaptation when the signal energy is very small.
-  \item \textbf{Clipping:} $\dot{\sigma}$ is clipped to $[-10^7,10^7]$.
-  \item \textbf{Square-root floor:} the frequency output uses $\max(|\theta|,10^{-7})$ to avoid singular behavior near zero.
-  \item \textbf{Internal time scaling:} the fixed factor $S=20$ reduces stiffness for low-frequency operation.
+\subsection{Overflow Guards}
+
+Two important safeguards are built in:
+\begin{itemize}[leftmargin=1.4em]
+  \item clipping of $\dot\sigma$ to $[-10^7,10^7]$,
+  \item flooring of $|\theta|$ before the square root.
 \end{itemize}
+These are practical protections for finite-precision embedded arithmetic.
 
-These choices improve robustness in embedded and low-SNR settings, but they also mean the exact discrete-time implementation is not the same as an ideal continuous-time observer analyzed in the literature.
-
-\section{Confidence and Lock Heuristics}
-
-The implementation synthesizes a confidence score and a Boolean lock flag. These are \textbf{engineering heuristics} and are not part of the original Aranovskiy observer.
-
-\subsection{Signal RMS Estimate}
-
-A smoothed signal-power estimate is maintained from
-\begin{equation}
-  P_n = x_1^2 + y^2,
-\end{equation}
-using a one-pole smoother with time constant \texttt{rms\_tau\_s}. The reported RMS-like magnitude is then
-\begin{equation}
-  \mathrm{RMS}_n = \sqrt{\max(P_n^{\mathrm{smooth}},0)}.
-\end{equation}
-
-\subsection{Smoothed Frequency}
-
-The physical frequency estimate is also smoothed with a one-pole filter using \texttt{freq\_smooth\_tau\_s}, producing a stability reference frequency.
-
-\subsection{Confidence Target}
-
-A target confidence is formed from two ingredients:
-\begin{itemize}
-  \item an amplitude term based on whether the smoothed RMS exceeds \texttt{lock\_rms\_min},
-  \item a stability term based on how close the raw frequency is to the smoothed frequency.
-\end{itemize}
-The resulting confidence is then low-pass filtered with time constant \texttt{confidence\_tau\_s} and clipped to $[0,1]$.
-
-\subsection{Lock Decision}
-
-The lock flag is declared true only when all of the following hold:
-\begin{itemize}
-  \item the frequency lies within the configured physical range
-        $[f_{\mathrm{lock,min}},f_{\mathrm{lock,max}}]$,
-  \item the signal RMS exceeds \texttt{lock\_rms\_min},
-  \item the filtered confidence exceeds \texttt{lock\_conf\_threshold}.
-\end{itemize}
-
-These quantities are useful diagnostics, but they should not be interpreted as formal convergence certificates.
-
-\section{Parameter Roles}
-
-Table~\ref{tab:param_roles} summarizes the most important parameters in the implementation.
-
-\begin{table}[h]
-\centering
-\caption{Main parameter roles in the implementation.}
-\label{tab:param_roles}
-\begin{tabular}{lll}
-\hline
-Parameter & Role & Practical effect \\
-\hline
-$a$ & low-pass pole location & sets filter bandwidth and phase lag \\
-$b$ & input gain & sets low-pass gain together with $a$ \\
-$k$ & adaptation gain & faster or slower parameter adaptation \\
-$S$ & time-scale factor & improves low-frequency conditioning \\
-$\texttt{rms\_tau\_s}$ & RMS smoothing time & steadiness of amplitude estimate \\
-$\texttt{freq\_smooth\_tau\_s}$ & freq smoothing time & steadiness of lock logic \\
-$\texttt{confidence\_tau\_s}$ & conf smoothing time & inertia of confidence output \\
-$\texttt{lock\_rms\_min}$ & amplitude threshold & minimum signal strength for lock \\
-$\texttt{lock\_conf\_threshold}$ & confidence threshold & minimum confidence for lock \\
-\hline
-\end{tabular}
+\begin{table}[t]
+  \centering
+  \caption{Main tuning parameters and their roles.}
+  \label{tab:params}
+  \small
+  \begin{tabular}{@{}lp{2.0cm}p{2.7cm}@{}}
+    \toprule
+    Parameter & Role & Practical effect \\
+    \midrule
+    $a$ & low-pass pole & larger $a$ gives faster state response and less lag \\
+    $b$ & input gain & sets the observer gain together with $a$ \\
+    $k$ & adaptation gain & larger $k$ increases pull of the parameter update \\
+    $S$ & time scaling & improves low-frequency numerical conditioning \\
+    $\rho$ logic & weak-signal protection & suppresses adaptation when energy is tiny \\
+    clipping & safety guard & prevents integrator runaway on transients \\
+    \bottomrule
+  \end{tabular}
 \end{table}
 
-\section{What This Implementation Does and Does Not Claim}
+% ---------------------------------------------------------------
+\section{Summary}\label{sec:summary}
 
-This implementation is best described as a lightweight nonlinear adaptive frequency tracker for low-frequency oscillatory signals. It is not an FFT estimator, and it is not a classical PLL. It uses a filtered state, a nonlinear adaptive integrator, and a practical algebraic mapping to frequency.
+The correct high-level picture is as follows.
 
-At the same time, this note does \emph{not} claim a formal Lyapunov theorem for the exact code as written, because the shipped implementation includes discretization, clipping, normalization, and heuristic outputs beyond the idealized continuous-time observer.
+First, the 2013 Aranovskiy paper does provide a convergence argument: it uses
+an ideal classical adaptive law, proves exponential convergence of the
+observer state by Lemma~1, and then transfers that result to the realizable
+estimator through an equivalence argument.
 
-\section{Conclusion}
+Second, the C\texttt{++} implementation is structurally faithful to that
+realizable estimator, with the paper variables mapping naturally to the code
+states and algebraic quantities.
 
-The provided C\texttt{++} implementation is a practical Aranovskiy-style frequency estimator specialized for robust low-frequency tracking. The exact algorithm is characterized by:
-\begin{itemize}
-  \item a first-order low-pass internal state,
-  \item a nonlinear energy-weighted adaptation law,
-  \item explicit Euler integration under internal time scaling,
-  \item frequency output from the magnitude of an algebraic parameter,
-  \item heuristic phase, confidence, and lock indicators.
-\end{itemize}
+Third, the exact source code is still a modified engineering realization, not
+a verbatim copy of the continuous-time equations. Its most important added
+features are internal time scaling, signal-energy weighting, clipped
+adaptation, and heuristic confidence/lock outputs.
 
-This description matches the structure and update order of the code more faithfully than a generic continuous-time derivation.
+Finally, the observer portion of the implementation is first-order, while the
+overall estimator remains second-order because it consists of one low-pass
+state and one adaptive integrator. That distinction resolves the main
+paper-to-code confusion.
 
-\begin{thebibliography}{9}
+% ---------------------------------------------------------------
+\section*{Acknowledgments}
+This document was prepared by M.~S.~Grushinskiy as technical documentation
+for the Bareboat Necessities open-source project.
+
+% ---------------------------------------------------------------
+\begin{thebibliography}{1}
 \bibitem{BobtsovNikolaevSlitaBorgulAranovskiy2013}
-Alexey A. Bobtsov, Nikolay A. Nikolaev, Olga V. Slita, Alexander S. Borgul, and Stanislav V. Aranovskiy,
-``The New Algorithm of Sinusoidal Signal Frequency Estimation,''
-in \emph{11th IFAC International Workshop on Adaptation and Learning in Control and Signal Processing},
-Caen, France, 2013.
+A.\,A.~Bobtsov, N.\,A.~Nikolaev, O.\,V.~Slita, A.\,S.~Borgul, and
+S.\,V.~Aranovskiy,
+``The new algorithm of sinusoidal signal frequency estimation,''
+in \emph{Proc. 11th IFAC Int. Workshop Adaptation and Learning in Control
+and Signal Processing}, Caen, France, Jul. 2013, pp. 182--185.
 \end{thebibliography}
 
+\balance
 \end{document}
