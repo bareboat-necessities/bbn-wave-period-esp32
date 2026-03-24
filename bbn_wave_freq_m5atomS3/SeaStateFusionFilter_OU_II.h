@@ -992,7 +992,7 @@ private:
 };
 
 template<TrackerType trackerT>
-class SeaStateFusion_4 {
+class SeaStateFusion_OU_II {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
