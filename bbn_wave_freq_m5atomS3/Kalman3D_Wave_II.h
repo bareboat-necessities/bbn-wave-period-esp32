@@ -168,8 +168,8 @@ class Kalman3D_Wave_II {
                 Matrix3::Identity() * initial_baw_std_(0) * initial_baw_std_(0);
         }
 
-        const T sigma_v0 = T(4.0);
-        const T sigma_p0 = T(2.0);
+        const T sigma_v0 = T(10.0);
+        const T sigma_p0 = T(20.0);
         set_initial_linear_uncertainty(sigma_v0, sigma_p0);
 
         {
