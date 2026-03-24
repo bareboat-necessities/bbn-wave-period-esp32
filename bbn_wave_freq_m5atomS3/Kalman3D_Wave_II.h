@@ -530,49 +530,28 @@ class Kalman3D_Wave_II {
         last_acc_diag_ = MeasDiag3{};
         last_acc_diag_.accepted = false;
         last_acc_body_cached_ = acc_meas_body;
-
+    
         const Vector3 acc_meas = deheel_vector_(acc_meas_body);
         if (!acc_meas.allFinite()) return;
-
+    
         const T anorm = acc_meas.norm();
         if (!(anorm > T(1e-6))) return;
-
-        const Vector3 z_meas = acc_meas / anorm;
-
+    
         const Matrix3 Rwb = R_wb();
         const Vector3 g_world(0, 0, +gravity_magnitude_);
-
+    
+        // IMU lever-arm specific force in BODY'
         Vector3 lever = Vector3::Zero();
+        Matrix3 J_bg = Matrix3::Zero();
+    
         if (use_imu_lever_arm_) {
             const Vector3 r_imu_bprime = deheel_vector_(r_imu_wrt_cog_body_phys_);
+            const Vector3& w = last_gyr_bias_corrected;
+    
             lever.noalias() += alpha_b_.cross(r_imu_bprime)
-                            +  last_gyr_bias_corrected.cross(last_gyr_bias_corrected.cross(r_imu_bprime));
-        }
-        if (!lever.allFinite()) lever.setZero();
-
-        // Gravity-direction update only; linear accel/bias remain nuisance here.
-        const Vector3 f_cog_b = Rwb * (Vector3::Zero() - g_world);
-        const Vector3 f_pred  = f_cog_b + lever;
-
-        const T fnorm = f_pred.norm();
-        if (!(fnorm > T(1e-6))) return;
-
-        const Vector3 zhat = f_pred / fnorm;
-        const Vector3 innov = z_meas - zhat;
-        last_acc_diag_.r = innov;
-
-        const Matrix3 I3 = Matrix3::Identity();
-        const Matrix3 Nproj = (I3 - zhat * zhat.transpose()) / fnorm;
-
-        const Matrix3 Jf_att = -skew_symmetric_matrix(f_cog_b);
-        const Matrix3 J_att  = Nproj * Jf_att;
-
-        Matrix3 J_bg = Matrix3::Zero();
-        if constexpr (with_gyro_bias) {
-            if (use_imu_lever_arm_) {
-                const Vector3 r_imu_bprime = deheel_vector_(r_imu_wrt_cog_body_phys_);
-                const Vector3& w = last_gyr_bias_corrected;
-
+                            +  w.cross(w.cross(r_imu_bprime));
+    
+            if constexpr (with_gyro_bias) {
                 T k_alpha = T(0);
                 if (have_prev_omega_ && last_dt_ > T(0)) {
                     if (alpha_smooth_tau_ > T(0)) {
@@ -582,73 +561,127 @@ class Kalman3D_Wave_II {
                         k_alpha = T(1) / last_dt_;
                     }
                 }
-
+    
                 const Matrix3 J_alpha_part = k_alpha * skew_symmetric_matrix(r_imu_bprime);
                 const Matrix3 J_omega_part = d_omega_x_omega_x_r_domega_(w, r_imu_bprime);
-                const Matrix3 Jf_bg = J_alpha_part - J_omega_part;
-                J_bg = Nproj * Jf_bg;
+                J_bg = J_alpha_part - J_omega_part;
             }
         }
-
+    
+        if (!lever.allFinite()) {
+            lever.setZero();
+            J_bg.setZero();
+        }
+    
+        // Use full specific-force residual, not normalized gravity direction.
+        // In Wave_5, b_aw is the only state available to absorb persistent world-frame
+        // accel / correction terms, so let it participate here.
+        Vector3 b_aw = Vector3::Zero();
+        if constexpr (with_accel_bias) {
+            b_aw = xext.template segment<3>(OFF_BAW);
+            if (!b_aw.allFinite()) b_aw.setZero();
+            clamp_vec_(b_aw, T(3.0));
+        }
+    
+        const Vector3 f_cog_b = Rwb * (b_aw - g_world);
+        const Vector3 f_pred  = f_cog_b + lever;
+        if (!f_pred.allFinite()) return;
+    
+        const Vector3 r = acc_meas - f_pred;
+        if (!r.allFinite()) return;
+        last_acc_diag_.r = r;
+    
+        // Jacobians
+        const Matrix3 J_att = -skew_symmetric_matrix(f_cog_b);
+    
         Matrix3 J_baw = Matrix3::Zero();
         if constexpr (with_accel_bias) {
-            const Matrix3 Jf_baw = -Rwb;
-            J_baw = Nproj * Jf_baw;
+            if (linear_block_enabled_ && acc_bias_updates_enabled_) {
+                J_baw = Rwb;
+            }
         }
-
-        Matrix3& S_mat = S_scratch_;
-        S_mat.setZero();
-        S_mat.noalias() = Nproj * Racc * Nproj.transpose();
-
+    
+        // Softly downweight accelerometer updates when |a| departs from g.
+        // This prevents wave/transient linear acceleration from being interpreted as tilt.
+        Matrix3 R_eff = Racc;
         {
-            const T dir_noise_scale = (Racc.trace() / T(3)) / std::max(T(1), fnorm * fnorm);
-            const T floor = std::max(T(1e-9), T(1e-6) * dir_noise_scale);
-            S_mat.diagonal().array() += floor;
+            const T sigma_r = std::sqrt(std::max(T(1e-12), Racc.trace() / T(3)));
+            const T mag_err = std::abs(anorm - gravity_magnitude_);
+            const T denom   = std::max(T(0.35), T(2.5) * sigma_r);
+            const T dyn     = mag_err / denom;
+            const T infl    = T(1) + std::min(T(100), T(4) * dyn * dyn);
+            R_eff *= infl;
         }
-
-        const Matrix3 P_th_th = Pext.template block<3,3>(0,0);
-        S_mat.noalias() += J_att * P_th_th * J_att.transpose();
-
+    
+        Matrix3& S_mat = S_scratch_;
+        S_mat = R_eff;
+    
+        // Attitude block
+        {
+            const Matrix3 P_th_th = Pext.template block<3,3>(0,0);
+            S_mat.noalias() += J_att * P_th_th * J_att.transpose();
+        }
+    
+        // Gyro-bias / lever-arm contribution
         if constexpr (with_gyro_bias) {
             if (use_imu_lever_arm_) {
                 const Matrix3 P_th_bg = Pext.template block<3,3>(0,3);
                 const Matrix3 P_bg_bg = Pext.template block<3,3>(3,3);
-
+    
                 S_mat.noalias() += J_att * P_th_bg * J_bg.transpose();
                 S_mat.noalias() += J_bg  * P_th_bg.transpose() * J_att.transpose();
                 S_mat.noalias() += J_bg  * P_bg_bg * J_bg.transpose();
             }
         }
-
+    
+        // Let b_aw help explain accel residuals, but only when enabled.
         if constexpr (with_accel_bias) {
-            const Matrix3 P_th_baw  = Pext.template block<3,3>(0, OFF_BAW);
-            const Matrix3 P_baw_baw = Pext.template block<3,3>(OFF_BAW, OFF_BAW);
-
-            S_mat.noalias() += J_att * P_th_baw * J_baw.transpose();
-            S_mat.noalias() += J_baw * P_th_baw.transpose() * J_att.transpose();
-            S_mat.noalias() += J_baw * P_baw_baw * J_baw.transpose();
-
-            if constexpr (with_gyro_bias) {
-                if (use_imu_lever_arm_) {
-                    const Matrix3 P_bg_baw = Pext.template block<3,3>(3, OFF_BAW);
-                    S_mat.noalias() += J_bg  * P_bg_baw * J_baw.transpose();
-                    S_mat.noalias() += J_baw * P_bg_baw.transpose() * J_bg.transpose();
+            if (linear_block_enabled_ && acc_bias_updates_enabled_) {
+                const Matrix3 P_th_baw  = Pext.template block<3,3>(0, OFF_BAW);
+                const Matrix3 P_baw_baw = Pext.template block<3,3>(OFF_BAW, OFF_BAW);
+    
+                S_mat.noalias() += J_att * P_th_baw * J_baw.transpose();
+                S_mat.noalias() += J_baw * P_th_baw.transpose() * J_att.transpose();
+                S_mat.noalias() += J_baw * P_baw_baw * J_baw.transpose();
+    
+                if constexpr (with_gyro_bias) {
+                    if (use_imu_lever_arm_) {
+                        const Matrix3 P_bg_baw = Pext.template block<3,3>(3, OFF_BAW);
+                        S_mat.noalias() += J_bg  * P_bg_baw * J_baw.transpose();
+                        S_mat.noalias() += J_baw * P_bg_baw.transpose() * J_bg.transpose();
+                    }
                 }
             }
         }
-
+    
+        S_mat = T(0.5) * (S_mat + S_mat.transpose());
+    
         MatrixNX3& PCt = PCt_scratch_;
         PCt.setZero();
         PCt.noalias() += Pext.template block<NX,3>(0,0) * J_att.transpose();
-
+    
         if constexpr (with_gyro_bias) {
             if (use_imu_lever_arm_) {
                 PCt.noalias() += Pext.template block<NX,3>(0,3) * J_bg.transpose();
             }
         }
-
-        freeze_linear_rows_(PCt);
-
+    
+        if constexpr (with_accel_bias) {
+            if (linear_block_enabled_ && acc_bias_updates_enabled_) {
+                PCt.noalias() += Pext.template block<NX,3>(0,OFF_BAW) * J_baw.transpose();
+            }
+        }
+    
+        // Freeze v,p rows only. Do NOT freeze the whole linear block here,
+        // otherwise b_aw can never absorb accel residuals.
+        PCt.template block<6,3>(OFF_V, 0).setZero();
+    
+        if constexpr (with_accel_bias) {
+            if (!linear_block_enabled_ || !acc_bias_updates_enabled_) {
+                PCt.template block<3,3>(OFF_BAW, 0).setZero();
+            }
+        }
+    
         Eigen::LDLT<Matrix3> ldlt;
         if (!safe_ldlt3_(S_mat, ldlt, S_mat.norm())) {
             last_acc_diag_.S = S_mat;
@@ -656,17 +689,32 @@ class Kalman3D_Wave_II {
             last_acc_diag_.accepted = false;
             return;
         }
-
+    
         last_acc_diag_.S = S_mat;
-        last_acc_diag_.nis = nis3_from_ldlt_(ldlt, innov);
-
+        last_acc_diag_.nis = nis3_from_ldlt_(ldlt, r);
+    
+        // Reject obvious outliers instead of letting one bad accel frame tilt the filter.
+        const T nis_gate = T(25.0); // conservative 3D gate
+        if (!std::isfinite(last_acc_diag_.nis) || last_acc_diag_.nis > nis_gate) {
+            last_acc_diag_.accepted = false;
+            return;
+        }
+    
         MatrixNX3& K = K_scratch_;
         K.noalias() = PCt * ldlt.solve(Matrix3::Identity());
-        freeze_linear_rows_(K);
-
-        xext.noalias() += K * innov;
+    
+        // Freeze v,p rows only; keep b_aw alive when enabled.
+        K.template block<6,3>(OFF_V, 0).setZero();
+    
+        if constexpr (with_accel_bias) {
+            if (!linear_block_enabled_ || !acc_bias_updates_enabled_) {
+                K.template block<3,3>(OFF_BAW, 0).setZero();
+            }
+        }
+    
+        xext.noalias() += K * r;
         joseph_update3_(K, S_mat, PCt);
-
+    
         applyQuaternionCorrectionFromErrorState();
         last_acc_diag_.accepted = true;
     }
