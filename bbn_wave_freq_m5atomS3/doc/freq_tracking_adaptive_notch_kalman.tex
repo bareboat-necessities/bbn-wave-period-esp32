@@ -1,153 +1,624 @@
-\documentclass[11pt,letterpaper]{article}
-\usepackage{amsmath}
-\usepackage{amssymb}
-\usepackage{mathrsfs}
-\usepackage{fullpage}
-\usepackage{graphicx}
-\usepackage{hyperref}
-\usepackage{cite}
+\documentclass[conference]{IEEEtran}
 
-\title{Comprehensive Analysis of a Kalman-Based Adaptive Notch Filter Frequency Tracker}
-\author{}
-\date{}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{newtxtext,newtxmath}
+\usepackage{amsmath,amssymb,bm}
+\usepackage{amsthm}
+\usepackage{mathtools}
+\usepackage{booktabs}
+\usepackage{siunitx}
+\usepackage{enumitem}
+\usepackage{cite}
+\usepackage[breaklinks=true,hidelinks]{hyperref}
+\usepackage[nameinlink,capitalise,noabbrev]{cleveref}
+
+% Theorem styles
+\newtheoremstyle{bodysmall}
+  {3pt}{3pt}{\normalfont\small}{0pt}{\bfseries\small}{.}{0.5em}{}
+\theoremstyle{bodysmall}
+\newtheorem*{theorem*}{Theorem}
+\theoremstyle{remark}
+\newtheorem{remark}{Remark}
+
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\R}{\mathbb{R}}
+
+\title{A Practical Description of the KalmANF Frequency Tracker\\
+and Its C\texttt{++} Implementation}
+
+\author{%
+  \IEEEauthorblockN{Mikhail S.\ Grushinskiy}
+  \IEEEauthorblockA{Independent Researcher\\
+  Bareboat Necessities Project\\
+  \texttt{mgrouch@users.github.com}}
+}
 
 \begin{document}
-
 \maketitle
 
+% ---------------------------------------------------------------
+\begin{abstract}
+This note gives a clean and practical description of the KalmANF frequency
+tracker as implemented in C\texttt{++}, based on the algorithm of Ali and van
+Waterschoot~\cite{AliWaterschoot2023}. The method adapts the coefficient of a
+second-order resonator using a scalar Kalman filter, recovering the dominant
+sinusoidal frequency sample by sample.
+
+This document describes what the code actually computes at each step, why
+each step is structured the way it is, and how the parameters interact. It
+corrects several discrepancies between standard textbook presentations and the
+actual implementation: in particular, the Jacobian used in the Kalman gain
+does not carry a $\rho$ factor, and the innovation is formed without $\rho$
+scaling. A brief convergence argument, a discussion of DC offset sensitivity,
+and the synthesised confidence and lock layer are also included.
+\end{abstract}
+
+\begin{IEEEkeywords}
+frequency estimation, adaptive notch filter, Kalman filter, sinusoidal
+tracking, embedded signal processing
+\end{IEEEkeywords}
+
+% ---------------------------------------------------------------
 \section{Introduction}
-This work presents a frequency tracking algorithm based on a Kalman-updated adaptive notch filter, following the approach of Ali and van Waterschoot~\cite{AliWaterschoot2023}. The method estimates the instantaneous frequency of a noisy sinusoidal signal through recursive adaptation of a single parameter.
 
-\section{Signal Model and Notch Filter}
-\subsection{Signal Model}
-The measured signal is assumed to be:
-\begin{equation}
-y(t) = A(t)\,\sin\bigl(\omega(t)\,t + \phi(t)\bigr) + \nu(t),
-\label{eq:signal_model}
-\end{equation}
-where $A(t)$, $\phi(t)$, and $\omega(t)$ vary slowly, and $\nu(t)$ is zero-mean noise.
+The KalmANF tracker estimates the instantaneous frequency of a scalar
+oscillatory signal by fitting a single adaptive parameter: the coefficient
+$a = 2\cos(\hat\omega_d)$ of a second-order digital resonator, where
+$\hat\omega_d$ is the estimated digital radian frequency per sample. Once $a$
+is known, the physical frequency follows directly.
 
-\subsection{Notch Filter}
-A notch filter is a type of linear time-invariant (LTI) filter designed to attenuate or remove a specific frequency (and a very narrow band around it) from a signal while leaving other frequencies largely unaffected. It is characterized by its frequency response, which has a sharp dip (a "notch") at the target frequency.
+The adaptation rule is a one-dimensional Kalman filter. The Kalman framework
+is attractive here because it provides a principled trade-off between tracking
+speed and noise sensitivity, with two intuitive tuning knobs: a process noise
+$q$ (how fast can $a$ change?) and a measurement noise $r$ (how much do we
+trust the residual?).
 
-\subsection{Notch Filter Structure}
-The second-order digital notch filter has transfer function:
-\begin{equation}
-H(z^{-1};a) = \frac{1 - a\,z^{-1} + z^{-2}}{1 - \rho\,a\,z^{-1} + \rho^2\,z^{-2}},
-\label{eq:notch_tf}
-\end{equation}
-where $a = 2\cos(\omega \Delta t)$ and $\rho \in (0,1)$ is the pole radius. The instantaneous frequency is recovered as:
-\begin{equation}
-\omega = \frac{1}{\Delta t}\arccos\!\left(\frac{a}{2}\right).
-\label{eq:freq_estimate}
-\end{equation}
+Compared to purely gradient-based approaches, the Kalman structure gives
+automatic gain scheduling: the effective adaptation step size $K[n]$ shrinks
+as the covariance $p$ decreases, so the tracker commits more strongly to its
+estimate over time. Reinjecting process noise $q$ at each step prevents the
+gain from collapsing to zero and keeps the tracker responsive to genuine
+frequency shifts.
 
-\section{Continuous-Time Interpretation}
-\subsection{Resonator Dynamics}
-The resonator state $s(t)$ follows:
-\begin{equation}
-\ddot{s}(t) + 2\zeta(a)\omega(a)\dot{s}(t) + \omega(a)^2 s(t) = y(t),
-\label{eq:resonator_dynamics}
+The following sections describe each component in detail, explaining both
+what is computed and why.
+
+% ---------------------------------------------------------------
+\section{Signal Model}
+
+Let $y[n]$ denote the measured signal at sample $n$, with physical sample
+period $\Delta t$. In the intended operating regime, $y[n]$ is dominated by
+a slowly varying sinusoidal component:
+\begin{equation}\label{eq:signal}
+  y(t) = A(t)\sin\!\bigl(\omega(t)\,t + \phi(t)\bigr) + \nu(t),
 \end{equation}
-where:
+where $A(t)$ is a slowly varying amplitude, $\omega(t)$ is the instantaneous
+angular frequency, $\phi(t)$ is the phase, and $\nu(t)$ is zero-mean noise.
+``Slowly varying'' means $|\dot{A}/A| \ll \omega$ and $|\dot\omega| \ll
+\omega^2$, so the signal looks locally sinusoidal.
+
+The tracker assumes a single dominant sinusoidal component. Multi-tone signals
+will cause the adaptive coefficient $a$ to settle near whichever tone produces
+the largest resonator response.
+
+% ---------------------------------------------------------------
+\section{Resonator Structure}\label{sec:resonator}
+
+\subsection{Transfer Function}
+
+The core of the tracker is a second-order resonator (also described as a
+notch filter from the complementary perspective). Its transfer function is
+\begin{equation}\label{eq:tf}
+  H(z^{-1};\,a) =
+  \frac{1 - a\,z^{-1} + z^{-2}}
+       {1 - \rho\,a\,z^{-1} + \rho^2 z^{-2}},
+\end{equation}
+where $a = 2\cos(\hat\omega_d)$ encodes the tracked digital frequency, and
+$\rho \in (0,1)$ is the pole radius.
+
+The numerator places zeros on the unit circle at $e^{\pm j\hat\omega_d}$,
+creating a notch at the tracked frequency. The denominator places poles just
+inside the unit circle at $\rho\,e^{\pm j\hat\omega_d}$, creating a resonance
+(high gain) at the same frequency. The combined effect is a resonator that
+rings strongly at $\hat\omega_d$ and attenuates everything else.
+
+\subsection{Resonator State Equation}
+
+Implementing $H$ as a direct-form IIR filter, the internal resonator state
+at each sample is
+\begin{equation}\label{eq:resonator}
+  s[n] = y[n] + \rho\,a\,s[n-1] - \rho^2\,s[n-2].
+\end{equation}
+This is the denominator recursion of \eqref{eq:tf}: the state $s[n]$
+accumulates energy at the resonant frequency. When $a$ matches the true
+frequency, the resonator rings in synchrony with the input and its internal
+state $s[n-1]$ correlates maximally with future inputs.
+
+\subsection{Frequency Recovery}
+
+Given the current coefficient $a \in (-2, 2)$, the estimated digital
+frequency is
+\begin{equation}\label{eq:omega_d}
+  \hat\omega_d = \arccos\!\left(\frac{a}{2}\right) \quad [\text{rad/sample}],
+\end{equation}
+and the physical frequency in Hz is
+\begin{equation}\label{eq:f_hz}
+  \hat{f} = \frac{\hat\omega_d}{2\pi\,\Delta t}.
+\end{equation}
+The domain constraint $a \in (-2, 2)$ is the condition for $\arccos(a/2)$ to
+be real; the code enforces this by clamping $a$ to $(-1.99999, 1.99999)$
+after each update.
+
+\emph{Interpretation of $a$.}  At $a \approx 2$ the tracked frequency is
+near DC; at $a \approx 0$ it is near $f_s/4$; at $a \approx -2$ it is near
+the Nyquist frequency $f_s/2$.
+
+\subsection{Pole Radius and Bandwidth}
+
+The pole radius $\rho$ controls the sharpness of the resonance. A
+useful approximation for the $-3\,\text{dB}$ bandwidth is
+\begin{equation}\label{eq:bw}
+  \mathrm{BW} \approx \frac{1-\rho}{\pi\,\Delta t}.
+\end{equation}
+Larger $\rho$ gives a narrower resonance, higher frequency resolution, and
+longer settling time. Smaller $\rho$ gives a wider resonance, more
+robustness to noise and frequency drift, but lower selectivity. A typical
+starting point is $\rho = 0.995$.
+
+% ---------------------------------------------------------------
+\section{Scalar Kalman Adaptation}\label{sec:kalman}
+
+\subsection{State and Measurement Model}
+
+The tracked parameter $a$ plays the role of the Kalman state. Its evolution
+is modelled as a random walk:
+\begin{equation}\label{eq:process}
+  a[n] = a[n-1] + w[n], \qquad w[n] \sim (0, q),
+\end{equation}
+where $q > 0$ is the process noise variance. This models the assumption that
+$a$ drifts slowly but does not jump discontinuously.
+
+The innovation---the scalar ``measurement'' that drives the Kalman update---is
+\begin{equation}\label{eq:innovation}
+  e[n] = s[n] - a[n-1]\,s[n-1] + s[n-2].
+\end{equation}
+\emph{Why this form?}  Comparing with the resonator recursion
+\eqref{eq:resonator}, one can write
+\begin{equation}
+  e[n] = s[n] - \rho\,a\,s[n-1] + \rho^2 s[n-2]
+         + (\rho-1)a\,s[n-1] + (1-\rho^2)s[n-2].
+\end{equation}
+For $\rho \approx 1$ the correction terms are small, and $e[n] \approx y[n]$
+is the notch filter output---the part of $y[n]$ that the resonator did
+\emph{not} absorb. When $a$ is correct, the resonator absorbs the sinusoidal
+component and $e[n]$ contains only noise. This is the signal the Kalman filter
+tries to drive toward zero.
+
+The Jacobian (linearised sensitivity of $e$ with respect to $a$, evaluated
+at the current $a[n-1]$) is
+\begin{equation}\label{eq:jacobian}
+  H[n] = \frac{\partial e[n]}{\partial a} = -s[n-1].
+\end{equation}
+The sign is absorbed into the gain, so the effective observation vector used
+in the gain computation is simply $|H[n]| = s[n-1]$.
+
+\begin{remark}
+Some presentations of this algorithm write the Jacobian as
+$H[n] = -\rho\,s[n-1]$, which would be appropriate if the resonator state
+$s[n]$ were differentiated with respect to $a$ while holding $s[n-1]$ fixed.
+The implementation uses $H[n] = -s[n-1]$ (without $\rho$), consistent with
+the innovation \eqref{eq:innovation} which also has no $\rho$ factor. The two
+choices lead to different gain schedules but the same qualitative behaviour.
+\end{remark}
+
+\subsection{Kalman Update Equations}
+
+The per-sample Kalman cycle consists of four steps.
+
+\paragraph{1. Prediction.}  Propagate the covariance forward under the
+random-walk model:
+\begin{equation}\label{eq:pred}
+  p_{n|n-1} = p_{n-1} + q.
+\end{equation}
+Adding $q$ each step prevents the gain from collapsing to zero and keeps the
+tracker adaptive. Larger $q$ means faster forgetting of the previous estimate.
+
+\paragraph{2. Kalman gain.}  The optimal gain balances uncertainty in $a$
+against noise in $e[n]$:
+\begin{equation}\label{eq:gain}
+  K[n] = \frac{s[n-1]}{s[n-1]^2 + r\,/\,p_{n|n-1}}.
+\end{equation}
+This is the standard scalar EKF gain $K = p H^T / (H p H^T + R)$ with
+$H = s[n-1]$, $p = p_{n|n-1}$, $R = r$, simplified algebraically.
+When the signal is strong ($s[n-1]^2 \gg r/p$), $K \approx 1/s[n-1]$ and the
+update normalises by signal amplitude. When the signal is weak or $r$ is
+large, $K \to 0$ and the parameter is barely moved.
+
+\paragraph{3. Parameter and covariance update.}
 \begin{align}
-\omega(a) &= \frac{1}{\Delta t}\cos^{-1}\!\left(\frac{a}{2}\right), \label{eq:omega_def} \\
-\zeta(a) &= -\frac{\ln\rho}{\sqrt{\pi^2 + (\ln\rho)^2}}. \label{eq:zeta_def}
+  a[n] &= a[n-1] + K[n]\,e[n], \label{eq:a_update}\\
+  p_n  &= \bigl(1 - K[n]\,s[n-1]\bigr)\,p_{n|n-1}. \label{eq:p_update}
 \end{align}
+After the update, $a[n]$ is clamped to $(-1.99999,\,1.99999)$ to keep
+$\arccos(a/2)$ well-defined, and $p_n$ is floored at $10^{-12}$ to prevent
+numerical underflow.
 
-\subsection{Energy Interpretation}
-The resonator's energy evolves as:
-\begin{equation}
-\dot{E}(t) = \dot{s}(t)y(t) - 2\zeta\omega \dot{s}(t)^2,
-\label{eq:energy}
-\end{equation}
-showing energy transfer from input to resonator at the resonant frequency.
+\paragraph{4. Frequency output.}  Convert the updated coefficient to Hz via
+\eqref{eq:omega_d}--\eqref{eq:f_hz}.
 
-\section{Discrete-Time Algorithm}
-\subsection{State-Space Update}
-\begin{enumerate}
-\item \textbf{State Prediction}:
-\begin{equation}
-s[n] = y[n] + \rho a[n-1]s[n-1] - \rho^2 s[n-2].
-\label{eq:state_update}
-\end{equation}
+% ---------------------------------------------------------------
+\section{Per-Sample Update Sequence}\label{sec:update}
 
-\item \textbf{Innovation}:
-\begin{equation}
-e[n] = s[n] - \rho a[n-1]s[n-1] + \rho^2 s[n-2].
-\label{eq:innovation}
-\end{equation}
+At each valid sample $(y[n], \Delta t)$, the code executes the following
+steps in order. Non-finite inputs or non-positive timesteps are silently
+skipped, leaving all states unchanged---a safeguard against NaN propagation.
 
-\item \textbf{Kalman Update}:
-\begin{align}
-K[n] &= \frac{\rho s[n-1] P_{n|n-1}}{(\rho s[n-1])^2 P_{n|n-1} + r}, \label{eq:kalman_gain} \\
-a[n] &= a[n-1] + K[n]e[n], \label{eq:param_update} \\
-P_n &= (1 - K[n]\rho s[n-1]) P_{n|n-1}. \label{eq:cov_update}
-\end{align}
-
-\item \textbf{Frequency Estimate}:
-\begin{equation}
-\hat{\omega}[n] = \frac{1}{\Delta t}\arccos\!\left(\frac{a[n]}{2}\right).
-\label{eq:freq_update}
-\end{equation}
+\begin{enumerate}[leftmargin=1.6em]
+  \item Compute the new resonator state from \eqref{eq:resonator},
+        using the \emph{current} $a[n-1]$ and previous states $s[n-1]$,
+        $s[n-2]$.
+  \item Advance the covariance: $p \leftarrow p + q$.
+  \item Compute the Kalman gain from \eqref{eq:gain} using the pre-update $p$.
+  \item Compute the innovation $e[n]$ from \eqref{eq:innovation}.
+  \item Update $a$ via \eqref{eq:a_update} and clamp to $(-1.99999,
+        1.99999)$.
+  \item Update $p$ via \eqref{eq:p_update} and floor at $10^{-12}$.
+  \item Compute $\hat{f}$ from \eqref{eq:omega_d}--\eqref{eq:f_hz}.
+  \item Advance resonator history: $s[n-2] \leftarrow s[n-1]$, $s[n-1]
+        \leftarrow s[n]$.
+  \item Update confidence and lock (\cref{sec:lock}).
 \end{enumerate}
 
-\subsection{Parameter Selection}
-\begin{itemize}
-\item Pole radius: $\rho \approx 0.99$ (narrow notch) to $0.999$ (high resolution)
-\item Initial covariance: $P_0 = 10^2$ for uncertain initial $a[0]$
+The ordering in steps 3--6 matters: the gain must be computed from
+$p_{n|n-1}$ (after adding $q$ but before the measurement update), then $p$
+is reduced by the measurement. Swapping steps 3 and 4 is safe since $e[n]$
+does not depend on $p$.
+
+\begin{table}[t]
+  \centering
+  \caption{Main variables and their roles}
+  \label{tab:vars}
+  \small
+  \begin{tabular}{@{}llp{3.6cm}@{}}
+    \toprule
+    Symbol & Range & Meaning \\
+    \midrule
+    $s[n]$       & $\R$       & Resonator state (IIR output) \\
+    $a[n]$       & $(-2,2)$   & Adaptive notch coefficient \\
+    $p[n]$       & $>0$       & Kalman covariance on $a$ \\
+    $e[n]$       & $\R$       & Innovation (notch residual) \\
+    $K[n]$       & $\R$       & Kalman gain \\
+    $\hat\omega_d$ & $(0,\pi)$ & Digital frequency (rad/sample) \\
+    $\hat{f}$    & $>0$       & Physical frequency (Hz) \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+% ---------------------------------------------------------------
+\section{Initialization}\label{sec:init}
+
+\subsection{Default Initialization}
+
+The default constructor sets $\rho = 0.995$, $q = 10^{-5}$, $r = 10^3$,
+$p_0 = 1$, and $a_0 = 1.9999$ (corresponding to a near-DC initial guess).
+The resonator history is zeroed: $s[-1] = s[-2] = 0$.
+
+\subsection{Frequency-Seeded Initialization}
+
+A more practical starting point is to seed $a_0$ from a frequency guess:
+\begin{equation}
+  a_0 = 2\cos(2\pi\,f_{\rm guess}\,\Delta t).
+\end{equation}
+The \texttt{initFromFreqGuess} method computes this directly. A good guess
+reduces convergence time significantly, because the Kalman gain starts large
+($p_0$ is large relative to $r$) and shrinks quickly once $a$ is near its
+correct value. Starting far from the true frequency means the tracker must
+``sweep'' across parameter space, which takes many samples at the default
+gain schedule.
+
+\subsection{Tuning $q$ and $r$}
+
+The ratio $q/r$ (not their absolute values) primarily determines the
+steady-state gain and tracking bandwidth. Rough guidelines:
+\begin{itemize}[leftmargin=1.4em]
+  \item \emph{Slow, stationary signal}: $q = 10^{-6}$, $r = 10^3$. Very
+        smooth frequency output, slow to respond to genuine shifts.
+  \item \emph{Moderate tracking}: $q = 10^{-5}$, $r = 10^3$ (default).
+        Good balance for ocean-wave applications.
+  \item \emph{Fast, noisy environment}: $q = 10^{-4}$, $r = 10^2$. Faster
+        adaptation but noisier frequency output.
+\end{itemize}
+Increasing $r$ is equivalent to saying ``I don't trust the innovation
+$e[n]$''; increasing $q$ is equivalent to saying ``I expect $a$ to change
+quickly.''
+
+% ---------------------------------------------------------------
+\section{Stability and Convergence}\label{sec:stability}
+
+\subsection{Steady-State Covariance and Gain}
+
+In steady state, if the signal is stationary and $s[n-1]^2 \approx S^2$ on
+average, the covariance equation \eqref{eq:pred}--\eqref{eq:p_update} has
+a fixed-point satisfying $p^\star = p^\star + q - K^\star p^\star$, which
+gives
+\begin{equation}\label{eq:ss_p}
+  p^\star = \frac{r}{S^2}\!\left(
+    \sqrt{1 + \frac{q S^2}{r}} - 1
+  \right)^{-1}
+  \approx \sqrt{\frac{qr}{S^2}}
+  \quad(q S^2 \ll r).
+\end{equation}
+The steady-state Kalman gain is then $K^\star \approx \sqrt{q/r}/S$, and the
+expected squared error on $a$ is
+\begin{equation}\label{eq:ss_err}
+  \E[(a[n] - a_{\rm true})^2] \;\to\; p^\star \approx \sqrt{qr}/S.
+\end{equation}
+This shows that reducing $q$ (slower forgetting) and increasing $r$ (more
+conservative updates) both reduce the steady-state variance on $a$, at the
+cost of slower tracking.
+
+\subsection{Convergence under Persistent Excitation}
+
+\begin{theorem*}
+If the input is persistently exciting ($S^2 = \E[s[n-1]^2] > 0$ on average)
+and the true frequency is constant, the Kalman update
+\eqref{eq:a_update}--\eqref{eq:p_update} drives $a[n] \to a_{\rm true}$
+in mean square as $n\to\infty$.
+\end{theorem*}
+
+\emph{Argument.}  The Kalman recursion is a stochastic gradient descent with
+automatic step-size scheduling. At each step,
+\begin{equation}
+  a[n] - a_{\rm true}
+  = (1 - K[n] s[n-1])(a[n-1] - a_{\rm true}) + K[n]\,v[n],
+\end{equation}
+where $v[n]$ collects the noise-driven part of $e[n]$.  Because
+$0 < 1 - K s < 1$ (the covariance update contracts $p$ toward zero), the
+first term contracts geometrically and the second is zero-mean, so the error
+variance converges to the steady-state value \eqref{eq:ss_err}.
+
+\begin{remark}
+The persistent excitation condition fails if $y[n] \equiv 0$, in which case
+$s[n-1] \to 0$ and $K[n] \to 0$, freezing adaptation. This is the correct
+behaviour: with no signal there is no information about frequency.
+\end{remark}
+
+% ---------------------------------------------------------------
+\section{Sensitivity to DC Offsets}\label{sec:dc}
+
+The Kalman update minimises the innovation $e[n]$, which from
+\eqref{eq:innovation} is formed from the resonator state $s[n]$ and
+its history. If the input $y[n]$ carries a DC offset $y_0$, the resonator
+state accumulates a DC component proportional to $y_0 / (1 - \rho a + \rho^2)$.
+
+This biases $e[n]$ systematically, driving $a$ away from the true value.
+The fractional frequency error is of order $y_0/A$ where $A$ is signal
+amplitude. The algorithm does \textbf{not} inherently reject DC offsets.
+
+\textbf{Recommended mitigation} (in order of simplicity):
+\begin{itemize}[leftmargin=1.4em]
+  \item \emph{High-pass filter} the input before the tracker. A single
+        first-order IIR with cutoff well below the minimum tracked frequency
+        suffices.
+  \item \emph{Mean subtraction}: maintain a slow running average of $y[n]$
+        and subtract it.
+  \item \emph{Augment the state}: add an estimated DC level as a second
+        Kalman state and subtract it from $y[n]$ at each step.
+\end{itemize}
+For accelerometer-based heave sensors, where gravity bias or tilt can
+introduce a large quasi-DC component, the high-pass pre-filter is strongly
+recommended.
+
+% ---------------------------------------------------------------
+\section{EKF Interpretation}\label{sec:ekf}
+
+The algorithm is a scalar Extended Kalman Filter (EKF) with:
+\begin{itemize}[leftmargin=1.4em]
+  \item \emph{State}: $a[n]$, the notch coefficient.
+  \item \emph{Process model}: random walk with variance $q$.
+  \item \emph{Measurement function}: $h(a) = 0$ (we want the notch output
+        $e[n]$ to be zero at the true $a$).
+  \item \emph{Linearised observation}: $H[n] = s[n-1]$ (the Jacobian of
+        the innovation with respect to $a$, dropping sign).
+  \item \emph{Measurement noise}: variance $r$.
 \end{itemize}
 
-\section{Stability and Convergence}
-\subsection{Steady-State Behavior}
-The error covariance converges to:
+The ``extended'' part is that the Jacobian $H[n] = s[n-1]$ changes each
+sample because $s[n-1]$ depends on the past trajectory of $y$ and $a$. This
+is why the filter must recompute $K[n]$ at every step rather than precomputing
+a fixed gain.
+
+The scalar structure means the update costs exactly three multiplications and
+two additions per sample beyond the resonator recursion. This makes it
+suitable for microcontroller deployments at high sample rates.
+
+% ---------------------------------------------------------------
+\section{Confidence and Lock Outputs}\label{sec:lock}
+
+The Kalman adaptation produces a frequency estimate but no explicit lock
+indicator. The implementation adds a three-component confidence layer.
+
+\subsection{Signal RMS}
+
+Instantaneous signal power, blended from the raw input and the resonator
+state, is smoothed by a one-pole filter:
+\begin{align}
+  P_{\rm sig}[n]
+  &\leftarrow P_{\rm sig} + \alpha(\Delta t, \tau_{\rm rms})
+    \bigl(y^2 + 0.5\,s[n-1]^2 - P_{\rm sig}\bigr),\\
+  \sigma_{\rm rms} &= \sqrt{\max(P_{\rm sig}, 0)},
+\end{align}
+where $\alpha(\Delta t, \tau) = \Delta t / (\tau + \Delta t)$ is the one-pole
+coefficient. Including $s[n-1]$ in the power estimate means confidence
+reflects how actively the resonator is engaged, not just raw input amplitude.
+
+\subsection{Error (Residual) RMS}
+
+The innovation $e[n]$ is also smoothed:
 \begin{equation}
-\mathbb{E}\bigl[(a[n] - a_{\text{true}})^2\bigr] \to \frac{r}{s[n-1]^2 + r/q}.
-\label{eq:steady_state}
+  P_e \leftarrow P_e + \alpha(\Delta t, \tau_e)(e^2 - P_e),
+  \qquad
+  \sigma_e = \sqrt{\max(P_e, 0)}.
+\end{equation}
+A small residual relative to the signal level indicates that the resonator is
+absorbing the sinusoidal component well---a sign of good lock.
+
+\subsection{Frequency Stability}
+
+A slow one-pole smoother tracks the frequency trend:
+\begin{equation}
+  \bar{f} \leftarrow \bar{f} + \alpha(\Delta t, \tau_f)(\hat{f} - \bar{f}).
+\end{equation}
+The frequency stability score is
+\begin{equation}
+  r_{\rm stab} = 1 - \min\!\left(1,\;
+    \frac{|\hat{f} - \bar{f}|}{0.25\,\max(\bar{f},\,f_{\min})}
+  \right),
+\end{equation}
+which equals 1 when the frequency is perfectly stable and falls toward 0 as
+it wanders. The frequency-proportional denominator applies a coarser tolerance
+at high frequencies.
+
+\subsection{Confidence Score}
+
+If $\hat{f} \in [f_{\min}, f_{\max}]$, three sub-scores are combined:
+\begin{align}
+  r_{\rm amp}
+    &= \operatorname{clamp}_{[0,1]}\!\left(
+       \frac{\sigma_{\rm rms}}{\max(\sigma_{\rm rms,\min},\,10^{-9})}
+       \right),\\
+  r_{\rm err}
+    &= 1 - \min\!\left(1,\;
+       \frac{\sigma_e / \max(\sigma_{\rm rms},\,10^{-9})}
+            {\gamma}\right),
+\end{align}
+where $\gamma$ is a soft threshold for the relative residual (default $1.25$).
+The target confidence is then
+\begin{equation}\label{eq:conf}
+  c^\star = r_{\rm amp}\,\bigl(0.20 + 0.45\,r_{\rm err} + 0.35\,r_{\rm stab}\bigr),
+\end{equation}
+and zero when $\hat{f}$ is outside the valid range.
+
+\emph{Interpretation of the weights.}  The base term $0.20$ ensures that a
+strong, quiet-residual signal always contributes positively even with some
+frequency wander. The larger weight on $r_{\rm err}$ ($0.45$) reflects that
+a small notch residual is the most direct evidence of good frequency tracking.
+The stability term ($0.35$) rewards temporal consistency.
+
+Confidence is itself smoothed and clamped:
+\begin{equation}
+  c \leftarrow \operatorname{clamp}_{[0,1]}\!\bigl(
+  c + \alpha(\Delta t, \tau_c)(c^\star - c)\bigr).
 \end{equation}
 
-\subsection{Numerical Stability}
-\begin{itemize}
-\item Clamp $-2 < a[n] < 2$ to avoid $\arccos$ domain errors
-\item Maintain $0 < P[n] < P_{\text{max}}$ to prevent divergence
+\subsection{Lock Flag}
+
+Lock requires all three gates to pass simultaneously:
+\begin{align}
+  &\hat{f} \in [f_{\min},\,f_{\max}],\\
+  &\sigma_{\rm rms} \ge \sigma_{\rm rms,\min},\\
+  &c \ge c_{\rm lock}.
+\end{align}
+These check, respectively, that the frequency is plausible, the signal is
+detectable, and the estimate has been stable long enough. A strong signal
+at the wrong frequency, or a correct-frequency but weak signal, will not set
+lock.
+
+\begin{table}[t]
+  \centering
+  \caption{Confidence and lock parameters with defaults}
+  \label{tab:lock}
+  \small
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    Parameter & Default & Role \\
+    \midrule
+    $\tau_{\rm rms}$          & $\SI{8}{s}$   & Signal RMS smoother \\
+    $\tau_e$                  & $\SI{5}{s}$   & Error RMS smoother \\
+    $\tau_f$                  & $\SI{3}{s}$   & Frequency smoother \\
+    $\tau_c$                  & $\SI{6}{s}$   & Confidence smoother \\
+    $\sigma_{\rm rms,\min}$   & $0.012$       & Minimum RMS for lock \\
+    $c_{\rm lock}$            & $0.65$        & Confidence threshold \\
+    $\gamma$                  & $1.25$        & Relative residual threshold \\
+    $f_{\min}$                & $\SI{0.03}{Hz}$ & Lower frequency bound \\
+    $f_{\max}$                & $\SI{2.0}{Hz}$  & Upper frequency bound \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+% ---------------------------------------------------------------
+\section{Comparison with the Aranovskiy Tracker}
+
+Both trackers estimate the dominant frequency sample by sample with $O(1)$
+cost, but their internal mechanisms differ fundamentally.
+
+The Aranovskiy tracker identifies $\theta = -\omega^2$
+directly via continuous-time gradient descent, then squares to get frequency.
+It has no explicit noise model and its convergence rate is amplitude-dependent.
+
+The KalmANF tracker identifies $a = 2\cos\hat\omega_d$ via a Kalman update
+on the notch coefficient. The noise model ($q$, $r$) is explicit and
+separately tunable from the resonator sharpness ($\rho$). The Kalman structure
+gives automatic step-size scheduling, while the Aranovskiy energy-weighting
+$\rho_{\rm energy}$ provides a simpler form of the same service.
+
+In practice, KalmANF tends to be more robust when signal amplitude varies
+widely, because the Kalman gain already normalises by $s[n-1]^2$ (signal
+power at the resonant frequency), providing automatic gain control. The
+Aranovskiy tracker's explicit $k$ gain requires re-tuning if the input scale
+changes significantly.
+
+% ---------------------------------------------------------------
+\section{Numerical Notes}
+
+\subsection{Clamping and Floor Values}
+
+Three hard guards prevent floating-point failures:
+\begin{itemize}[leftmargin=1.4em]
+  \item $a$ is clamped to $(-1.99999, 1.99999)$ before $\arccos$. This
+        prevents domain errors at the cost of a maximum frequency error of
+        $\arccos(1.99999/2) - 0 \approx 0.45$~mrad/sample.
+  \item $p$ is floored at $10^{-12}$, preventing the gain from producing
+        NaN through a $0/0$ division.
+  \item The denominator of $K[n]$ has a $10^{-12}$ additive guard for
+        the case where $s[n-1] = 0$ and $r/p \approx 0$ simultaneously.
 \end{itemize}
 
-\section{Performance and Limitations}
-\subsection{Frequency Resolution}
-The bandwidth is approximately:
-\begin{equation}
-BW \approx \frac{1 - \rho}{\pi \Delta t}.
-\label{eq:bandwidth}
-\end{equation}
+\subsection{Precision Requirements}
 
-\subsection{Noise Robustness}
+For $\rho > 0.99$, the resonator poles are close to the unit circle and the
+states $s[n]$ can grow large before stabilising. Single-precision
+(32-bit) floating point has limited dynamic range in this regime. Double
+precision (64-bit) is recommended when $\rho > 0.99$, or when the tracked
+frequency is very low relative to $f_s$ (e.g., $\hat{f} < 0.01 f_s$).
+
+% ---------------------------------------------------------------
+\section{Summary}
+
+The KalmANF C\texttt{++} implementation is a clean scalar EKF applied to the
+adaptive notch coefficient:
 \begin{itemize}
-\item Optimal for zero-mean white noise
-\item Requires DC removal for non-zero mean signals
+  \item one resonator state pair $(s[n-1], s[n-2])$,
+  \item one adaptive parameter $a \approx 2\cos\hat\omega_d$,
+  \item one Kalman covariance $p$ scheduling the gain automatically,
+  \item one frequency output $\hat{f} = \arccos(a/2) / (2\pi\Delta t)$,
+  \item a three-component confidence and lock layer for reliability.
 \end{itemize}
 
-\section{Extended Kalman Filter Interpretation}
-The algorithm implements a scalar EKF with Jacobian:
-\begin{equation}
-H_a(t) = \frac{\partial h(s,a)}{\partial a} = \rho s(t).
-\label{eq:jacobian}
-\end{equation}
+Convergence to the true frequency is guaranteed under persistent excitation.
+The tracker is not inherently DC-robust; a high-pass pre-filter is recommended
+for sensor deployments where bias or gravity contamination is expected.
 
-\section{Numerical Considerations}
-\begin{itemize}
-\item Use $\rho \leq 0.99$ for stability
-\item Double precision recommended when $\rho > 0.99$
-\end{itemize}
+\begin{thebibliography}{1}
 
-\section{Conclusion}
-The Kalman-based adaptive notch filter provides computationally efficient frequency tracking with inherent noise robustness. The scalar EKF structure ensures stability while maintaining adaptation capability.
-
-\begin{thebibliography}{9}
 \bibitem{AliWaterschoot2023}
-R. Ali and T. van Waterschoot, 
-``A frequency tracker based on a Kalman filter update of a single parameter adaptive notch filter,'' 
-in \emph{Proc. 26th Int. Conf. Digital Audio Effects (DAFx23)}, 
-Copenhagen, Denmark, Sep. 2023.
+R.~Ali and T.~van Waterschoot,
+``A frequency tracker based on a {Kalman} filter update of a single parameter
+adaptive notch filter,''
+in \emph{Proc.\ 26th Int.\ Conf.\ Digital Audio Effects (DAFx23)},
+Copenhagen, Denmark, Sep.\ 2023.
+
 \end{thebibliography}
 
 \end{document}
