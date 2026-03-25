@@ -670,6 +670,27 @@ physically meaningful structure: attitude resolves gravity, the frequency
 proxy provides a representative time scale, and the adaptive PII core shapes
 heave dynamics to that estimated motion regime.
 
+\section{Results Plots}
+
+\begin{figure}[H]\centering
+  \resizebox{\textwidth}{!}{\input{w3d_nonkalman_pmstokes_medium.pgf}}
+  \caption{Adaptive PII/Mahony attitude (roll, pitch, yaw) --- PM Stokes, medium $H_s$.}
+  \label{fig:w3d_nonkalman_pmstokes_medium_angles}
+\end{figure}
+
+\begin{figure}[H]\centering
+  \resizebox{\textwidth}{!}{\input{w3d_nonkalman_pmstokes_medium_zkin.pgf}}
+  \caption{Adaptive PII/Mahony vertical kinematics (displacement, velocity, acceleration with learned envelopes) --- PM Stokes, medium $H_s$.}
+  \label{fig:w3d_nonkalman_pmstokes_medium_zkin}
+\end{figure}
+
+\begin{figure}[H]\centering
+  \resizebox{\textwidth}{!}{\input{w3d_nonkalman_pmstokes_medium_tuner.pgf}}
+  \caption{Adaptive PII/Mahony frequency and auto-scheduling traces ($f$, accel std / $\sigma_a$, $\tau$, scheduling gain) --- PM Stokes, medium $H_s$.}
+  \label{fig:w3d_nonkalman_pmstokes_medium_tuner}
+\end{figure}
+
+
 % ---------------------------------------------------------------
 \section{Summary}
 
