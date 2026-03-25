@@ -154,6 +154,7 @@ std::optional<W3dSimulationRunResult> W3dSimulationRunner::run(const std::string
     result.output_name = make_output_name(filename);
     result.wave_type = type;
     result.wave_params = wp;
+    result.with_mag = options_.with_mag;
 
     std::cout << "Processing " << filename << " (type="
               << EnumTraits<WaveType>::to_string(type)
@@ -553,7 +554,7 @@ void print_summary_and_fail_if_needed(const W3dSimulationRunResult& result,
     fail_if("Z", z_pct, limit_z);
     fail_if("3D", pct_3d, limit_3d);
 
-    if (rms_yaw.rms() > limits.err_limit_yaw_deg) {
+    if (result.with_mag && rms_yaw.rms() > limits.err_limit_yaw_deg) {
         std::cerr << "ERROR: Yaw RMS above limit (" << rms_yaw.rms() << " deg > "
                   << limits.err_limit_yaw_deg << " deg). Failing.\n";
         std::exit(EXIT_FAILURE);

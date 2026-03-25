@@ -339,7 +339,7 @@ static void fail_if_vertical_quality_gates_breached(const W3dSimulationRunResult
         std::exit(EXIT_FAILURE);
     }
 
-    if (rms_yaw.rms() > FAIL_LIMITS.err_limit_yaw_deg) {
+    if (result.with_mag && rms_yaw.rms() > FAIL_LIMITS.err_limit_yaw_deg) {
         std::cerr << "ERROR: Yaw RMS above limit (" << rms_yaw.rms() << " deg > "
                   << FAIL_LIMITS.err_limit_yaw_deg << " deg). Failing.\n";
         std::exit(EXIT_FAILURE);

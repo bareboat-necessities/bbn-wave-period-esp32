@@ -261,6 +261,7 @@ struct W3dSimulationRunResult {
     std::string output_name;
     WaveType wave_type = WaveType::JONSWAP;
     WaveParameters wave_params{};
+    bool with_mag = true;
 
     std::vector<float> errs_x, errs_y, errs_z, errs_roll, errs_pitch, errs_yaw;
     std::vector<float> ref_x, ref_y, ref_z;
