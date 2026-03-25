@@ -14,12 +14,16 @@
 \usepackage{siunitx}
 \usepackage{float}
 \usepackage{pgf}
+\usepackage{pgfplots}
 \usepackage{tikz}
 \usepackage[breaklinks=true,hidelinks]{hyperref}
 \usepackage[nameinlink,capitalise,noabbrev]{cleveref}
 \usepackage[final]{microtype}
 % Matplotlib PGF backends may emit \mathdefault; define fallback for LuaLaTeX.
 \providecommand{\mathdefault}[1]{#1}
+
+% For including PGF
+\newcommand{\IncludePGF}[1]{\resizebox{\linewidth}{!}{\input{#1}}}
 
 \interdisplaylinepenalty=2500
 \allowdisplaybreaks
@@ -677,24 +681,21 @@ heave dynamics to that estimated motion regime.
 
 \section{Results Plots}
 
-\begin{figure}[H]\centering
-  \resizebox{\textwidth}{!}{\input{w3d_nonkalman_pmstokes_medium.pgf}}
+\begin{figure}[!t]\centering
+  \IncludePGF{w3d_nonkalman_pmstokes_medium.pgf}
   \caption{Adaptive PII/Mahony attitude (roll, pitch, yaw) --- PM Stokes, medium $H_s$.}
   \label{fig:w3d_nonkalman_pmstokes_medium_angles}
 \end{figure}
-
-\begin{figure}[H]\centering
-  \resizebox{\textwidth}{!}{\input{w3d_nonkalman_pmstokes_medium_zkin.pgf}}
+\begin{figure}[!t]\centering
+  \IncludePGF{w3d_nonkalman_pmstokes_medium_zkin.pgf}
   \caption{Adaptive PII/Mahony vertical kinematics (displacement, velocity, acceleration with learned envelopes) --- PM Stokes, medium $H_s$.}
   \label{fig:w3d_nonkalman_pmstokes_medium_zkin}
 \end{figure}
-
-\begin{figure}[H]\centering
-  \resizebox{\textwidth}{!}{\input{w3d_nonkalman_pmstokes_medium_tuner.pgf}}
+\begin{figure}[!t]\centering
+  \IncludePGF{w3d_nonkalman_pmstokes_medium_tuner.pgf}
   \caption{Adaptive PII/Mahony frequency and auto-scheduling traces ($f$, accel std / $\sigma_a$, $\tau$, scheduling gain) --- PM Stokes, medium $H_s$.}
   \label{fig:w3d_nonkalman_pmstokes_medium_tuner}
 \end{figure}
-
 
 % ---------------------------------------------------------------
 \section{Summary}
