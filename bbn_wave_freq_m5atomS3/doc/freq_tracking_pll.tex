@@ -1,0 +1,605 @@
+\documentclass[conference]{IEEEtran}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{newtxtext,newtxmath}
+\usepackage{amsmath,amssymb,bm}
+\usepackage{mathtools}
+\usepackage{booktabs}
+\usepackage{siunitx}
+\usepackage{enumitem}
+\usepackage[breaklinks=true,hidelinks]{hyperref}
+
+\title{A Practical Description of the PLL Frequency Tracker\\
+and Its C\texttt{++} Implementation}
+
+\author{%
+  \IEEEauthorblockN{Mikhail S.\ Grushinskiy}
+  \IEEEauthorblockA{Independent Researcher\\
+  Bareboat Necessities Project\\
+  \texttt{mgrouch@users.github.com}}
+}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This note gives a clean and practical description of the frequency tracker
+implemented in \texttt{PLLFreqTracker}. The method is a lightweight
+PLL/FLL-style tracker for one dominant narrowband component. It combines
+front-end drift removal, synchronous demodulation, low-pass baseband
+filtering, and a bounded PI loop on oscillator frequency.
+
+The implementation is designed for variable sample intervals, explicit
+frequency-band limits, confidence and lock logic, and an optional coarse
+acquisition aid. The main intended input is world-frame vertical inertial
+acceleration with gravity removed, although any consistent
+acceleration-like units may be used.
+\end{abstract}
+
+\begin{IEEEkeywords}
+frequency estimation, phase-locked loop, synchronous demodulation, wave
+tracking, embedded signal processing
+\end{IEEEkeywords}
+
+% ---------------------------------------------------------------
+\section{Introduction}
+
+The tracker is intended to follow one dominant oscillatory component in a
+signal such as vertical inertial acceleration. Its internal structure is
+simple:
+
+\begin{enumerate}[leftmargin=1.5em]
+  \item remove very slow drift,
+  \item suppress high-frequency junk,
+  \item demodulate against an internal oscillator,
+  \item low-pass the demodulated baseband terms,
+  \item form a phase error from \(\operatorname{atan2}(Q,I)\),
+  \item update oscillator frequency with a bounded PI loop.
+\end{enumerate}
+
+Compared with a Kalman-style tracker, this implementation is explicitly
+control-oriented. It does not carry a covariance matrix. Instead, it uses a
+phase detector, loop gains, signal-quality logic, and several safety limits.
+
+The design assumes one dominant narrowband component. If the signal is
+strongly multimodal, any single-frequency tracker may hop between modes or
+settle somewhere between them.
+
+% ---------------------------------------------------------------
+\section{Configuration and Main Outputs}
+
+The tracker is configured by a structure \texttt{Config} containing:
+\begin{itemize}[leftmargin=1.4em]
+  \item a physical search band \((f_{\min}, f_{\max})\),
+  \item an initial nominal frequency \(f_{\mathrm{init}}\),
+  \item front-end high-pass and low-pass cutoffs,
+  \item demodulation baseband low-pass cutoff,
+  \item loop bandwidth and damping,
+  \item smoothing time constants for output, power, and confidence,
+  \item lock thresholds,
+  \item slew-rate, recentering, and internal substep limits,
+  \item optional coarse-acquisition parameters.
+\end{itemize}
+
+The main public outputs are:
+\begin{itemize}[leftmargin=1.4em]
+  \item \texttt{getFrequencyHz()} --- smoothed tracked frequency,
+  \item \texttt{getRawFrequencyHz()} --- raw loop frequency before output smoothing,
+  \item \texttt{getPhaseRad()} --- internal oscillator phase,
+  \item \texttt{getPhaseErrorRad()} --- current phase-detector error,
+  \item \texttt{getBandpassedSignal()} --- prefiltered signal used by the loop,
+  \item \texttt{getAmplitudeEstimate()}, \texttt{getRmsEstimate()},
+        \texttt{getCoherence()}, \texttt{getConfidence()},
+  \item \texttt{isLocked()},
+  \item \texttt{getCoarseFrequencyHz()} when coarse assist is valid.
+\end{itemize}
+
+\begin{table}[t]
+  \centering
+  \caption{Main default configuration values}
+  \label{tab:defaults}
+  \small
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    Parameter & Default & Meaning \\
+    \midrule
+    \(f_{\min}\) & \SI{0.045}{Hz} & lower search band edge \\
+    \(f_{\max}\) & \SI{0.35}{Hz} & upper search band edge \\
+    \(f_{\mathrm{init}}\) & \SI{0.12}{Hz} & reset / nominal frequency \\
+    \(f_{\mathrm{hp}}\) & \SI{0.015}{Hz} & drift-removal HP cutoff \\
+    \(f_{\mathrm{lp}}\) & \SI{0.45}{Hz} & front-end LP cutoff \\
+    \(f_{\mathrm{dem}}\) & \SI{0.05}{Hz} & baseband LP cutoff \\
+    \(f_{\mathrm{loop}}\) & \SI{0.018}{Hz} & loop bandwidth \\
+    \(\zeta\) & 1.0 & loop damping \\
+    \(\tau_{\mathrm{out}}\) & \SI{4}{s} & output smoothing \\
+    \(\tau_{\mathrm{pow}}\) & \SI{14}{s} & power smoothing \\
+    \(\tau_{\mathrm{conf}}\) & \SI{10}{s} & confidence smoothing \\
+    \(r_{\min}\) & 0.012 & lock RMS floor in input units \\
+    \(c_{\mathrm{lock}}\) & 0.45 & lock coherence threshold \\
+    \(c_{\mathrm{unlock}}\) & 0.25 & unlock coherence threshold \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+% ---------------------------------------------------------------
+\section{Reset State and Frequency Variables}
+
+On reset, the tracker clamps the requested initial frequency into the valid
+band and stores:
+\begin{align}
+  \omega_0 &= 2\pi f_{\mathrm{init}},\\
+  \omega_{\mathrm{nom}} &= 2\pi f_{\mathrm{cfg}},
+\end{align}
+where \(f_{\mathrm{cfg}}\) is the configured nominal reset frequency.
+
+The internal oscillator state is then initialized as
+\begin{equation}
+  \omega = \omega_0,
+  \qquad
+  \phi = 0.
+\end{equation}
+
+The public outputs are initialized as
+\begin{equation}
+  f_{\mathrm{raw}} = f_0,
+  \qquad
+  f_{\mathrm{smooth}} = f_0,
+\end{equation}
+where \(f_0\) is the reset frequency in hertz.
+
+All filter states, confidence states, lock flags, and coarse-assist states are
+also reset.
+
+% ---------------------------------------------------------------
+\section{Variable-\(dt\) Update and Internal Substeps}
+
+The public update method receives one new input sample \(x\) and a sample
+interval \(\Delta t\). If either value is non-finite, or if \(\Delta t \le 0\),
+the update is skipped.
+
+To improve numerical robustness under irregular timing, large updates are split
+into smaller internal steps. If the configured maximum internal step is
+\(\Delta t_{\max}\), then the code uses
+\begin{equation}
+  N = \left\lceil \frac{\Delta t}{\Delta t_{\max}} \right\rceil,
+  \qquad
+  \delta t = \frac{\Delta t}{N},
+\end{equation}
+and applies the internal update \(N\) times using the same input sample.
+
+This is a distinctive implementation feature: the loop is written to behave
+well when \(\Delta t\) varies, rather than assuming a fixed-rate sample clock.
+
+% ---------------------------------------------------------------
+\section{Front-End Preprocessing}\label{sec:frontend}
+
+\subsection{Exact One-Pole Smoothing}
+
+All one-pole filters in the implementation use the exact exponential form
+\begin{equation}
+  z \leftarrow \alpha z + (1-\alpha)u,
+\end{equation}
+rather than a small-\(\Delta t\) Euler approximation.
+
+For a cutoff frequency \(f_c\), the coefficient is
+\begin{equation}
+  \alpha_f = \exp(-2\pi f_c \Delta t),
+\end{equation}
+and for a time constant \(\tau\), the coefficient is
+\begin{equation}
+  \alpha_\tau = \exp\!\left(-\frac{\Delta t}{\tau}\right).
+\end{equation}
+
+This choice keeps the one-pole stages stable for any \(\Delta t > 0\).
+
+\subsection{Drift Removal and Broad Bandpass}
+
+The first preprocessing stage removes very slow drift by forming a high-pass
+signal as input minus a low-pass estimate:
+\begin{align}
+  d &\leftarrow \alpha_{\mathrm{hp}} d + (1-\alpha_{\mathrm{hp}})x,\\
+  x_{\mathrm{hp}} &= x - d,
+\end{align}
+where \(d\) is the internal drift estimate.
+
+The result is then low-pass filtered to suppress high-frequency junk:
+\begin{equation}
+  b \leftarrow \alpha_{\mathrm{lp}} b + (1-\alpha_{\mathrm{lp}})x_{\mathrm{hp}}.
+\end{equation}
+
+The variable \(b\) is the prefiltered signal stored in the code as
+\texttt{bp\_}. It is the signal actually used by the demodulator and loop.
+
+\subsection{Power and RMS Estimate}
+
+A smoothed power estimate is formed from the prefiltered signal:
+\begin{equation}
+  P \leftarrow \alpha_{\mathrm{pow}} P + (1-\alpha_{\mathrm{pow}})b^2,
+\end{equation}
+followed by
+\begin{equation}
+  \mathrm{RMS} = \sqrt{P + \varepsilon},
+\end{equation}
+with a small positive \(\varepsilon\) for numerical safety.
+
+This RMS estimate is used for confidence, lock logic, and the optional coarse
+acquisition stage.
+
+% ---------------------------------------------------------------
+\section{Synchronous Demodulation and Baseband States}
+
+\subsection{Internal Oscillator}
+
+The tracker maintains an internal oscillator phase \(\phi\). At each step,
+the in-phase and quadrature carriers are
+\begin{equation}
+  c = \cos\phi,
+  \qquad
+  s = \sin\phi.
+\end{equation}
+
+\subsection{Demodulation}
+
+The prefiltered signal \(b\) is synchronously demodulated as
+\begin{equation}
+  I_{\mathrm{meas}} = b\,\cos\phi,
+  \qquad
+  Q_{\mathrm{meas}} = -b\,\sin\phi.
+\end{equation}
+
+These are then low-pass filtered:
+\begin{align}
+  I &\leftarrow \alpha_{\mathrm{dem}} I + (1-\alpha_{\mathrm{dem}})I_{\mathrm{meas}},\\
+  Q &\leftarrow \alpha_{\mathrm{dem}} Q + (1-\alpha_{\mathrm{dem}})Q_{\mathrm{meas}}.
+\end{align}
+
+The filtered pair \((I,Q)\) is the tracker’s baseband state.
+
+\subsection{Amplitude and Coherence}
+
+The code forms a tone-amplitude estimate from the demodulated baseband:
+\begin{equation}
+  A = 2\sqrt{I^2 + Q^2}.
+\end{equation}
+
+The factor of \(2\) compensates for the usual halving caused by synchronous
+demodulation of a sinusoid.
+
+A coherence-like score is then computed as
+\begin{equation}
+  \gamma
+  =
+  \operatorname{clamp}_{[0,1]}
+  \left(
+    \frac{A}{\sqrt{2}\,\mathrm{RMS}}
+  \right).
+\end{equation}
+
+For a strongly dominant single tone with good preprocessing, this coherence
+approaches \(1\). Broader-band or poorly matched signals push it downward.
+
+% ---------------------------------------------------------------
+\section{Confidence and Lock Logic}\label{sec:lock}
+
+\subsection{Confidence Target}
+
+The implementation combines an RMS score with the coherence score:
+\begin{equation}
+  r_{\mathrm{RMS}}
+  =
+  \operatorname{clamp}_{[0,1]}
+  \left(
+    \frac{\mathrm{RMS}}{\max(r_{\min},\varepsilon)}
+  \right),
+\end{equation}
+\begin{equation}
+  c^\star
+  =
+  \operatorname{clamp}_{[0,1]}(r_{\mathrm{RMS}}\,\gamma).
+\end{equation}
+
+This target confidence is then smoothed:
+\begin{equation}
+  c \leftarrow \alpha_{\mathrm{conf}} c + (1-\alpha_{\mathrm{conf}})c^\star.
+\end{equation}
+
+So confidence rises when the prefiltered signal has adequate RMS and the
+demodulated baseband looks coherent.
+
+\subsection{Hysteretic Lock Decision}
+
+The tracker uses a hysteretic lock rule.
+
+When currently unlocked, lock is declared only if
+\begin{equation}
+  \mathrm{RMS} \ge r_{\min}
+  \quad\text{and}\quad
+  \gamma \ge \gamma_{\mathrm{lock}}.
+\end{equation}
+
+When currently locked, unlock occurs if either
+\begin{equation}
+  \mathrm{RMS} < 0.7\,r_{\min}
+\end{equation}
+or
+\begin{equation}
+  \gamma < \gamma_{\mathrm{unlock}}.
+\end{equation}
+
+The two coherence thresholds satisfy
+\begin{equation}
+  0 \le \gamma_{\mathrm{unlock}} \le \gamma_{\mathrm{lock}} \le 1,
+\end{equation}
+so the lock decision has built-in hysteresis and does not chatter excessively.
+
+% ---------------------------------------------------------------
+\section{Phase Detector and PI Loop}\label{sec:loop}
+
+\subsection{Phase Error}
+
+The phase detector uses the low-pass baseband terms:
+\begin{equation}
+  e_\phi = \operatorname{atan2}(Q, I).
+\end{equation}
+
+To prevent excessive loop reactions during acquisition or disturbances, the
+implementation clamps this phase error:
+\begin{equation}
+  e_\phi \leftarrow \operatorname{clamp}(e_\phi,-1.2,+1.2).
+\end{equation}
+
+The value returned by \texttt{getPhaseErrorRad()} is this clamped phase error.
+
+\subsection{Loop Gains}
+
+The code uses a type-II PLL-style structure with natural frequency
+\begin{equation}
+  \omega_n = 2\pi f_{\mathrm{loop}},
+\end{equation}
+proportional gain
+\begin{equation}
+  K_p = 2\zeta \omega_n,
+\end{equation}
+and integral gain
+\begin{equation}
+  K_i = \omega_n^2,
+\end{equation}
+where \(f_{\mathrm{loop}}\) is the configured loop bandwidth and \(\zeta\) is
+the damping factor.
+
+\subsection{Adaptation Gain}
+
+The loop does not always use full authority. Instead, it scales the phase
+error by a data-dependent adaptation gain:
+\begin{equation}
+  g =
+  \begin{cases}
+    c, & \text{if locked},\\[4pt]
+    0.5\,c, & \text{if not locked}.
+  \end{cases}
+\end{equation}
+
+So the loop reacts more cautiously when it is not yet confident.
+
+\subsection{Frequency Integrator}
+
+Before secondary corrections, the loop proposes
+\begin{equation}
+  \omega_{\mathrm{cand}}
+  =
+  \omega + K_i\,g\,e_\phi\,\Delta t.
+\end{equation}
+
+This is the integral part of the PLL/FLL-style update.
+
+\subsection{Recentering When Confidence Is Very Poor}
+
+If the confidence is very low,
+\begin{equation}
+  c < 0.10,
+\end{equation}
+the code slowly pulls the frequency back toward the configured nominal
+frequency \(\omega_{\mathrm{nom}}\):
+\begin{equation}
+  \omega_{\mathrm{cand}}
+  \leftarrow
+  \omega_{\mathrm{cand}}
+  +
+  \beta_{\mathrm{rec}}
+  (\omega_{\mathrm{nom}} - \omega_{\mathrm{cand}}),
+\end{equation}
+where
+\begin{equation}
+  \beta_{\mathrm{rec}} = 1 - \exp\!\left(-\frac{\Delta t}{\tau_{\mathrm{rec}}}\right).
+\end{equation}
+
+This is a practical recovery feature, not part of a textbook PLL.
+
+\subsection{Slew Limit and Frequency Band Limit}
+
+The implementation limits how quickly the frequency may move. If the maximum
+slew rate is \(f'_{\max}\) in \si{Hz/s}, then
+\begin{equation}
+  |\Delta\omega| \le 2\pi f'_{\max}\Delta t.
+\end{equation}
+
+After this rate limit, the frequency is clamped to the configured search band:
+\begin{equation}
+  2\pi f_{\min} \le \omega \le 2\pi f_{\max}.
+\end{equation}
+
+\subsection{Phase Advance}
+
+After the updated oscillator frequency is obtained, the internal phase is
+advanced as
+\begin{equation}
+  \phi \leftarrow \phi + (\omega + K_p g e_\phi)\Delta t,
+\end{equation}
+and then wrapped into \([-\pi,\pi]\).
+
+Thus the returned phase is the internal oscillator phase, not a separately
+estimated analytic signal phase.
+
+% ---------------------------------------------------------------
+\section{Output Frequency Smoothing}
+
+The raw tracked frequency is simply
+\begin{equation}
+  f_{\mathrm{raw}} = \frac{\omega}{2\pi}.
+\end{equation}
+
+The public frequency output is a smoothed version:
+\begin{equation}
+  f_{\mathrm{smooth}}
+  \leftarrow
+  \alpha_{\mathrm{out}} f_{\mathrm{smooth}}
+  +
+  (1-\alpha_{\mathrm{out}}) f_{\mathrm{raw}}.
+\end{equation}
+
+The returned value from \texttt{getFrequencyHz()} is \(f_{\mathrm{smooth}}\),
+while \texttt{getRawFrequencyHz()} returns \(f_{\mathrm{raw}}\).
+
+This separation is helpful: the raw loop state reacts more quickly, while the
+public output is less jittery.
+
+% ---------------------------------------------------------------
+\section{Optional Coarse Acquisition Assist}\label{sec:coarse}
+
+The implementation optionally includes a simple threshold-based coarse
+acquisition aid.
+
+\subsection{Thresholding Against Current RMS}
+
+After the internal substeps are complete, the tracker uses the final
+prefiltered sample \(b\) and the current RMS to form a hysteretic threshold
+\begin{equation}
+  T_c = \max(\eta\,\mathrm{RMS}, 10^{-9}),
+\end{equation}
+where \(\eta\) is the configured coarse hysteresis fraction.
+
+The coarse detector first arms when
+\begin{equation}
+  b \le -T_c,
+\end{equation}
+and later records an event when the signal rises to
+\begin{equation}
+  b \ge +T_c.
+\end{equation}
+
+So it looks for a sufficiently negative excursion followed by a sufficiently
+positive excursion.
+
+\subsection{Period from Successive Events}
+
+Let the times of successive coarse events be \(t_k\). Then the measured period
+is
+\begin{equation}
+  T_k = t_k - t_{k-1},
+\end{equation}
+and the measured coarse frequency is
+\begin{equation}
+  f_{c,k} = \frac{1}{T_k}.
+\end{equation}
+
+Only frequencies inside the configured band are accepted.
+
+Accepted measurements are exponentially smoothed:
+\begin{equation}
+  f_c \leftarrow \alpha_c f_c + (1-\alpha_c) f_{c,k}.
+\end{equation}
+
+If no fresh coarse event arrives for too long, the coarse estimate times out
+and is marked invalid.
+
+\subsection{Gentle Pull Toward the Coarse Estimate}
+
+When coarse assist is enabled and valid, the loop gently pulls the candidate
+frequency toward the coarse estimate:
+\begin{equation}
+  \omega_{\mathrm{cand}}
+  \leftarrow
+  \omega_{\mathrm{cand}}
+  +
+  g_c \beta_c(\omega_c - \omega_{\mathrm{cand}}),
+\end{equation}
+where \(\omega_c = 2\pi f_c\), and
+\begin{equation}
+  \beta_c = 1 - \exp\!\left(-\frac{\Delta t}{\tau_{\mathrm{pull}}}\right).
+\end{equation}
+
+The assist gain is stronger when confidence is poor:
+\begin{equation}
+  g_c =
+  \begin{cases}
+    0.15(1-c), & \text{if locked},\\[4pt]
+    1.0(1-c), & \text{if not locked}.
+  \end{cases}
+\end{equation}
+
+This means coarse assist mainly helps acquisition and recovery, while staying
+gentle once the loop is already well locked.
+
+% ---------------------------------------------------------------
+\section{Numerical Safeguards and Implementation Notes}
+
+Several practical safeguards are built into the code:
+
+\begin{itemize}[leftmargin=1.4em]
+  \item All one-pole coefficients are formed with bounded exponential
+        functions.
+  \item Very large public \(\Delta t\) values are split into smaller stable
+        internal steps.
+  \item Frequency slew rate is explicitly limited.
+  \item Frequency is always clamped to the physical search band.
+  \item The phase detector output is bounded.
+  \item Stable \(\operatorname{hypot}\)-style amplitude calculation is used for
+        \(\sqrt{I^2+Q^2}\).
+  \item Configuration values are sanitized before use.
+\end{itemize}
+
+These choices make the implementation more robust than a minimal textbook PLL.
+
+\begin{table}[t]
+  \centering
+  \caption{Main internal states}
+  \label{tab:states}
+  \small
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    Quantity & Code name & Meaning \\
+    \midrule
+    \(\omega\) & \texttt{omega\_rad\_s\_} & internal oscillator frequency \\
+    \(\phi\) & \texttt{phase\_rad\_} & internal oscillator phase \\
+    \(e_\phi\) & \texttt{phase\_error\_rad\_} & clamped phase error \\
+    \(d\) & \texttt{dc\_lp\_} & drift estimate for HP stage \\
+    \(b\) & \texttt{bp\_} & prefiltered signal \\
+    \(I,Q\) & \texttt{i\_lp\_}, \texttt{q\_lp\_} & baseband states \\
+    \(\mathrm{RMS}\) & \texttt{rms\_} & signal RMS estimate \\
+    \(A\) & \texttt{amplitude\_} & tone-amplitude estimate \\
+    \(\gamma\) & \texttt{coherence\_} & coherence score \\
+    \(c\) & \texttt{confidence\_} & smoothed confidence \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+% ---------------------------------------------------------------
+\section{Summary}
+
+The implemented \texttt{PLLFreqTracker} is a practical one-frequency tracker
+with the following structure:
+\begin{itemize}[leftmargin=1.4em]
+  \item front-end drift removal and broad bandpass preprocessing,
+  \item synchronous demodulation into low-pass baseband \(I/Q\),
+  \item phase error from \(\operatorname{atan2}(Q,I)\),
+  \item bounded PI loop on oscillator frequency,
+  \item confidence and hysteretic lock logic,
+  \item optional coarse acquisition assistance,
+  \item explicit slew limits, band limits, and variable-\(dt\) handling.
+\end{itemize}
+
+It is compact, numerically cautious, and well suited to embedded tracking of a
+dominant narrowband wave component.
+
+\end{document}
