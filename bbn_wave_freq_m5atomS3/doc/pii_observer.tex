@@ -18,6 +18,8 @@
 \usepackage[breaklinks=true,hidelinks]{hyperref}
 \usepackage[nameinlink,capitalise,noabbrev]{cleveref}
 \usepackage[final]{microtype}
+% Matplotlib PGF backends may emit \mathdefault; define fallback for LuaLaTeX.
+\providecommand{\mathdefault}[1]{#1}
 
 \interdisplaylinepenalty=2500
 \allowdisplaybreaks
