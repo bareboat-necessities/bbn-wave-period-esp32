@@ -255,10 +255,10 @@ std::optional<W3dSimulationRunResult> W3dSimulationRunner::run(const std::string
         result.errs_pitch.push_back(diffDeg(snap.euler_nautical_deg.y(), p_ref_out));
         result.errs_yaw.push_back(diffDeg(snap.euler_nautical_deg.z(), y_ref_out));
 
-        const Vector3f acc_bias_true_zu = noise_models_.accel_noise
+        const Vector3f acc_bias_true_zu = (options_.add_noise && noise_models_.accel_noise)
             ? (noise_models_.accel_noise->bias0 + noise_models_.accel_noise->bias_rw).eval()
             : Vector3f::Zero().eval();
-        const Vector3f gyro_bias_true_zu = noise_models_.gyro_noise
+        const Vector3f gyro_bias_true_zu = (options_.add_noise && noise_models_.gyro_noise)
             ? (noise_models_.gyro_noise->bias0 + noise_models_.gyro_noise->bias_rw).eval()
             : Vector3f::Zero().eval();
         const Vector3f acc_bias_true_ned = zu_to_ned(acc_bias_true_zu);
@@ -267,7 +267,7 @@ std::optional<W3dSimulationRunResult> W3dSimulationRunner::run(const std::string
         const Vector3f acc_bias_err = snap.acc_bias_est_ned - acc_bias_true_ned;
         const Vector3f gyro_bias_err = snap.gyro_bias_est_ned - gyro_bias_true_ned;
 
-        const Vector3f mag_bias_true_zu = (options_.with_mag && noise_models_.mag_noise)
+        const Vector3f mag_bias_true_zu = (options_.add_noise && options_.with_mag && noise_models_.mag_noise)
             ? (noise_models_.mag_noise->bias0_uT + noise_models_.mag_noise->bias_rw_uT).eval()
             : Vector3f::Zero().eval();
         const Vector3f mag_bias_true_ned = zu_to_ned(mag_bias_true_zu);
