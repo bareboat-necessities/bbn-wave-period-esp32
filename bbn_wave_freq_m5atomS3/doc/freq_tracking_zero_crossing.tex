@@ -1,107 +1,505 @@
-\documentclass[11pt,letterpaper]{article}
-\usepackage{amsmath,amssymb,geometry,hyperref}
-\usepackage{fullpage}
-\usepackage{cite}
-\geometry{margin=1in}
-\begin{document}
+\documentclass[conference]{IEEEtran}
 
-\title{Zero‐Crossing Frequency Tracking with Hysteresis and Debouncing}
-\author{Mikhail Grushinskiy}
-\date{July 2025}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{newtxtext,newtxmath}
+\usepackage{amsmath,amssymb,bm}
+\usepackage{mathtools}
+\usepackage{booktabs}
+\usepackage{siunitx}
+\usepackage{enumitem}
+\usepackage[breaklinks=true,hidelinks]{hyperref}
+
+\title{A Practical Description of the Schmitt-Trigger\\
+Zero-Crossing Frequency Tracker and Its C\texttt{++} Implementation}
+
+\author{%
+  \IEEEauthorblockN{Mikhail S.\ Grushinskiy}
+  \IEEEauthorblockA{Independent Researcher\\
+  Bareboat Necessities Project\\
+  \texttt{mgrouch@users.github.com}}
+}
+
+\begin{document}
 \maketitle
 
 \begin{abstract}
-We present a robust zero‐crossing frequency detector employing a Schmitt‐trigger hysteresis, debounce filtering, and cycle‐averaged period estimation.  The method, implemented in \texttt{SchmittTriggerZCFreqTracker} (see \texttt{SchmittTriggerZCFreqTracker.h}), yields instantaneous frequency estimates, phase, and quality metrics (confidence, jitter, amplitude ratio, fallback status).
+This note gives a clean and practical description of the zero-crossing
+frequency tracker implemented in \texttt{SchmittTriggerZCFreqTracker}. The
+method uses a Schmitt-trigger state machine, debounce timing, steepness
+gating, and cycle-based period estimation. It is intended for lightweight
+real-time tracking of approximately sinusoidal signals.
+
+In addition to frequency, the implementation provides a phase-like estimate,
+timing jitter, an amplitude-to-threshold ratio, a confidence score, and a
+simple lock decision. The focus here is on what the code actually computes
+and how the main parameters affect behavior.
 \end{abstract}
 
-\section{Problem Statement}
-Given a real‐valued, approximately sinusoidal input signal \(s(t)\) with unknown amplitude \(A\) and frequency \(f\), we wish to estimate \(f\) in real time while rejecting noise and drift.  The detector must also report a phase estimate and confidence metrics.
+\begin{IEEEkeywords}
+frequency estimation, zero-crossing detector, Schmitt trigger, hysteresis,
+debouncing, embedded signal processing
+\end{IEEEkeywords}
 
-\section{Normalized Signal and Hysteresis}
-Define the normalized signal
-\[
-x(t) \;=\; \frac{s(t)}{\lvert A\rvert}, 
-\quad A = \max_t |s(t)|.
-\]
-We choose a hysteresis threshold \(h>0\), and set upper and lower thresholds
-\[
-T_{\mathrm{up}} = +h,\quad T_{\mathrm{low}} = -h.
-\]
-At each sample, \(x(t)\) is compared to \(\pm h\) to detect transitions.
+% ---------------------------------------------------------------
+\section{Introduction}
 
-\section{State Machine with Debouncing}
-The detector maintains a state \(\sigma \in \{\mathrm{LOW}, \mathrm{HIGH}\}\).  Let \(\Delta t\) be the sample interval, \(\Delta t_{\mathrm{deb}}\) the debounce interval, and \(\Delta t_{\mathrm{steep}}\) the minimum time to guard against spurious crossings.  Define the local time‐within‐cycle \(u(t)\), incremented by \(\Delta t\) each step.
+The tracker estimates the dominant frequency of a scalar oscillatory signal by
+watching for alternating threshold crossings of a normalized input. Compared
+with spectral methods or adaptive resonators, this approach is very simple:
+it only needs a few state variables, a small period history buffer, and basic
+timing logic.
 
-\subsection{Transition Conditions}
-A low‐to‐high transition at time \(t_i\) occurs if
-\[
-x(t_i) > T_{\mathrm{up}}, 
-\quad u(t_i) - u(t_{i-1}) > \Delta t_{\mathrm{steep}}, 
-\quad u(t_i) - u(t_{i-1}^{\mathrm{cross}}) > \Delta t_{\mathrm{deb}},
-\]
-and similarly for high‐to‐low using \(x(t) < T_{\mathrm{low}}\).  Each crossing time is recorded as
-\[
-t^{\mathrm{cross}} = u(t) - \tfrac12\,\bigl[u(t)-u(\text{last threshold cross})\bigr].
-\]
+The main design goals are:
+\begin{itemize}[leftmargin=1.4em]
+  \item reject chatter around zero using hysteresis,
+  \item reject implausibly fast crossings using steepness and debounce timing,
+  \item reduce jitter by averaging over multiple half-cycles,
+  \item expose lightweight quality metrics suitable for embedded use.
+\end{itemize}
 
+% ---------------------------------------------------------------
+\section{Inputs and Normalization}
+
+At each update, the tracker receives:
+\begin{itemize}[leftmargin=1.4em]
+  \item the current signal sample \(s\),
+  \item a positive signal-magnitude estimate \(M\),
+  \item debounce time \(t_{\mathrm{deb}}\),
+  \item steepness time \(t_{\mathrm{steep}}\),
+  \item sample interval \(\Delta t\).
+\end{itemize}
+
+The implementation forms the normalized sample
+\begin{equation}
+  x = \frac{s}{|M|}.
+\end{equation}
+
+This is important: the tracker does \emph{not} estimate the signal magnitude
+internally. It expects the caller to supply \(M\), and the hysteresis logic is
+applied to the normalized quantity \(x\).
+
+If \(\Delta t \le 0\) or \(|M| \le 0\), the update is skipped and the previous
+frequency estimate is returned unchanged.
+
+% ---------------------------------------------------------------
+\section{Hysteresis Thresholds}
+
+The tracker stores a positive hysteresis level \(h\) and uses the thresholds
+\begin{equation}
+  T_{\mathrm{up}} = +h,
+  \qquad
+  T_{\mathrm{low}} = -h.
+\end{equation}
+
+In the code,
+\begin{equation}
+  h = |\texttt{hysteresis}|,
+\end{equation}
+so the effective thresholds are always symmetric even if a negative value is
+passed into the constructor.
+
+The amplitude-to-threshold ratio reported by the tracker is
+\begin{equation}
+  R_A = \frac{|M|}{\max(h,10^{-12})}.
+\end{equation}
+
+This quantity does not affect crossing detection directly, but it influences
+confidence and lock reporting.
+
+% ---------------------------------------------------------------
+\section{State Machine}
+
+The tracker uses three states:
+\begin{equation}
+  \texttt{WAS\_NOT\_SET},\qquad
+  \texttt{WAS\_LOW},\qquad
+  \texttt{WAS\_HIGH}.
+\end{equation}
+
+\subsection{Startup State}
+
+Initially the state is \texttt{WAS\_NOT\_SET}. In this state the tracker waits
+for the normalized signal to move clearly outside the hysteresis band:
+\begin{itemize}[leftmargin=1.4em]
+  \item if \(x > T_{\mathrm{up}}\), the state becomes \texttt{WAS\_HIGH},
+  \item if \(x < T_{\mathrm{low}}\), the state becomes \texttt{WAS\_LOW}.
+\end{itemize}
+
+At startup the internal timers and crossing counters are reset and the tracker
+remains in fallback mode until valid crossings have been accumulated.
+
+\subsection{Low and High States}
+
+Once initialized, the tracker alternates between \texttt{WAS\_LOW} and
+\texttt{WAS\_HIGH}. It keeps an internal running time
+\begin{equation}
+  t_{\mathrm{cyc}} = \texttt{timeInCycle},
+\end{equation}
+which is incremented by \(\Delta t\) at each update.
+
+It also remembers the most recent time the signal was confidently on the low
+or high side:
+\begin{equation}
+  t_{\mathrm{low,last}} = \texttt{lastLowTime},
+  \qquad
+  t_{\mathrm{high,last}} = \texttt{lastHighTime}.
+\end{equation}
+
+These stored times are used both for gating and for estimating crossing times.
+
+% ---------------------------------------------------------------
+\section{Crossing Detection}
+
+\subsection{Low-to-High Crossing}
+
+When the state is \texttt{WAS\_LOW}, a rising crossing is accepted only if:
+\begin{equation}
+  x > T_{\mathrm{up}},
+\end{equation}
+and
+\begin{equation}
+  t_{\mathrm{cyc}} - t_{\mathrm{low,last}} > t_{\mathrm{steep}},
+\end{equation}
+and either this is the first crossing in the current window or
+\begin{equation}
+  t_{\mathrm{cross}} - t_{\mathrm{cross,last}} > t_{\mathrm{deb}}.
+\end{equation}
+
+The crossing time estimate used by the code is
+\begin{equation}
+  t_{\mathrm{cross}}
+  =
+  t_{\mathrm{cyc}}
+  - \frac{t_{\mathrm{cyc}} - t_{\mathrm{low,last}}}{2}.
+\end{equation}
+
+So the implementation uses a simple midpoint between the current sample time
+and the last confirmed low-side time.
+
+\subsection{High-to-Low Crossing}
+
+Similarly, when the state is \texttt{WAS\_HIGH}, a falling crossing is
+accepted only if:
+\begin{equation}
+  x < T_{\mathrm{low}},
+\end{equation}
+and
+\begin{equation}
+  t_{\mathrm{cyc}} - t_{\mathrm{high,last}} > t_{\mathrm{steep}},
+\end{equation}
+and either this is the first crossing in the window or
+\begin{equation}
+  t_{\mathrm{cross}} - t_{\mathrm{cross,last}} > t_{\mathrm{deb}}.
+\end{equation}
+
+The corresponding crossing-time estimate is
+\begin{equation}
+  t_{\mathrm{cross}}
+  =
+  t_{\mathrm{cyc}}
+  - \frac{t_{\mathrm{cyc}} - t_{\mathrm{high,last}}}{2}.
+\end{equation}
+
+\subsection{Interpretation}
+
+This is not a zero interpolation in the usual sense. The code does not fit a
+line through neighboring samples around the true zero crossing. Instead, it
+uses hysteresis and then places the crossing halfway between the current
+sample time and the most recent time the signal was confidently on the
+previous side of the Schmitt band.
+
+% ---------------------------------------------------------------
 \section{Period and Frequency Estimation}
-Let \(n\) crossings occur at times \(t_1,\dots,t_n\).  After observing \(M=2\,N_{\rm cycle}+1\) crossings (i.e.\ \(N_{\rm cycle}\) full periods), compute the cycle time
-\[
-T_{\rm cycle}
-= \frac{t_{n} - t_{1}}{\,N_{\rm cycle}\,},
-\]
-and estimate the instantaneous period
-\[
-T = \frac{2}{n-1}\,(t_{n} - t_{1}),
-\]
-so that the frequency estimate is
-\[
-\hat f = \frac{1}{T}.
-\]
-If fewer than two crossings have been observed, or if no crossing occurs for a time
-\(\Delta t_{\mathrm{fb}}\), we set a fallback frequency
-\(\displaystyle f_{\mathrm{fb}} = 10^{-2}\,\mathrm{Hz}.\)
 
-\section{Statistical Quality Metrics}
-Maintain a circular history \(\{T_k\}\) of the last \(K\) period estimates.  Let
-\[
-\overline{T} = \frac1K\sum_{k=1}^K T_k,
-\quad
-\sigma_T^2 = \frac1K\sum_{k=1}^K (T_k-\overline{T})^2.
-\]
-Define
-\[
-\text{jitter} = \sigma_T,
-\quad
-\text{confidence} = \max\bigl(0,\,1 - \tfrac{\sigma_T}{\overline{T}}\bigr).
-\]
-Additionally, the amplitude‐to‐threshold ratio
-\(\displaystyle R_A = \frac{|A|}{h}\) is reported.
+\subsection{Crossing Window}
 
-\section{Phase Estimation}
-Between crossings, we compute the phase
-\[
-\phi(t) \;=\; 2\pi\,\frac{u(t) - u(t_{n-1}^{\mathrm{cross}})}{T}
-\quad (\bmod\,2\pi),
-\]
-offset by \(\pi\) on downward transitions to ensure continuity.
+Let
+\begin{equation}
+  N_c = \texttt{crossingsCounter}
+\end{equation}
+be the number of accepted crossings in the current window. The first accepted
+crossing sets the window start time
+\begin{equation}
+  t_{\mathrm{begin}} = \texttt{beginningCrossingInCycleTime}.
+\end{equation}
 
-\section{Implementation in \texttt{SchmittTriggerZCFreqTracker}}
-Key parameters and defaults:
-\begin{itemize}
-  \item Hysteresis \(h=0.1\).
-  \item Debounce time \(\Delta t_{\mathrm{deb}}= \text{user‐supplied}\).
-  \item Steepness time \(\Delta t_{\mathrm{steep}}= \text{user‐supplied}\).
-  \item Fallback time \(\Delta t_{\mathrm{fb}}=60\,\mathrm{s}\).
-  \item History length \(K=10\).
+Whenever a new accepted crossing occurs, the code forms
+\begin{equation}
+  T_{\mathrm{cycle}} = t_{\mathrm{cross}} - t_{\mathrm{begin}}.
+\end{equation}
+
+Since consecutive accepted crossings represent half-period events, the period
+estimate used by the implementation is
+\begin{equation}\label{eq:period_est}
+  \hat T = \frac{2\,T_{\mathrm{cycle}}}{N_c - 1}.
+\end{equation}
+
+The frequency estimate is then
+\begin{equation}
+  \hat f = \frac{1}{\hat T}.
+\end{equation}
+
+\subsection{Configured Number of Periods}
+
+The constructor parameter \texttt{periodsInCycle} controls how many full
+periods are accumulated before a full update window is completed. If
+\begin{equation}
+  N_{\mathrm{per}} = \texttt{periodsInCycle},
+\end{equation}
+then a full window is reached when
+\begin{equation}
+  N_c = 2N_{\mathrm{per}} + 1.
+\end{equation}
+
+At that point the code computes \eqref{eq:period_est}, updates the period
+statistics, updates the frequency, and restarts the local crossing window.
+
+\subsection{Early Reacquisition Path}
+
+The implementation also allows an earlier estimate before a full window is
+completed. If more than one crossing has been observed and the current
+frequency is still only the startup or fallback value, the code immediately
+computes a provisional period and frequency using the same formula
+\eqref{eq:period_est}. This helps the tracker recover faster after startup or
+after long gaps with no valid crossings.
+
+\subsection{Frequency Limits}
+
+The code uses the constants
+\begin{equation}
+  f_{\mathrm{init}} = 10^{-3}\,\text{Hz},
+\end{equation}
+\begin{equation}
+  f_{\mathrm{fallback}} = 10^{-2}\,\text{Hz},
+\end{equation}
+\begin{equation}
+  f_{\max} = 10^{4}\,\text{Hz}.
+\end{equation}
+
+On full-window updates, the frequency is capped as
+\begin{equation}
+  \hat f \leftarrow \min(\hat f, f_{\max}).
+\end{equation}
+
+% ---------------------------------------------------------------
+\section{Fallback Behavior}
+
+If no accepted crossing occurs for too long, the tracker falls back to a low
+default frequency. Let
+\begin{equation}
+  t_{\mathrm{fb}} = \texttt{fallbackToLowFreqTime},
+\end{equation}
+whose default is
+\begin{equation}
+  t_{\mathrm{fb}} = 60\,\text{s}.
+\end{equation}
+
+Whenever
+\begin{equation}
+  t_{\mathrm{cyc}} - t_{\mathrm{cross,last}} > t_{\mathrm{fb}},
+\end{equation}
+the code sets
+\begin{equation}
+  \hat f = f_{\mathrm{fallback}},
+\end{equation}
+and marks the estimate as fallback. This logic is active both after startup
+and during normal operation if the signal stops producing valid alternating
+crossings.
+
+% ---------------------------------------------------------------
+\section{Phase Estimate}
+
+The tracker provides a phase-like diagnostic through
+\texttt{getPhaseEstimate()}. If the frequency is non-positive or fallback mode
+is active, it returns zero.
+
+Otherwise, with period
+\begin{equation}
+  \hat T = \frac{1}{\hat f},
+\end{equation}
+and time since the last accepted crossing
+\begin{equation}
+  \Delta t_{\mathrm{cross}}
+  =
+  t_{\mathrm{cyc}} - t_{\mathrm{cross,last}},
+\end{equation}
+the reported phase is
+\begin{equation}
+  \phi
+  =
+  2\pi\,
+  \operatorname{fmod}\!\left(
+    \frac{\Delta t_{\mathrm{cross}}}{\hat T},\,1
+  \right).
+\end{equation}
+
+If the current state is \texttt{WAS\_LOW}, the code adds a \(\pi\)-shift and
+wraps back into \([0,2\pi)\):
+\begin{equation}
+  \phi \leftarrow (\phi+\pi)\bmod 2\pi.
+\end{equation}
+
+This is a useful phase-like timing indicator, but it should be viewed as a
+diagnostic tied to the crossing logic rather than as a full analytic phase
+estimate.
+
+% ---------------------------------------------------------------
+\section{Quality Metrics}
+
+The tracker stores recent period estimates in a circular buffer of size
+\begin{equation}
+  K = 10.
+\end{equation}
+
+Let \(K_h\) be the number of valid entries currently stored, with
+\(K_h \le K\). The code computes the population variance
+\begin{equation}
+  \sigma_T^2
+  =
+  \frac{1}{K_h}\sum_{k=1}^{K_h} T_k^2
+  -
+  \left(
+    \frac{1}{K_h}\sum_{k=1}^{K_h} T_k
+  \right)^2.
+\end{equation}
+
+Any small negative value caused by floating-point roundoff is clipped to zero.
+
+The reported timing jitter is
+\begin{equation}
+  J = \sqrt{\max(\sigma_T^2,0)}.
+\end{equation}
+
+\subsection{Confidence}
+
+If there is not yet enough period history, or if the most recent period is
+non-positive, the confidence is set to
+\begin{equation}
+  c =
+  \begin{cases}
+    0, & \text{if fallback is active},\\
+    0.1, & \text{otherwise}.
+  \end{cases}
+\end{equation}
+
+Once enough valid period history exists, the code forms the normalized timing
+spread
+\begin{equation}
+  r_T = \frac{J}{\max(T_{\mathrm{last}},10^{-12})},
+\end{equation}
+where \(T_{\mathrm{last}}\) is the most recent stored period estimate.
+
+The base confidence is
+\begin{equation}
+  c_0 = \operatorname{clamp}_{[0,1]}(1-r_T).
+\end{equation}
+
+This is then shaped by the amplitude ratio:
+\begin{equation}
+  a_{\mathrm{score}}
+  =
+  \operatorname{clamp}_{[0,1]}\!\left(\frac{R_A}{2}\right),
+\end{equation}
+\begin{equation}
+  c = c_0\,(0.35 + 0.65\,a_{\mathrm{score}}).
+\end{equation}
+
+If fallback mode is active, the final confidence is forced to zero.
+
+\subsection{Reported Metrics}
+
+The \texttt{QualityMetrics} structure returned by the code contains:
+\begin{itemize}[leftmargin=1.4em]
+  \item \texttt{confidence},
+  \item \texttt{jitter},
+  \item \texttt{amplitude\_ratio},
+  \item \texttt{is\_fallback}.
 \end{itemize}
-The class is defined in \texttt{SchmittTriggerZCFreqTracker.h}, with methods:
-\begin{itemize}
-  \item \texttt{float update(…)} — processes each sample, updates state, returns \(\hat f\).
-  \item \texttt{float getPhaseEstimate()} — returns \(\phi(t)\).
-  \item \texttt{QualityMetrics getQualityMetrics()} — returns \(\{\mathrm{confidence},\mathrm{jitter},R_A,\mathrm{is\_fallback}\}\).
+
+\begin{table}[t]
+  \centering
+  \caption{Reported quality metrics}
+  \label{tab:quality}
+  \small
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    Quantity & Code field & Meaning \\
+    \midrule
+    \(c\) & \texttt{confidence} & confidence score in \([0,1]\) \\
+    \(J\) & \texttt{jitter} & period-jitter estimate in seconds \\
+    \(R_A\) & \texttt{amplitude\_ratio} & magnitude relative to hysteresis \\
+    fallback & \texttt{is\_fallback} & fallback-frequency flag \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+% ---------------------------------------------------------------
+\section{Lock Decision}
+
+The tracker also exposes a boolean lock decision through \texttt{isLocked()}.
+Lock is declared only when all of the following are true:
+\begin{itemize}[leftmargin=1.4em]
+  \item fallback mode is not active,
+  \item at least two period estimates are available,
+  \item confidence exceeds the configured threshold,
+  \item amplitude ratio exceeds the configured minimum.
 \end{itemize}
 
-\section{Conclusion}
-This Schmitt‐trigger frequency tracker achieves robust, low‐jitter frequency estimates in real time, with built‐in noise immunity via hysteresis and debouncing, and provides useful diagnostics for estimator quality.
+Equivalently,
+\begin{equation}
+  \texttt{locked}
+  =
+  \neg\texttt{isFallback}
+  \land
+  (\texttt{periodHistoryCount}\ge 2)
+  \land
+  (c \ge c_{\min})
+  \land
+  (R_A \ge R_{A,\min}).
+\end{equation}
+
+The defaults are
+\begin{equation}
+  c_{\min} = 0.60,
+  \qquad
+  R_{A,\min} = 1.0.
+\end{equation}
+
+These can be changed through \texttt{setLockParams()}.
+
+% ---------------------------------------------------------------
+\section{Implementation Notes}
+
+The public interface of \texttt{SchmittTriggerZCFreqTracker} includes:
+\begin{itemize}[leftmargin=1.4em]
+  \item \texttt{update(...)} for per-sample processing,
+  \item \texttt{getFrequencyHz()} for the latest frequency estimate,
+  \item \texttt{getPhaseEstimate()} for the phase-like output,
+  \item \texttt{getQualityMetrics()} for diagnostic metrics,
+  \item \texttt{isLocked()} for the lock decision.
+\end{itemize}
+
+The implementation is intentionally simple. It does not require FFT buffers,
+matrix operations, or long filters. Its quality depends strongly on the
+supplied signal magnitude estimate and on reasonable choices of hysteresis,
+debounce time, and steepness time.
+
+% ---------------------------------------------------------------
+\section{Summary}
+
+The implemented Schmitt-trigger zero-crossing tracker is a compact real-time
+frequency estimator with:
+\begin{itemize}[leftmargin=1.4em]
+  \item normalized hysteresis-based crossing detection,
+  \item debounce and steepness gating for spurious-crossing rejection,
+  \item half-cycle timing averaged into period estimates,
+  \item fallback behavior for long crossing gaps,
+  \item practical diagnostics for phase, jitter, confidence, and lock.
+\end{itemize}
+
+Its main strengths are simplicity, low computational cost, and robustness to
+small fluctuations around zero. This makes it well suited to embedded
+applications where a lightweight time-domain frequency tracker is preferred.
+
 \end{document}
