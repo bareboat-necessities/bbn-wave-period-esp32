@@ -3,6 +3,8 @@
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
 \usepackage{newtxtext,newtxmath}
+% Work around \Bbbk redefinition conflict between newtxmath and amssymb.
+\let\Bbbk\relax
 \usepackage{amsmath,amssymb,bm}
 \usepackage{mathtools}
 \usepackage{booktabs}
