@@ -8,7 +8,7 @@
 ./w3d_sim_adaptive_pii_mahony
 #./w3d_sim_adapt_4 --no-noise
 ./w3d_sim_adapt_4
-./w3d_sim_adapt_3 --no-noise
+#./w3d_sim_adapt_3 --no-noise
 ./w3d_sim_adapt_3
 
 #./imu_wave_dir
