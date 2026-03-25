@@ -461,10 +461,6 @@ void print_summary_and_fail_if_needed(const W3dSimulationRunResult& result,
               << " Y=" << (gyrb_ry * rad2deg)
               << " Z=" << (gyrb_rz * rad2deg)
               << " |3D|=" << (gyrb_r3 * rad2deg) << "\n";
-#ifdef DETAILED_SUMMARY
-    std::cout << "Bias error RMS (mag, uT): X=" << magb_rx << " Y=" << magb_ry << " Z=" << magb_rz
-              << " |3D|=" << magb_r3 << "\n";
-#endif
 
     auto pct_of_max = [](float rms, float maxv) -> float {
         return (maxv > 1e-12f && std::isfinite(rms)) ? (100.f * rms / maxv) : NAN;
@@ -474,10 +470,6 @@ void print_summary_and_fail_if_needed(const W3dSimulationRunResult& result,
               << " Z=" << acc_true_max_z << " |3D|=" << acc_true_max_3d << "\n";
     std::cout << "Max TRUE bias in window (gyro, rad/s): X=" << gyr_true_max_x << " Y=" << gyr_true_max_y
               << " Z=" << gyr_true_max_z << " |3D|=" << gyr_true_max_3d << "\n";
-#ifdef DETAILED_SUMMARY
-    std::cout << "Max TRUE bias in window (mag, uT): X=" << mag_true_max_x << " Y=" << mag_true_max_y
-              << " Z=" << mag_true_max_z << " |3D|=" << mag_true_max_3d << "\n";
-#endif
 
     const float accb_r3_pct = pct_of_max(accb_r3, acc_true_max_3d);
     const float gyrb_r3_pct = pct_of_max(gyrb_r3, gyr_true_max_3d);
@@ -490,12 +482,6 @@ void print_summary_and_fail_if_needed(const W3dSimulationRunResult& result,
               << "% Y=" << pct_of_max(gyrb_ry, gyr_true_max_y)
               << "% Z=" << pct_of_max(gyrb_rz, gyr_true_max_z)
               << "% |3D|=" << gyrb_r3_pct << "%\n";
-#ifdef DETAILED_SUMMARY
-    std::cout << "Bias error RMS (% of max TRUE bias) (mag): X=" << pct_of_max(magb_rx, mag_true_max_x)
-              << "% Y=" << pct_of_max(magb_ry, mag_true_max_y)
-              << "% Z=" << pct_of_max(magb_rz, mag_true_max_z)
-              << "% |3D|=" << magb_r3_pct << "%\n";
-#endif
 
     std::cout << "tau_target=" << result.final_tau_target
               << ", sigma_target=" << result.final_sigma_target
