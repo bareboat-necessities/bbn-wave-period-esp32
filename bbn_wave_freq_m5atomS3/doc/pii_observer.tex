@@ -51,8 +51,7 @@
 This note documents the method implemented by
 \texttt{AdaptiveVerticalPIIMahony.h},
 \texttt{AdaptiveVerticalPII.h}, and
-\texttt{VerticalPIIObserver.h}, together with the simulation wrapper
-\texttt{w3d\_sim\_adaptive\_pii\_mahony.cpp}.
+\texttt{VerticalPIIObserver.h}.
 The pipeline estimates attitude with a Mahony complementary filter,
 rotates body-frame specific force into a \(Z\)-up world frame,
 subtracts gravity to obtain vertical inertial acceleration,
@@ -86,7 +85,7 @@ The implementation is organized as a small stack:
 \end{enumerate}
 
 The simulation entry point instantiates
-\texttt{AdaptiveVerticalPIIMahony<float,true,TrackerType::ARANOVSKIY>}
+\texttt{AdaptiveVerticalPIIMahony}
 in the supplied driver, but the adaptive wrapper itself is generic and can
 use several tracker backends through \texttt{FrequencyTrackerPolicy}.
 
@@ -534,7 +533,7 @@ frequency proxy is only coarse-valid rather than fully locked.
 In the supplied simulation driver,
 \texttt{FusionAdapterAdaptivePIIMahony} instantiates
 \begin{equation}
-\texttt{AdaptiveVerticalPIIMahony<float,true,TrackerType::ARANOVSKIY>}.
+\texttt{AdaptiveVerticalPIIMahony}.
 \end{equation}
 
 So that file uses the Aranovskiy tracker as the internal acceleration-frequency
