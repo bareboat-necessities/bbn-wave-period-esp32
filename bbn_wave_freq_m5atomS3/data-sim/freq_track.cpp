@@ -101,19 +101,19 @@ static void write_csv_line(std::ofstream &ofs,
 }
 
 static std::pair<double,double> run_tracker_once(TrackerType tracker,
-                                               float a_norm, float dt) {
+                                               float a_raw, float dt) {
     double freq = FREQ_GUESS;
     double smooth_freq = std::numeric_limits<double>::quiet_NaN();
     if (tracker == TrackerType::ARANOVSKIY) {
-        freq = aranovskiyTracker.run(a_norm, dt);
+        freq = aranovskiyTracker.run(a_raw, dt);
     } else if (tracker == TrackerType::KALMANF) {
-        freq = kalmanfTracker.run(a_norm, dt);
+        freq = kalmanfTracker.run(a_raw, dt);
     } else if (tracker == TrackerType::PLL) {
-        pllTracker.update(a_norm, dt);
+        pllTracker.update(a_raw, dt);
         freq = pllTracker.getRawFrequencyHz();
         smooth_freq = pllTracker.getFrequencyHz();
     } else {
-        freq = zcTracker.run(a_norm, dt);
+        freq = zcTracker.run(a_raw, dt);
     }
     return {freq, smooth_freq};
 }
@@ -173,9 +173,7 @@ static void run_from_csv(TrackerType tracker,
     reader.for_each_record([&](const Wave_Data_Sample &rec) {
         float accel_z = (meta.type == WaveType::JONSWAP || meta.type == WaveType::PMSTOKES) ? rec.imu.acc_bz - g_std : rec.wave.acc_z;
         float noisy_accel = accel_z + bias + gauss(rng);
-        float a_norm = noisy_accel / g_std;
-
-        auto [est_freq, tracker_smooth_freq] = run_tracker_once(tracker, a_norm, DELTA_T);
+        auto [est_freq, tracker_smooth_freq] = run_tracker_once(tracker, noisy_accel, DELTA_T);
         const bool updated = !std::isnan(est_freq);
 
         double smooth_freq = std::numeric_limits<double>::quiet_NaN();
