@@ -7,6 +7,7 @@
 #include <vector>
 #include <random>
 #include <limits>
+#include <algorithm>
 #include <iomanip>
 #include <filesystem>
 
@@ -19,44 +20,33 @@
 const float g_std = 9.80665f; // standard gravity acceleration m/s²
 
 #include "WaveFilesSupport.h"
-#include "AranovskiyFreqTracker.h"
-#include "KalmANFFreqTracker.h"
+#include "FrequencyTrackerPolicy.h"
 #include "FrequencySmoother.h"
-#include "KalmanForWaveBasic.h"
-#include "KalmanWaveNumStableAlt.h"
-#include "SchmittTriggerZCFreqTracker.h"
-#include "KalmanSmoother.h"
-#include "KalmanWaveDirection.h"
 #include "PLLFreqTracker.h"
-#include "WaveFilters.h"
 
 // Config
 static constexpr float SAMPLE_RATE_HZ = 200.0f;
 static constexpr float DELTA_T        = 1.0f / SAMPLE_RATE_HZ;
 static constexpr float NOISE_STDDEV   = 0.08f;
 static constexpr float BIAS_MEAN      = 0.10f;
+static constexpr float FREQ_MIN_HZ    = 0.04f;
+static constexpr float FREQ_MAX_HZ    = 2.0f;
 
 // Trackers
-AranovskiyFreqTracker<double> arFilter;
-KalmANFFreqTracker<double> kalmANF;
-PLLFreqTracker<double> pllFreqTracker;
+TrackerPolicy<TrackerType::ARANOVSKIY> aranovskiyTracker;
+TrackerPolicy<TrackerType::KALMANF> kalmanfTracker;
+TrackerPolicy<TrackerType::PLL> pllTracker;
+TrackerPolicy<TrackerType::ZEROCROSS> zcTracker;
 FrequencySmoother<float> freqSmoother;
-KalmanSmootherVars kalman_freq;
-SchmittTriggerZCFreqTracker freqDetector(
-    ZERO_CROSSINGS_HYSTERESIS, ZERO_CROSSINGS_PERIODS);
 
 static bool kalm_smoother_first = true;
 static double sim_t = 0.0;
-static uint32_t now_us() { return static_cast<uint32_t>(sim_t * 1e6); }
 
 // Helpers
 static void init_tracker_backends() {
-    init_filters(&arFilter, &kalman_freq);
-    init_filters_alt(&kalmANF, &kalman_freq);
-
-    PLLFreqTracker<double>::Config cfg;
-    cfg.f_min_hz = FREQ_LOWER;
-    cfg.f_max_hz = FREQ_UPPER;
+    TrackerPolicy<TrackerType::PLL>::Config cfg;
+    cfg.f_min_hz = FREQ_MIN_HZ;
+    cfg.f_max_hz = FREQ_MAX_HZ;
     cfg.f_init_hz = FREQ_GUESS;
     cfg.pre_hp_hz = 0.03;
     cfg.pre_lp_hz = 2.5;
@@ -64,20 +54,21 @@ static void init_tracker_backends() {
     cfg.loop_bandwidth_hz = 0.05;
     cfg.output_smooth_tau_s = 1.0;
     cfg.lock_rms_min = 0.002;
-    pllFreqTracker.configure(cfg);
+    pllTracker.configure(cfg);
 }
 
 static void reset_run_state() {
     sim_t = 0.0;
     kalm_smoother_first = true;
-    kalman_smoother_init(&kalman_freq, 0.25f, 2.0f, 100.0f);
+    aranovskiyTracker = TrackerPolicy<TrackerType::ARANOVSKIY>();
+    kalmanfTracker = TrackerPolicy<TrackerType::KALMANF>();
+    zcTracker = TrackerPolicy<TrackerType::ZEROCROSS>();
     freqSmoother = FrequencySmoother<float>();
-    freqDetector.reset();
-    pllFreqTracker.reset(FREQ_GUESS);
+    pllTracker.reset(FREQ_GUESS);
 }
 
 static double clamp_freq(double v) {
-    return clamp(v, (double)FREQ_LOWER, (double)FREQ_UPPER);
+    return std::clamp(v, static_cast<double>(FREQ_MIN_HZ), static_cast<double>(FREQ_MAX_HZ));
 }
 
 static void write_csv_header(std::ofstream &ofs) {
@@ -110,22 +101,19 @@ static void write_csv_line(std::ofstream &ofs,
 }
 
 static std::pair<double,double> run_tracker_once(TrackerType tracker,
-                                               float a_norm, float a_raw, float dt) {
+                                               float a_norm, float dt) {
     double freq = FREQ_GUESS;
     double smooth_freq = std::numeric_limits<double>::quiet_NaN();
     if (tracker == TrackerType::ARANOVSKIY) {
-        freq = estimate_freq(Aranovskiy, &arFilter, &kalmANF,
-                             &freqDetector, a_norm, a_norm, dt, now_us());
+        freq = aranovskiyTracker.run(a_norm, dt);
     } else if (tracker == TrackerType::KALMANF) {
-        freq = estimate_freq(Kalm_ANF, &arFilter, &kalmANF,
-                             &freqDetector, a_norm, a_norm, dt, now_us());
+        freq = kalmanfTracker.run(a_norm, dt);
     } else if (tracker == TrackerType::PLL) {
-        pllFreqTracker.update(static_cast<double>(a_norm), static_cast<double>(dt));
-        freq = pllFreqTracker.getRawFrequencyHz();
-        smooth_freq = pllFreqTracker.getFrequencyHz();
+        pllTracker.update(a_norm, dt);
+        freq = pllTracker.getRawFrequencyHz();
+        smooth_freq = pllTracker.getFrequencyHz();
     } else {
-        freq = estimate_freq(ZeroCrossing, &arFilter, &kalmANF,
-                             &freqDetector, a_norm, a_norm, dt, now_us());
+        freq = zcTracker.run(a_norm, dt);
     }
     return {freq, smooth_freq};
 }
@@ -187,7 +175,7 @@ static void run_from_csv(TrackerType tracker,
         float noisy_accel = accel_z + bias + gauss(rng);
         float a_norm = noisy_accel / g_std;
 
-        auto [est_freq, tracker_smooth_freq] = run_tracker_once(tracker, a_norm, noisy_accel, DELTA_T);
+        auto [est_freq, tracker_smooth_freq] = run_tracker_once(tracker, a_norm, DELTA_T);
         const bool updated = !std::isnan(est_freq);
 
         double smooth_freq = std::numeric_limits<double>::quiet_NaN();
