@@ -31,6 +31,8 @@ static constexpr float NOISE_STDDEV   = 0.08f;
 static constexpr float BIAS_MEAN      = 0.10f;
 static constexpr float FREQ_MIN_HZ    = 0.04f;
 static constexpr float FREQ_MAX_HZ    = 2.0f;
+static constexpr double QUALITY_WINDOW_SECONDS = 5.0;
+static constexpr double QUALITY_GATE_REL_MAX = 0.15;
 
 // Trackers
 TrackerPolicy<TrackerType::ARANOVSKIY> aranovskiyTracker;
@@ -125,15 +127,22 @@ static std::pair<double,double> run_tracker_once(TrackerType tracker,
     return {freq, smooth_freq};
 }
 
+struct TrackerRunSummary {
+    std::string tracker_name;
+    std::string output_file;
+    double tail_mean_smooth_hz = std::numeric_limits<double>::quiet_NaN();
+    std::size_t tail_samples = 0;
+};
+
 // Main runner
-static void run_from_csv(TrackerType tracker,
-                         const std::string &csv_file,
-                         unsigned run_seed) {
+static TrackerRunSummary run_from_csv(TrackerType tracker,
+                                      const std::string &csv_file,
+                                      unsigned run_seed) {
     // Parse metadata
     auto parsed = WaveFileNaming::parse(csv_file);
     if (!parsed) {
         fprintf(stderr, "Could not parse metadata from %s\n", csv_file.c_str());
-        return;
+        return {};
     }
     WaveFileNaming::ParsedName meta = *parsed;
     std::string waveName = EnumTraits<WaveType>::to_string(meta.type);
@@ -164,7 +173,7 @@ static void run_from_csv(TrackerType tracker,
     std::ofstream ofs(outFile);
     if (!ofs.is_open()) {
         fprintf(stderr, "Failed to open %s\n", outFile.c_str());
-        return;
+        return {};
     }
     write_csv_header(ofs);
 
@@ -172,6 +181,7 @@ static void run_from_csv(TrackerType tracker,
     std::default_random_engine rng(run_seed);
     std::normal_distribution<float> gauss(0.0f, NOISE_STDDEV);
     float bias = BIAS_MEAN;
+    std::vector<std::pair<double, double>> smooth_series;
 
     reset_run_state();
 
@@ -196,6 +206,9 @@ static void run_from_csv(TrackerType tracker,
             }
         }
         if (!std::isnan(smooth_freq)) smooth_freq = clamp_freq(smooth_freq);
+        if (!std::isnan(smooth_freq)) {
+            smooth_series.emplace_back(rec.time, smooth_freq);
+        }
 
         // True freq if length available
         double true_f = std::numeric_limits<double>::quiet_NaN();
@@ -218,6 +231,25 @@ static void run_from_csv(TrackerType tracker,
 
     ofs.close();
     printf("Wrote %s\n", outFile.c_str());
+
+    TrackerRunSummary summary;
+    summary.tracker_name = trackerName;
+    summary.output_file = outFile;
+    if (!smooth_series.empty()) {
+        const double end_t = smooth_series.back().first;
+        const double start_t = end_t - QUALITY_WINDOW_SECONDS;
+        double sum = 0.0;
+        for (const auto &sample : smooth_series) {
+            if (sample.first >= start_t) {
+                sum += sample.second;
+                summary.tail_samples++;
+            }
+        }
+        if (summary.tail_samples > 0) {
+            summary.tail_mean_smooth_hz = sum / static_cast<double>(summary.tail_samples);
+        }
+    }
+    return summary;
 }
 
 // Main
@@ -239,9 +271,44 @@ int main() {
     // Run each file with each tracker
     unsigned run_idx = 0;
     for (const auto &fname : files) {
+        std::vector<TrackerRunSummary> summaries;
         for (int tr = 0; tr < 4; ++tr) {
-            run_from_csv(static_cast<TrackerType>(tr), fname, run_idx++);
+            summaries.push_back(run_from_csv(static_cast<TrackerType>(tr), fname, run_idx++));
         }
+
+        printf("\nSummary for %s (last %.1f s smoothed frequency):\n",
+               fname.c_str(), QUALITY_WINDOW_SECONDS);
+        for (const auto &s : summaries) {
+            if (std::isnan(s.tail_mean_smooth_hz)) {
+                printf("  %-10s mean=nan (samples=%zu)\n", s.tracker_name.c_str(), s.tail_samples);
+            } else {
+                printf("  %-10s mean=%.6f Hz (samples=%zu)\n",
+                       s.tracker_name.c_str(), s.tail_mean_smooth_hz, s.tail_samples);
+            }
+        }
+
+        bool quality_ok = true;
+        for (std::size_t i = 0; i < summaries.size(); ++i) {
+            for (std::size_t j = i + 1; j < summaries.size(); ++j) {
+                const double fi = summaries[i].tail_mean_smooth_hz;
+                const double fj = summaries[j].tail_mean_smooth_hz;
+                if (std::isnan(fi) || std::isnan(fj) || fi <= 0.0 || fj <= 0.0) {
+                    quality_ok = false;
+                    printf("  Pair %-10s vs %-10s: N/A (missing tail mean)\n",
+                           summaries[i].tracker_name.c_str(), summaries[j].tracker_name.c_str());
+                    continue;
+                }
+                const double denom = std::max(fi, fj);
+                const double rel_diff = std::fabs(fi - fj) / denom;
+                const bool pass = rel_diff <= QUALITY_GATE_REL_MAX;
+                quality_ok = quality_ok && pass;
+                printf("  Pair %-10s vs %-10s: rel_diff=%.2f%% -> %s (<= %.0f%%)\n",
+                       summaries[i].tracker_name.c_str(), summaries[j].tracker_name.c_str(),
+                       rel_diff * 100.0, pass ? "PASS" : "FAIL", QUALITY_GATE_REL_MAX * 100.0);
+            }
+        }
+
+        printf("Quality gate for %s: %s\n\n", fname.c_str(), quality_ok ? "PASS" : "FAIL");
     }
 
     printf("All runs complete.\n");
