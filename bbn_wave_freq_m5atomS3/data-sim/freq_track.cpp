@@ -22,7 +22,6 @@ const float g_std = 9.80665f; // standard gravity acceleration m/s²
 #include "WaveFilesSupport.h"
 #include "FrequencyTrackerPolicy.h"
 #include "FrequencySmoother.h"
-#include "PLLFreqTracker.h"
 
 // Config
 static constexpr float SAMPLE_RATE_HZ = 200.0f;
