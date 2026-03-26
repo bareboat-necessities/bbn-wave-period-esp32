@@ -43,7 +43,13 @@ static bool kalm_smoother_first = true;
 static double sim_t = 0.0;
 
 // Helpers
+static void init_kalmanf_backend() {
+    kalmanfTracker.t.init(0.985f, 1e-6f, 1e+5f, 1.0f, 0.0f, 0.0f, 1.9999f);
+}
+
 static void init_tracker_backends() {
+    init_kalmanf_backend();
+
     TrackerPolicy<TrackerType::PLL>::Config cfg;
     cfg.f_min_hz = FREQ_MIN_HZ;
     cfg.f_max_hz = FREQ_MAX_HZ;
@@ -62,6 +68,7 @@ static void reset_run_state() {
     kalm_smoother_first = true;
     aranovskiyTracker = TrackerPolicy<TrackerType::ARANOVSKIY>();
     kalmanfTracker = TrackerPolicy<TrackerType::KALMANF>();
+    init_kalmanf_backend();
     zcTracker = TrackerPolicy<TrackerType::ZEROCROSS>();
     freqSmoother = FrequencySmoother<float>();
     pllTracker.reset(FREQ_GUESS);
