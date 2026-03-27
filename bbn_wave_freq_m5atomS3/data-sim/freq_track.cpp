@@ -1,4 +1,5 @@
 #include <cmath>
+#include <cassert>
 #include <cstdio>
 #include <cstdlib>
 #include <cstdint>
@@ -254,6 +255,7 @@ static TrackerRunSummary run_from_csv(TrackerType tracker,
 // Main
 int main() {
     init_tracker_backends();
+    bool all_quality_ok = true;
 
     // Gather candidate files
     std::vector<std::string> files;
@@ -308,8 +310,10 @@ int main() {
         }
 
         printf("Quality gate for %s: %s\n\n", fname.c_str(), quality_ok ? "PASS" : "FAIL");
+        all_quality_ok = all_quality_ok && quality_ok;
     }
 
     printf("All runs complete.\n");
+    assert(all_quality_ok && "freq_track quality gate failed");
     return 0;
 }
