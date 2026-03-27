@@ -114,6 +114,30 @@ def plot_scenarios(df):
         save_all(fig, base)
         plt.close(fig)
 
+        # Smoothed-only companion plot for the same scenario
+        fig, ax = plt.subplots(figsize=(12, 6))
+        ax.set_title(
+            f"Smoothed Frequency Tracking Comparison\n"
+            f"Wave: {wave}, H={H:.3f} m, Noise={N:.3f}, Bias={B:.3f}"
+        )
+        ax.set_xlabel("Time (s)")
+        ax.set_ylabel("Frequency (Hz)")
+
+        for tracker in TRACKER_ORDER:
+            if tracker not in set(group['tracker']):
+                continue
+            subset = group[group['tracker'] == tracker]
+            label = TRACKER_LABELS.get(tracker, tracker)
+            ax.plot(subset['time'], subset['smooth_freq'], label=f"{label} smooth")
+
+        ax.legend()
+        ax.grid(True)
+        plt.tight_layout()
+
+        base_smooth = f"freqtrack_{wave}_H{H:.3f}_smooth"
+        save_all(fig, base_smooth)
+        plt.close(fig)
+
 # === Optional: plot errors for a specific scenario ===
 def plot_errors(df, wave, H, N, B):
     subset = df[(df['wave'] == wave) & (df['H'] == H) & (df['N'] == N) & (df['B'] == B)]
