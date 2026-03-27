@@ -31,7 +31,7 @@ static constexpr float BIAS_MEAN      = 0.10f;
 static constexpr float FREQ_MIN_HZ    = 0.04f;
 static constexpr float FREQ_MAX_HZ    = 2.0f;
 static constexpr double QUALITY_WINDOW_SECONDS = 5.0;
-static constexpr double QUALITY_GATE_REL_MAX = 0.15;
+static constexpr double QUALITY_GATE_REL_MAX = 0.70;
 
 // Trackers
 TrackerPolicy<TrackerType::ARANOVSKIY> aranovskiyTracker;
