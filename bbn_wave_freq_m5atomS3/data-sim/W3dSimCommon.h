@@ -329,7 +329,9 @@ inline std::optional<W3dSimulationRunResult> process_wave_file_for_tracker(const
                                                                            float dt,
                                                                            bool with_mag,
                                                                            bool add_noise,
-                                                                           float mag_odr_hz)
+                                                                           float mag_odr_hz,
+                                                                           std::string output_suffix_with_mag = "_fusion",
+                                                                           std::string output_suffix_no_mag = "_fusion_nomag")
 {
     const float acc_sigma = 1.51e-3f * g_std;
     const float gyr_sigma = 0.00157f;
@@ -357,6 +359,8 @@ inline std::optional<W3dSimulationRunResult> process_wave_file_for_tracker(const
     options.add_noise = add_noise;
     options.mag_odr_hz = mag_odr_hz;
     options.temperature_c = 35.0f;
+    options.output_suffix_with_mag = std::move(output_suffix_with_mag);
+    options.output_suffix_no_mag = std::move(output_suffix_no_mag);
 
     W3dSimulationRunner runner(options, std::move(noise_models), adapter);
     return runner.run(filename);
