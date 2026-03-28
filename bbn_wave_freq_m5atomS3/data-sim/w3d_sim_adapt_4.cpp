@@ -128,7 +128,7 @@ static constexpr W3dSummaryLabels SUMMARY_LABELS{
 static void process_wave_file_for_tracker(const std::string& filename, float dt, bool with_mag)
 {
     constexpr float MAG_ODR_HZ = 25.0f;
-    auto result = process_wave_file_for_tracker<FusionAdapter4>(filename, dt, with_mag, add_noise, MAG_ODR_HZ);
+    auto result = process_wave_file_for_tracker<FusionAdapter4>(filename, dt, with_mag, add_noise, MAG_ODR_HZ, "_fusion_ou2", "_fusion_ou2_nomag");
     if (!result) return;
     print_summary_and_fail_if_needed(*result, dt, FAIL_LIMITS, SUMMARY_LABELS);
 }
