@@ -26,7 +26,7 @@ bool runImuCalWizard(M5Ui& ui, ImuCalStoreNvs& store, ImuCalBlobV1& out_saved) {
   cfg.enable_mag_recovery        = true;
   cfg.mag_recover_after_failures = 6u;
   cfg.mag_recover_cooldown_us    = 1000000u;
-  cfg.tempC_default              = 25.0f;
+  cfg.tempC_default              = 35.0f;
   cfg.i2c_hz                     = 400000u;
 
   if (!imu.begin(M5.In_I2C, cfg)) {
