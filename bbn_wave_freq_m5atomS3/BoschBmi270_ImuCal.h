@@ -39,7 +39,7 @@ class BoschBmi270_ImuCal {
 public:
   struct Config {
     uint8_t  bmi270_addr = 0x68;
-    float    ag_hz       = 100.0f;   // BoschBmi270Fifo quantizes to 100/200 Hz
+    float    ag_hz       = 200.0f;   // BoschBmi270Fifo quantizes to 100/200 Hz
 
     bool     enable_mag_aux             = true;
     uint8_t  mag_bmm150_addr            = 0x10;
@@ -54,7 +54,7 @@ public:
     uint8_t  mag_recover_after_failures = 6u;
     uint32_t mag_recover_cooldown_us    = 1000000u;
 
-    float    tempC_default              = 25.0f;
+    float    tempC_default              = 35.0f;
     uint32_t i2c_hz                     = 400000u;
   };
 
