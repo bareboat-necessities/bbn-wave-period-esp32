@@ -1,5 +1,7 @@
 # BBN Boat Heave Sensor using IMU
 
+NOTE: This repository is obsolete and all development mode into: https://github.com/bareboat-necessities/ocean-imu
+
 Boat Heave Sensor on m5stack atomS3.
 
 m5stack atomS3 is ESP32 microcontroller with built-in IMU MPU6886 (accelerometer and gyroscope)
